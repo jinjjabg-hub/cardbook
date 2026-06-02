@@ -81,7 +81,7 @@ async function _saveCard(uid, cardData) {
     };
     await _cbDb.collection('users').doc(uid).collection('cards').doc(docId).set(data);
     const go = confirm('✅ 명함첩에 저장되었습니다!\n명함첩 바로 보기?');
-    if(go) window.location.href = 'https://jinjjabg-hub.github.io/cardbook/cardbook.html';
+    if(go) window.location.href = 'https://jinjjabg-hub.github.io/cardbook/l';
   } catch(err) {
     alert('❌ 저장 실패: ' + err.message);
   }
