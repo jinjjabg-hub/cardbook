@@ -8,7 +8,7 @@ const isKakaoTalk = /KAKAOTALK/i.test(navigator.userAgent);
     'https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js',
     'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js',
     'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js'
-  ];f
+  ];
   let loaded = 0;
   scripts.forEach(src => {
     if(document.querySelector(`script[src="${src}"]`)) { loaded++; return; }
