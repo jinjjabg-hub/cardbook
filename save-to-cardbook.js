@@ -1,6 +1,5 @@
 // ===== BNI 명함첩 저장 공통 스크립트 =====
 
-// 카카오톡 내부 브라우저 감지
 const isKakaoTalk = /KAKAOTALK/i.test(navigator.userAgent);
 
 (function loadFirebase() {
@@ -20,7 +19,6 @@ const isKakaoTalk = /KAKAOTALK/i.test(navigator.userAgent);
   if(loaded === scripts.length) initFirebase();
 })();
 
-// 카카오 SDK 로드
 (function loadKakao() {
   if(document.querySelector('script[src*="kakao"]')) return;
   const s = document.createElement('script');
@@ -52,14 +50,12 @@ function initFirebase() {
   } catch(e) { console.error('Firebase 초기화 실패', e); }
 }
 
-// ===== 명함첩에 저장 (로그인 팝업 포함) =====
 async function saveToCardbook(cardData) {
   if(!_cbAuth || !_cbDb) {
     setTimeout(() => saveToCardbook(cardData), 1000);
     return;
   }
   if(!cardData) cardData = collectCardData();
-
   const user = _cbAuth.currentUser;
   if(user) {
     await _saveCard(user.uid, cardData);
@@ -68,7 +64,6 @@ async function saveToCardbook(cardData) {
   }
 }
 
-// ===== 로그인 모달 =====
 function showLoginModal(cardData) {
   const existing = document.getElementById('_cb_modal');
   if(existing) existing.remove();
@@ -96,76 +91,58 @@ function showLoginModal(cardData) {
         <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
       </svg>
       Google로 로그인
-    </button>`;
+    </button>
+    <div style="display:flex;align-items:center;gap:10px;margin:10px 0 14px;color:rgba(240,232,216,0.3);font-size:11px;">
+      <div style="flex:1;height:1px;background:rgba(201,168,76,0.15)"></div>또는<div style="flex:1;height:1px;background:rgba(201,168,76,0.15)"></div>
+    </div>`;
 
   modal.innerHTML = `
-    <div style="
-      background:#141209;border-radius:24px 24px 0 0;
-      padding:28px 24px 40px;width:100%;max-width:430px;
-      border-top:1px solid rgba(201,168,76,0.3);
-    ">
-      <div style="text-align:center;margin-bottom:24px;">
+    <div style="background:#141209;border-radius:24px 24px 0 0;padding:28px 24px 40px;width:100%;max-width:430px;border-top:1px solid rgba(201,168,76,0.3);">
+      <div style="text-align:center;margin-bottom:20px;">
         <div style="font-size:28px;margin-bottom:8px;">🗂️</div>
         <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px;">명함첩에 저장하기</div>
-        <div style="font-size:12px;color:rgba(240,232,216,0.5);">로그인 후 저장됩니다</div>
       </div>
 
       ${googleBtn}
 
-      <button id="_cb_kakao" style="
-        width:100%;padding:14px;border-radius:12px;border:none;
-        background:#FEE500;color:#3c1e1e;font-size:14px;font-weight:600;
-        cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;
-        font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;
-      ">
-        <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#3c1e1e" d="M9 1.5C4.86 1.5 1.5 4.14 1.5 7.38c0 2.07 1.35 3.87 3.39 4.92l-.87 3.21 3.72-2.46c.42.06.84.09 1.26.09 4.14 0 7.5-2.64 7.5-5.88S13.14 1.5 9 1.5z"/></svg>
-        카카오 로그인
-      </button>
-
-      <div style="
-        display:flex;align-items:center;gap:10px;
-        margin:14px 0;color:rgba(240,232,216,0.3);font-size:11px;
-      ">
-        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15)"></div>
-        또는
-        <div style="flex:1;height:1px;background:rgba(201,168,76,0.15)"></div>
+      <!-- 탭 -->
+      <div style="display:flex;border-radius:10px;background:rgba(255,255,255,0.06);padding:4px;margin-bottom:16px;">
+        <button id="_cb_tab_login" onclick="_cbSwitchTab('login')" style="flex:1;padding:9px;border-radius:8px;border:none;background:#c9a84c;color:#1a1209;font-weight:700;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">로그인</button>
+        <button id="_cb_tab_signup" onclick="_cbSwitchTab('signup')" style="flex:1;padding:9px;border-radius:8px;border:none;background:transparent;color:rgba(240,232,216,0.5);font-weight:600;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">회원가입</button>
       </div>
 
-      <div id="_cb_email_form" style="display:none;flex-direction:column;gap:8px;margin-bottom:10px;">
-        <input id="_cb_email" type="email" placeholder="이메일" style="
-          background:rgba(255,255,255,0.08);border:1px solid rgba(201,168,76,0.25);
-          border-radius:10px;padding:12px;color:#f0e8d8;font-size:14px;
-          font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;
-        ">
-        <input id="_cb_pw" type="password" placeholder="비밀번호 (6자 이상)" style="
-          background:rgba(255,255,255,0.08);border:1px solid rgba(201,168,76,0.25);
-          border-radius:10px;padding:12px;color:#f0e8d8;font-size:14px;
-          font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;
-        ">
-        <div id="_cb_err" style="color:#ff9e8f;font-size:11px;min-height:14px;"></div>
-        <div style="display:flex;gap:8px;">
-          <button id="_cb_signin" style="flex:1;padding:12px;border-radius:10px;border:none;background:#c9a84c;color:#1a1209;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">로그인</button>
-          <button id="_cb_signup" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(201,168,76,0.3);background:transparent;color:#c9a84c;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">회원가입</button>
-        </div>
+      <!-- 로그인 폼 -->
+      <div id="_cb_form_login" style="display:flex;flex-direction:column;gap:8px;">
+        <input id="_cb_li_email" type="email" placeholder="이메일" style="background:rgba(255,255,255,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:12px;color:#f0e8d8;font-size:14px;font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;box-sizing:border-box;">
+        <input id="_cb_li_pw" type="password" placeholder="비밀번호" style="background:rgba(255,255,255,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:12px;color:#f0e8d8;font-size:14px;font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;box-sizing:border-box;">
+        <div id="_cb_li_err" style="color:#ff9e8f;font-size:11px;min-height:14px;"></div>
+        <button id="_cb_li_btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:#c9a84c;color:#1a1209;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">로그인</button>
       </div>
 
-      <button id="_cb_email_toggle" style="
-        width:100%;padding:12px;border-radius:12px;
-        border:1px solid rgba(201,168,76,0.25);
-        background:transparent;color:rgba(240,232,216,0.6);
-        font-size:13px;cursor:pointer;
-        font-family:'Noto Sans KR',sans-serif;
-      ">✉️ 이메일로 로그인 / 회원가입</button>
+      <!-- 회원가입 폼 -->
+      <div id="_cb_form_signup" style="display:none;flex-direction:column;gap:8px;">
+        <input id="_cb_su_email" type="email" placeholder="이메일" style="background:rgba(255,255,255,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:12px;color:#f0e8d8;font-size:14px;font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;box-sizing:border-box;">
+        <input id="_cb_su_pw" type="password" placeholder="비밀번호 (6자 이상)" style="background:rgba(255,255,255,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:12px;color:#f0e8d8;font-size:14px;font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;box-sizing:border-box;">
+        <input id="_cb_su_pw2" type="password" placeholder="비밀번호 확인" style="background:rgba(255,255,255,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;padding:12px;color:#f0e8d8;font-size:14px;font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;box-sizing:border-box;">
+        <div id="_cb_su_err" style="color:#ff9e8f;font-size:11px;min-height:14px;"></div>
+        <button id="_cb_su_btn" style="width:100%;padding:13px;border-radius:10px;border:none;background:#c9a84c;color:#1a1209;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">회원가입</button>
+      </div>
 
-      <button id="_cb_close" style="
-        width:100%;padding:12px;margin-top:10px;border-radius:12px;
-        border:none;background:transparent;color:rgba(240,232,216,0.3);
-        font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;
-      ">닫기</button>
+      <button id="_cb_close" style="width:100%;padding:12px;margin-top:10px;border-radius:12px;border:none;background:transparent;color:rgba(240,232,216,0.3);font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
     </div>
   `;
 
   document.body.appendChild(modal);
+
+  window._cbSwitchTab = (tab) => {
+    const isLogin = tab === 'login';
+    document.getElementById('_cb_form_login').style.display = isLogin ? 'flex' : 'none';
+    document.getElementById('_cb_form_signup').style.display = isLogin ? 'none' : 'flex';
+    document.getElementById('_cb_tab_login').style.background = isLogin ? '#c9a84c' : 'transparent';
+    document.getElementById('_cb_tab_login').style.color = isLogin ? '#1a1209' : 'rgba(240,232,216,0.5)';
+    document.getElementById('_cb_tab_signup').style.background = isLogin ? 'transparent' : '#c9a84c';
+    document.getElementById('_cb_tab_signup').style.color = isLogin ? 'rgba(240,232,216,0.5)' : '#1a1209';
+  };
 
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
   document.getElementById('_cb_close').onclick = () => modal.remove();
@@ -183,55 +160,11 @@ function showLoginModal(cardData) {
     };
   }
 
-  // 카카오 로그인 (최신 SDK 방식)
-  document.getElementById('_cb_kakao').onclick = async () => {
-    if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
-      alert('카카오 SDK 로딩 중입니다. 잠시 후 다시 시도해주세요.'); return;
-    }
-    try {
-      // 최신 SDK: loginForm 방식 사용
-      await new Promise((resolve, reject) => {
-        Kakao.Auth.loginForm({
-          success: resolve,
-          fail: reject
-        });
-      });
-      const profile = await new Promise((resolve, reject) => {
-        Kakao.API.request({ url: '/v2/user/me', success: resolve, fail: reject });
-      });
-      const kakaoId = String(profile.id);
-      const email = profile.kakao_account?.email || `kakao_${kakaoId}@cardbook.bni`;
-      const name = profile.properties?.nickname || '카카오사용자';
-      const photo = profile.properties?.profile_image || null;
-      const fixedPw = `kb_${kakaoId}_fixed`;
-      try {
-        await _cbAuth.signInWithEmailAndPassword(email, fixedPw);
-      } catch(e) {
-        if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-          await _cbAuth.createUserWithEmailAndPassword(email, fixedPw);
-          await _cbAuth.currentUser.updateProfile({ displayName: name, photoURL: photo });
-        } else throw e;
-      }
-      modal.remove();
-      await _saveCard(_cbAuth.currentUser.uid, cardData);
-    } catch(e) {
-      if(e.error === 'access_denied') return;
-      alert('카카오 로그인 실패: ' + (e.message || JSON.stringify(e)));
-    }
-  };
-
-  // 이메일 폼 토글
-  let emailOpen = false;
-  document.getElementById('_cb_email_toggle').onclick = () => {
-    emailOpen = !emailOpen;
-    document.getElementById('_cb_email_form').style.display = emailOpen ? 'flex' : 'none';
-  };
-
-  // 이메일 로그인
-  document.getElementById('_cb_signin').onclick = async () => {
-    const email = document.getElementById('_cb_email').value.trim();
-    const pw = document.getElementById('_cb_pw').value.trim();
-    const err = document.getElementById('_cb_err');
+  // 로그인
+  document.getElementById('_cb_li_btn').onclick = async () => {
+    const email = document.getElementById('_cb_li_email').value.trim();
+    const pw = document.getElementById('_cb_li_pw').value.trim();
+    const err = document.getElementById('_cb_li_err');
     if(!email || !pw) { err.textContent = '이메일과 비밀번호를 입력해주세요.'; return; }
     try {
       await _cbAuth.signInWithEmailAndPassword(email, pw);
@@ -242,17 +175,20 @@ function showLoginModal(cardData) {
         'auth/wrong-password':'비밀번호가 틀렸습니다.',
         'auth/user-not-found':'등록되지 않은 이메일입니다.',
         'auth/invalid-email':'이메일 형식이 올바르지 않습니다.',
+        'auth/invalid-credential':'이메일 또는 비밀번호가 틀렸습니다.',
       };
       err.textContent = msgs[e.code] || e.message;
     }
   };
 
-  // 이메일 회원가입
-  document.getElementById('_cb_signup').onclick = async () => {
-    const email = document.getElementById('_cb_email').value.trim();
-    const pw = document.getElementById('_cb_pw').value.trim();
-    const err = document.getElementById('_cb_err');
-    if(!email || !pw) { err.textContent = '이메일과 비밀번호를 입력해주세요.'; return; }
+  // 회원가입
+  document.getElementById('_cb_su_btn').onclick = async () => {
+    const email = document.getElementById('_cb_su_email').value.trim();
+    const pw = document.getElementById('_cb_su_pw').value.trim();
+    const pw2 = document.getElementById('_cb_su_pw2').value.trim();
+    const err = document.getElementById('_cb_su_err');
+    if(!email || !pw || !pw2) { err.textContent = '모든 항목을 입력해주세요.'; return; }
+    if(pw !== pw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
     if(pw.length < 6) { err.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
     try {
       await _cbAuth.createUserWithEmailAndPassword(email, pw);
@@ -260,7 +196,7 @@ function showLoginModal(cardData) {
       await _saveCard(_cbAuth.currentUser.uid, cardData);
     } catch(e) {
       const msgs = {
-        'auth/email-already-in-use':'이미 가입된 이메일입니다. 로그인해주세요.',
+        'auth/email-already-in-use':'이미 가입된 이메일입니다. 로그인 탭을 이용해주세요.',
         'auth/weak-password':'비밀번호는 6자 이상이어야 합니다.',
         'auth/invalid-email':'이메일 형식이 올바르지 않습니다.',
       };
