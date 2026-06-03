@@ -24,7 +24,7 @@ const isKakaoTalk = /KAKAOTALK/i.test(navigator.userAgent);
 (function loadKakao() {
   if(document.querySelector('script[src*="kakao"]')) return;
   const s = document.createElement('script');
-  s.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js';
+  s.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.4/kakao.min.js';
   s.onload = () => {
     if(typeof Kakao !== 'undefined' && !Kakao.isInitialized()) {
       Kakao.init('7a736ceca6b6865251e078261ed9596f');
@@ -70,7 +70,6 @@ async function saveToCardbook(cardData) {
 
 // ===== 로그인 모달 =====
 function showLoginModal(cardData) {
-  // 기존 모달 제거
   const existing = document.getElementById('_cb_modal');
   if(existing) existing.remove();
 
@@ -83,7 +82,6 @@ function showLoginModal(cardData) {
     font-family:'Noto Sans KR',sans-serif;
   `;
 
-  // 카카오톡이면 Google 버튼 숨김
   const googleBtn = isKakaoTalk ? '' : `
     <button id="_cb_google" style="
       width:100%;padding:14px;border-radius:12px;border:none;
@@ -169,11 +167,10 @@ function showLoginModal(cardData) {
 
   document.body.appendChild(modal);
 
-  // 닫기
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
   document.getElementById('_cb_close').onclick = () => modal.remove();
 
-  // Google 로그인 (카카오톡이 아닐 때만)
+  // Google 로그인
   if(!isKakaoTalk) {
     document.getElementById('_cb_google').onclick = async () => {
       try {
@@ -186,14 +183,18 @@ function showLoginModal(cardData) {
     };
   }
 
-  // 카카오 로그인
+  // 카카오 로그인 (최신 SDK 방식)
   document.getElementById('_cb_kakao').onclick = async () => {
     if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
       alert('카카오 SDK 로딩 중입니다. 잠시 후 다시 시도해주세요.'); return;
     }
     try {
+      // 최신 SDK: loginForm 방식 사용
       await new Promise((resolve, reject) => {
-        Kakao.Auth.login({ success: resolve, fail: reject });
+        Kakao.Auth.loginForm({
+          success: resolve,
+          fail: reject
+        });
       });
       const profile = await new Promise((resolve, reject) => {
         Kakao.API.request({ url: '/v2/user/me', success: resolve, fail: reject });
@@ -215,7 +216,7 @@ function showLoginModal(cardData) {
       await _saveCard(_cbAuth.currentUser.uid, cardData);
     } catch(e) {
       if(e.error === 'access_denied') return;
-      alert('카카오 로그인 실패: ' + (e.message || '오류'));
+      alert('카카오 로그인 실패: ' + (e.message || JSON.stringify(e)));
     }
   };
 
