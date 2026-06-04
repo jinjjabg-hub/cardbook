@@ -169,20 +169,25 @@ input:focus{border-color:var(--olive)}
   </header>
   <main class="max-mobile" style="padding:20px">
     <div style="background:var(--olive);border-radius:16px;overflow:hidden;aspect-ratio:4/3;position:relative;margin-bottom:16px;display:flex;align-items:center;justify-content:center">
-      <div style="text-align:center;position:relative;z-index:1">
+      <!-- 실제 카메라 스트림 -->
+      <video id="cam-video" autoplay playsinline style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0"></video>
+      <canvas id="cam-canvas" style="display:none"></canvas>
+      <!-- 숨겨진 파일 input (모바일 카메라 + 갤러리 겸용) -->
+      <input type="file" id="cam-input" accept="image/*" capture="environment" style="display:none" onchange="handleCamInput(event)"/>
+      <div id="cam-placeholder" style="text-align:center;position:relative;z-index:1">
         <div class="scan-frame"><div class="scan-line"></div></div>
-        <p style="color:rgba(255,255,255,.6);font-size:12px;margin-top:12px" data-i18n="placeCard">Place card within the frame</p>
+        <p style="color:rgba(255,255,255,.6);font-size:12px;margin-top:12px" data-i18n="placeCard">카드를 프레임 안에 놓으세요</p>
       </div>
       <div style="position:absolute;top:16px;left:16px;width:28px;height:28px;border-top:3px solid rgba(255,255,255,.7);border-left:3px solid rgba(255,255,255,.7);border-radius:4px 0 0 0"></div>
       <div style="position:absolute;top:16px;right:16px;width:28px;height:28px;border-top:3px solid rgba(255,255,255,.7);border-right:3px solid rgba(255,255,255,.7);border-radius:0 4px 0 0"></div>
       <div style="position:absolute;bottom:16px;left:16px;width:28px;height:28px;border-bottom:3px solid rgba(255,255,255,.7);border-left:3px solid rgba(255,255,255,.7);border-radius:0 0 0 4px"></div>
       <div style="position:absolute;bottom:16px;right:16px;width:28px;height:28px;border-bottom:3px solid rgba(255,255,255,.7);border-right:3px solid rgba(255,255,255,.7);border-radius:0 0 4px 0"></div>
-      <div onclick="simulateScan()" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);width:52px;height:52px;background:rgba(255,255,255,.2);border-radius:50%;border:2px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;cursor:pointer">
+      <div onclick="openCamera()" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);width:52px;height:52px;background:rgba(255,255,255,.2);border-radius:50%;border:2px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2">
         <span class="ms" style="color:#fff;font-size:28px">camera_alt</span>
       </div>
     </div>
-    <button onclick="simulateScan()" style="width:100%;background:#fff;border:0.5px solid var(--outline-v);border-radius:12px;padding:14px;font-family:inherit;font-size:14px;font-weight:600;color:var(--olive);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px">
-      <span class="ms">photo_library</span><span data-i18n="gallery">Choose from Gallery</span>
+    <button onclick="openGallery()" style="width:100%;background:#fff;border:0.5px solid var(--outline-v);border-radius:12px;padding:14px;font-family:inherit;font-size:14px;font-weight:600;color:var(--olive);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px">
+      <span class="ms">photo_library</span><span data-i18n="gallery">갤러리에서 선택</span>
     </button>
     <div id="scan-result" style="display:none">
       <div style="background:#fff;border-radius:14px;border:0.5px solid var(--outline-v);padding:16px;margin-bottom:12px">
@@ -471,6 +476,9 @@ const T = {
 };
 
 let currentLang = 'ko';
+// 앱 시작 시 한국어 강제 적용
+document.documentElement.lang = 'ko';
+document.documentElement.dir = 'ltr';
 
 function setLang(code){
   currentLang = code;
@@ -638,6 +646,25 @@ function closeAllModals(){ document.getElementById('modal-overlay').style.displa
 // =====================================================
 function shareCard(){ showModal('share'); }
 function share(type){ closeAllModals(); showToast('✓ '+type); }
+// 카메라 열기 (모바일: 후면카메라 / PC: 웹캠)
+function openCamera(){
+  const input = document.getElementById('cam-input');
+  // capture="environment" → 모바일 후면카메라 직접 실행
+  input.setAttribute('capture','environment');
+  input.click();
+}
+function openGallery(){
+  const input = document.getElementById('cam-input');
+  input.removeAttribute('capture');
+  input.click();
+}
+function handleCamInput(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  // 이미지 선택되면 스캔 결과 화면 표시 (OCR 연동 전까지 수동 입력)
+  simulateScan();
+  showToast('📷 이미지 선택됨 — 정보를 확인/수정 후 저장하세요');
+}
 function simulateScan(){
   document.getElementById('scan-result').style.display='block';
   document.getElementById('scan-tips').style.display='none';
