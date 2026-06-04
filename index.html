@@ -1,149 +1,702 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>명함첩 · BNI Cardbook</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CardBook — Global Premium Business Card</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
-<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js" integrity="sha384-kQ7G1PEJHffmD/K0M9WqZlgLqKp0MvJtvtBkxS3Qa1ozkDwGTtsM7HkYgwyH/ghl" crossorigin="anonymous"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <style>
 :root{
-  --dark:#0a0a0a;--dark2:#141209;--dark3:#1e1a10;
-  --gold:#c9a84c;--gold-dim:rgba(201,168,76,0.15);
-  --cream:#f0e8d8;
-  --red:#C8102E;--red-dim:rgba(200,16,46,0.12);
-  --muted:rgba(240,232,216,0.4);
-  --border:rgba(201,168,76,0.18);
+  --olive:#252B22;--olive-mid:#343D30;--taupe:#7D6E57;
+  --sand:#E6E1D6;--paper:#F6F4EE;--bg:#fcf9f7;
+  --surface:#fcf9f7;--on-surf:#1c1c1b;--on-surf-v:#454842;
+  --outline:#757871;--outline-v:#c5c7bf;--error:#ba1a1a;
 }
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-serif;max-width:430px;margin:0 auto;min-height:100vh;}
-
-/* TOP BAR */
-.top-bar{position:sticky;top:0;z-index:100;background:rgba(10,10,10,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:12px 16px;}
-.top-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
-.top-title{font-family:'Nanum Gothic',sans-serif;font-size:17px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px;}
-.top-title span{color:var(--gold);}
-.user-row{display:flex;align-items:center;gap:8px;}
-.user-name{font-size:11px;color:var(--muted);}
-.logout-btn{font-size:11px;color:var(--muted);background:none;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:3px 9px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all .2s;}
-.logout-btn:hover{color:#fff;border-color:rgba(255,255,255,0.3);}
-
-/* SEARCH */
-.search-wrap{position:relative;}
-.search-input{width:100%;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:12px;padding:10px 40px 10px 14px;font-size:13px;color:var(--cream);font-family:'Noto Sans KR',sans-serif;outline:none;transition:all .3s;}
-.search-input::placeholder{color:var(--muted);}
-.search-input:focus{border-color:var(--gold);background:rgba(201,168,76,0.06);}
-.search-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;}
-.ai-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:8px;padding:3px 8px;font-size:10px;color:var(--gold);margin-top:6px;letter-spacing:.05em;}
-
-/* CHAPTER TABS */
-.chapter-tabs{display:flex;gap:6px;padding:10px 16px;overflow-x:auto;scrollbar-width:none;}
-.chapter-tabs::-webkit-scrollbar{display:none}
-.tab{flex-shrink:0;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'Noto Sans KR',sans-serif;transition:all .25s;}
-.tab.active{background:var(--gold);color:#1a1209;border-color:var(--gold);}
-.tab:hover:not(.active){color:var(--gold);border-color:var(--gold);}
-
-/* COUNT */
-.count-bar{padding:8px 16px 4px;display:flex;align-items:center;justify-content:space-between;}
-.count-label{font-size:10px;color:var(--muted);letter-spacing:.1em;}
-.count-num{font-family:'Playfair Display',serif;font-size:13px;color:var(--gold);}
-
-/* CARD LIST */
-.card-list{padding:4px 12px 100px;display:flex;flex-direction:column;gap:10px;}
-
-/* BIZ CARD */
-.biz-card{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:16px;overflow:hidden;transition:all .3s;}
-.biz-card:hover{background:rgba(255,255,255,0.06);border-color:rgba(201,168,76,0.35);}
-.card-main{padding:16px 16px 10px;display:flex;gap:12px;align-items:flex-start;}
-.card-avatar{width:48px;height:48px;border-radius:12px;flex-shrink:0;background:rgba(201,168,76,0.1);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);overflow:hidden;}
-.card-avatar img{width:100%;height:100%;object-fit:cover;}
-.card-info{flex:1;min-width:0;}
-.card-name{font-family:'Nanum Gothic',sans-serif;font-size:16px;font-weight:800;color:#fff;margin-bottom:2px;}
-.card-name-en{font-family:'Playfair Display',serif;font-size:11px;color:var(--gold);font-style:italic;margin-bottom:4px;}
-.card-company{font-size:12px;color:rgba(240,232,216,0.65);margin-bottom:2px;}
-.card-chapter{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);background:rgba(255,255,255,0.05);border-radius:6px;padding:2px 7px;}
-.bni-badge{display:inline-flex;align-items:center;gap:4px;background:var(--red-dim);border:1px solid rgba(200,16,46,0.2);border-radius:8px;padding:2px 8px;font-size:10px;color:rgba(240,100,100,0.85);margin-top:5px;}
-.bni-dot{width:4px;height:4px;background:var(--red);border-radius:50%;flex-shrink:0;}
-
-/* ACTIONS */
-.card-actions{padding:0 12px 12px;display:flex;gap:7px;}
-.act-btn{flex:1;padding:9px 6px;border-radius:10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;border:none;min-height:36px;transition:all .2s;}
-.act-call{background:var(--gold-dim);border:1px solid rgba(201,168,76,0.3);color:var(--gold);}
-.act-view{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(240,232,216,0.7);}
-.act-del{background:var(--red-dim);border:1px solid rgba(200,16,46,0.2);color:rgba(200,16,46,0.7);flex:0 0 36px;padding:9px;}
-.act-btn:hover{opacity:.75;transform:scale(0.97);}
-
-/* CRM */
-.card-crm{border-top:1px solid var(--border);padding:10px 14px;display:none;}
-.card-crm.open{display:block;}
-.crm-title{font-size:10px;color:var(--gold);letter-spacing:.1em;margin-bottom:8px;}
-.crm-row{display:flex;gap:8px;margin-bottom:8px;}
-.crm-input{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--cream);font-family:'Noto Sans KR',sans-serif;outline:none;}
-.crm-input:focus{border-color:var(--gold);}
-.crm-save{background:var(--gold);color:#1a1209;border:none;border-radius:8px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;white-space:nowrap;}
-.crm-log{margin-top:6px;}
-.crm-item{font-size:11px;color:var(--muted);padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;align-items:center;}
-.crm-item:last-child{border-bottom:none;}
-.crm-item-text{flex:1;}
-.crm-item-del{background:none;border:none;color:rgba(200,16,46,0.4);cursor:pointer;font-size:12px;padding:0 4px;}
-.crm-toggle{width:100%;background:none;border:none;color:var(--muted);font-size:10px;letter-spacing:.07em;cursor:pointer;padding:6px 14px;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;gap:5px;border-top:1px solid rgba(255,255,255,0.04);transition:color .2s;}
-.crm-toggle:hover{color:var(--gold);}
-.card-saved{padding:0 14px 10px;font-size:10px;color:rgba(240,232,216,0.18);}
-
-/* LOGIN */
-.login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:40px 24px;text-align:center;}
-.login-icon{font-size:56px;margin-bottom:20px;}
-.login-title{font-family:'Nanum Gothic',sans-serif;font-size:22px;font-weight:800;color:#fff;margin-bottom:10px;}
-.login-desc{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:24px;}
-.auth-tabs{display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
-.auth-tab{flex:1;background:none;border:none;padding:10px 16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;}
-.auth-tab.active{background:var(--gold);color:#1a1209;}
-.auth-form{width:100%;max-width:300px;display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
-.auth-input{background:rgba(255,255,255,0.08);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--cream);font-size:14px;font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;}
-.auth-input:focus{border-color:var(--gold);}
-.auth-submit{background:var(--gold);color:#1a1209;border:none;border-radius:30px;padding:13px;font-weight:800;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;width:100%;}
-.error-msg{color:#ff9e8f;font-size:11px;min-height:16px;}
-.social-divider{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--muted);font-size:11px;width:100%;max-width:300px;}
-.social-divider div{flex:1;height:1px;background:var(--border);}
-.social-buttons{display:flex;gap:10px;width:100%;max-width:300px;}
-.google-btn,.kakao-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:40px;padding:11px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;}
-.google-btn{background:#fff;color:#1a1a1a;box-shadow:0 2px 8px rgba(0,0,0,0.2);}
-.kakao-btn{background:#FEE500;color:#3c1e1e;}
-.google-btn:hover,.kakao-btn:hover{transform:translateY(-2px);}
-
-/* MISC */
-.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px;}
-.spinner{width:32px;height:32px;border:3px solid rgba(201,168,76,0.15);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.loading-text{font-size:12px;color:var(--muted);}
-.empty-state{display:flex;flex-direction:column;align-items:center;padding:60px 28px;text-align:center;}
-.empty-icon{font-size:48px;margin-bottom:16px;opacity:.5;}
-.empty-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:6px;}
-.empty-desc{font-size:12px;color:var(--muted);line-height:1.75;}
-.ai-result{margin:0 12px 8px;padding:10px 14px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:10px;font-size:12px;color:rgba(240,232,216,0.7);line-height:1.6;}
-.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:430px;background:rgba(10,10,10,0.97);backdrop-filter:blur(16px);border-top:1px solid var(--border);z-index:200;display:flex;}
-.nav-btn{flex:1;padding:13px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--muted);text-decoration:none;background:none;border:none;cursor:pointer;transition:all .3s;font-family:'Noto Sans KR',sans-serif;}
-.nav-btn .icon{font-size:20px;line-height:1;}
-.nav-btn:hover,.nav-btn.active{color:var(--gold);}
-.toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:rgba(20,18,9,0.97);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-size:12px;color:var(--cream);z-index:500;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;}
-.toast.show{opacity:1;}
-.ai-loading{display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:12px;color:var(--gold);}
-.ai-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);animation:bounce .8s infinite;}
-.ai-dot:nth-child(2){animation-delay:.15s;}
-.ai-dot:nth-child(3){animation-delay:.3s;}
-@keyframes bounce{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Manrope',sans-serif;background:var(--bg);color:var(--on-surf);min-height:100vh;overflow-x:hidden}
+.ms{font-family:'Material Symbols Outlined';font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;vertical-align:middle;user-select:none}
+.app-view{display:none;min-height:100vh;padding-bottom:80px}
+.app-view.active{display:block}
+.dark-card{background:var(--olive);color:#fff;position:relative;overflow:hidden;border-radius:16px;border:1px solid rgba(255,255,255,0.06)}
+.dark-card::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");pointer-events:none}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600}
+.badge-olive{background:rgba(37,43,34,.1);color:var(--olive)}
+.badge-taupe{background:rgba(125,110,87,.12);color:#6b5c46}
+.badge-green{background:#dcf5e8;color:#1a6b38}
+.badge-amber{background:#fef3cd;color:#7d5c00}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;padding:8px 4px;cursor:pointer;border:none;background:none;font-family:inherit;color:var(--outline);transition:color .2s;font-size:11px;font-weight:500;min-width:0}
+.nav-item.active{color:var(--olive)}
+.nav-item .ms{font-size:22px}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--surface);border-top:0.5px solid var(--outline-v);display:flex;justify-content:space-around;align-items:center;height:64px}
+.card-item{background:#fff;border-radius:12px;border:0.5px solid var(--outline-v);padding:14px;display:flex;gap:12px;box-shadow:0 1px 4px rgba(37,43,34,.05);cursor:pointer;transition:transform .1s}
+.card-item:active{transform:scale(.98)}
+.avatar{width:48px;height:48px;border-radius:10px;background:var(--sand);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;color:var(--olive);flex-shrink:0}
+.setting-row{display:flex;align-items:center;gap:14px;padding:14px 16px;background:#fff;border-bottom:0.5px solid var(--outline-v);cursor:pointer;transition:background .15s}
+.setting-row:hover{background:var(--paper)}
+.setting-icon{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.log-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:0.5px solid var(--outline-v)}
+/* Lang pill — 좁게, 스크롤 가능 */
+.lang-pill{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--outline-v);background:#fff;transition:all .2s;white-space:nowrap;flex-shrink:0}
+.lang-pill.active{background:var(--olive);color:#fff;border-color:var(--olive)}
+.filter-pill{padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid var(--outline-v);background:#fff;transition:all .2s;white-space:nowrap;flex-shrink:0}
+.filter-pill.active{background:var(--olive);color:#fff;border-color:var(--olive)}
+.chain-bar{display:flex;align-items:stretch;overflow:hidden;border-radius:8px;border:0.5px solid var(--outline-v)}
+.chain-seg{flex:1;padding:8px 6px;font-size:11px;font-weight:600;text-align:center;position:relative}
+.chain-seg:not(:last-child)::after{content:'›';position:absolute;right:-5px;top:50%;transform:translateY(-50%);font-size:16px;color:var(--outline);z-index:1}
+input[type=text],input[type=search]{width:100%;padding:10px 14px 10px 40px;border:1px solid var(--outline-v);border-radius:10px;font-family:inherit;font-size:15px;background:#fff;outline:none;transition:border .2s}
+input:focus{border-color:var(--olive)}
+@keyframes scanLine{0%{top:8%}50%{top:88%}100%{top:8%}}
+.scan-line{position:absolute;left:4px;right:4px;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);animation:scanLine 2s ease-in-out infinite}
+.scan-frame{width:200px;height:200px;border:2px solid rgba(255,255,255,.6);border-radius:12px;position:relative}
+.max-mobile{max-width:430px;margin:0 auto}
+.qr-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;width:100px;height:100px}
+.qr-cell{border-radius:1px}
+/* RTL support */
+[dir=rtl]{direction:rtl;text-align:right}
 </style>
 </head>
 <body>
-<div id="appRoot">
-  <div class="loading-screen"><div class="spinner"></div><div class="loading-text">불러오는 중...</div></div>
+
+<!-- ===== HOME ===== -->
+<div id="view-home" class="app-view active">
+  <header style="position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:0.5px solid var(--outline-v);padding:12px 20px;display:flex;justify-content:space-between;align-items:center">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="ms" style="font-size:26px;color:var(--olive)">style</span>
+      <h1 style="font-size:20px;font-weight:800;color:var(--olive)">CardBook</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button onclick="showModal('notify')" style="background:none;border:none;cursor:pointer;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;position:relative">
+        <span class="ms" style="color:var(--olive)">notifications</span>
+        <span style="position:absolute;top:6px;right:6px;width:7px;height:7px;background:#e74c3c;border-radius:50%;border:1.5px solid var(--bg)"></span>
+      </button>
+      <div onclick="switchView('mypage')" style="width:36px;height:36px;border-radius:50%;background:var(--olive);display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:700;font-size:14px;color:#fff">S</div>
+    </div>
+  </header>
+  <main class="max-mobile" style="padding:20px 20px 0">
+    <div class="dark-card" style="padding:22px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div style="flex:1;min-width:0">
+          <p style="font-size:11px;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px" data-i18n="mycard">My Digital Card</p>
+          <h2 style="font-size:22px;font-weight:800;color:#fff;margin-bottom:4px">Song Seunghun</h2>
+          <p style="font-size:13px;color:rgba(255,255,255,.7)">CEO · TomaLab</p>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge" style="background:rgba(125,110,87,.3);color:rgba(255,255,255,.85)">F&B Consultant</span>
+            <span class="badge" style="background:rgba(125,110,87,.3);color:rgba(255,255,255,.85)">Wellness</span>
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,.9);border-radius:10px;padding:8px;flex-shrink:0;margin-left:12px">
+          <div class="qr-grid" id="qr-display"></div>
+        </div>
+      </div>
+      <div style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;margin-bottom:14px">
+        <p style="font-size:10px;color:rgba(255,255,255,.5);letter-spacing:.06em;margin-bottom:4px">CONNECTION LINK</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <p style="font-size:12px;color:rgba(255,255,255,.8);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">cardbook.io/seunghun?chain=seunghun</p>
+          <button onclick="copyLink()" style="background:rgba(255,255,255,.15);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;color:#fff;cursor:pointer;white-space:nowrap;flex-shrink:0" data-i18n="copy">Copy</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="shareCard()" style="flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:10px;color:#fff;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:16px">share</span><span data-i18n="share">Share</span></button>
+        <button style="flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:10px;color:#fff;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:16px">edit</span><span data-i18n="edit">Edit</span></button>
+        <button style="flex:1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:10px;color:#fff;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:16px">qr_code_2</span>QR</button>
+      </div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;border:0.5px solid var(--outline-v);padding:16px;margin-bottom:16px;box-shadow:0 2px 8px rgba(37,43,34,.05)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <h3 style="font-size:14px;font-weight:700;color:var(--olive)" data-i18n="dashboard">Connection Dashboard</h3>
+        <span class="badge badge-green" data-i18n="thisMonth">This Month</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px">
+        <div style="background:var(--paper);border-radius:10px;padding:12px;text-align:center">
+          <p style="font-size:11px;color:var(--outline);margin-bottom:4px" data-i18n="totalConn">Total Connections</p>
+          <p style="font-size:26px;font-weight:800;color:var(--olive)">47</p>
+          <p style="font-size:10px;color:var(--taupe)">↑ 12% vs last month</p>
+        </div>
+        <div style="background:var(--paper);border-radius:10px;padding:12px;text-align:center">
+          <p style="font-size:11px;color:var(--outline);margin-bottom:4px" data-i18n="converted">Converted</p>
+          <p style="font-size:26px;font-weight:800;color:#1a6b38">23</p>
+          <p style="font-size:10px;color:var(--taupe)">48.9%</p>
+        </div>
+        <div style="background:var(--paper);border-radius:10px;padding:12px;text-align:center">
+          <p style="font-size:11px;color:var(--outline);margin-bottom:4px" data-i18n="inProgress">In Progress</p>
+          <p style="font-size:26px;font-weight:800;color:#7d5c00">18</p>
+          <p style="font-size:10px;color:var(--taupe)">Pending</p>
+        </div>
+        <div style="background:var(--paper);border-radius:10px;padding:12px;text-align:center">
+          <p style="font-size:11px;color:var(--outline);margin-bottom:4px" data-i18n="netReach">Network Reach</p>
+          <p style="font-size:26px;font-weight:800;color:var(--taupe)">3x</p>
+          <p style="font-size:10px;color:var(--taupe)">Depth</p>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <span class="ms" style="font-size:14px;color:var(--taupe)">verified</span>
+          <p style="font-size:11px;color:var(--outline)" data-i18n="trustPath">Trusted Connection Path</p>
+        </div>
+        <div class="chain-bar">
+          <div class="chain-seg" style="background:#f0f4ee;color:var(--olive)"><span class="ms" style="font-size:11px;margin-right:2px">verified_user</span>Song S.</div>
+          <div class="chain-seg" style="background:#f7f4ef;color:var(--taupe)"><span class="ms" style="font-size:11px;margin-right:2px">handshake</span>Lee H.</div>
+          <div class="chain-seg" style="background:#fff;color:var(--outline)"><span class="ms" style="font-size:11px;margin-right:2px">person</span><span data-i18n="newConn">New</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">
+          <p style="font-size:10px;color:var(--outline)">Today 14:32 · <span data-i18n="introdBy">Introduced by</span> Lee H.</p>
+          <span class="badge badge-amber" data-i18n="pending">Pending</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;border:0.5px solid var(--outline-v);padding:16px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="font-size:14px;font-weight:700;color:var(--olive)" data-i18n="recentActivity">Recent Activity</h3>
+        <button onclick="switchView('search')" style="background:none;border:none;font-size:12px;color:var(--taupe);font-weight:600;cursor:pointer" data-i18n="viewAll">View All ›</button>
+      </div>
+      <div id="log-list"></div>
+    </div>
+  </main>
 </div>
-<div class="toast" id="toast"></div>
+
+<!-- ===== SCAN ===== -->
+<div id="view-scan" class="app-view">
+  <header style="position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:0.5px solid var(--outline-v);padding:12px 20px">
+    <h1 style="font-size:18px;font-weight:700;color:var(--olive)" data-i18n="scanTitle">Card Scanner · OCR</h1>
+  </header>
+  <main class="max-mobile" style="padding:20px">
+    <div style="background:var(--olive);border-radius:16px;overflow:hidden;aspect-ratio:4/3;position:relative;margin-bottom:16px;display:flex;align-items:center;justify-content:center">
+      <div style="text-align:center;position:relative;z-index:1">
+        <div class="scan-frame"><div class="scan-line"></div></div>
+        <p style="color:rgba(255,255,255,.6);font-size:12px;margin-top:12px" data-i18n="placeCard">Place card within the frame</p>
+      </div>
+      <div style="position:absolute;top:16px;left:16px;width:28px;height:28px;border-top:3px solid rgba(255,255,255,.7);border-left:3px solid rgba(255,255,255,.7);border-radius:4px 0 0 0"></div>
+      <div style="position:absolute;top:16px;right:16px;width:28px;height:28px;border-top:3px solid rgba(255,255,255,.7);border-right:3px solid rgba(255,255,255,.7);border-radius:0 4px 0 0"></div>
+      <div style="position:absolute;bottom:16px;left:16px;width:28px;height:28px;border-bottom:3px solid rgba(255,255,255,.7);border-left:3px solid rgba(255,255,255,.7);border-radius:0 0 0 4px"></div>
+      <div style="position:absolute;bottom:16px;right:16px;width:28px;height:28px;border-bottom:3px solid rgba(255,255,255,.7);border-right:3px solid rgba(255,255,255,.7);border-radius:0 0 4px 0"></div>
+      <div onclick="simulateScan()" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);width:52px;height:52px;background:rgba(255,255,255,.2);border-radius:50%;border:2px solid rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <span class="ms" style="color:#fff;font-size:28px">camera_alt</span>
+      </div>
+    </div>
+    <button onclick="simulateScan()" style="width:100%;background:#fff;border:0.5px solid var(--outline-v);border-radius:12px;padding:14px;font-family:inherit;font-size:14px;font-weight:600;color:var(--olive);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:20px">
+      <span class="ms">photo_library</span><span data-i18n="gallery">Choose from Gallery</span>
+    </button>
+    <div id="scan-result" style="display:none">
+      <div style="background:#fff;border-radius:14px;border:0.5px solid var(--outline-v);padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="font-size:14px;font-weight:700;color:var(--olive)" data-i18n="ocrResult">OCR Result</h3>
+          <span class="badge badge-green">✓ <span data-i18n="detected">Detected</span></span>
+        </div>
+        <div style="display:grid;gap:10px">
+          <div><p style="font-size:11px;color:var(--outline);margin-bottom:3px" data-i18n="fname">Name</p><input type="text" value="Chul-su Kim" style="border-radius:8px;padding:8px 12px;font-size:14px;font-weight:600;background:var(--paper);border:0.5px solid var(--outline-v)"/></div>
+          <div><p style="font-size:11px;color:var(--outline);margin-bottom:3px" data-i18n="ftitle">Title</p><input type="text" value="CEO" style="border-radius:8px;padding:8px 12px;font-size:14px;background:var(--paper);border:0.5px solid var(--outline-v)"/></div>
+          <div><p style="font-size:11px;color:var(--outline);margin-bottom:3px" data-i18n="fcompany">Company</p><input type="text" value="ABC Trading Co." style="border-radius:8px;padding:8px 12px;font-size:14px;background:var(--paper);border:0.5px solid var(--outline-v)"/></div>
+          <div><p style="font-size:11px;color:var(--outline);margin-bottom:3px" data-i18n="fphone">Phone</p><input type="text" value="+82-10-1234-5678" style="border-radius:8px;padding:8px 12px;font-size:14px;background:var(--paper);border:0.5px solid var(--outline-v)"/></div>
+        </div>
+      </div>
+      <div style="background:rgba(37,43,34,.04);border:1px solid rgba(37,43,34,.1);border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span class="ms" style="color:var(--olive);font-size:20px;flex-shrink:0">shield</span>
+          <div>
+            <p style="font-size:13px;font-weight:700;color:var(--olive);margin-bottom:4px" data-i18n="refCodeTitle">Connection Code Auto-Link</p>
+            <p style="font-size:12px;color:var(--on-surf-v);line-height:1.6" data-i18n="refCodeDesc">Save with confidence. The person who introduced this card is recorded to help you manage your network safely.</p>
+          </div>
+        </div>
+      </div>
+      <button onclick="saveScan()" style="width:100%;background:var(--olive);color:#fff;border:none;border-radius:12px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer" data-i18n="saveCard">Save Card & Start Tracking</button>
+    </div>
+    <div id="scan-tips" style="background:var(--paper);border-radius:12px;padding:14px">
+      <p style="font-size:12px;font-weight:700;color:var(--olive);margin-bottom:8px" data-i18n="scanTips">Scan Tips</p>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;gap:8px;align-items:center"><span class="ms" style="font-size:16px;color:var(--taupe)">light_mode</span><p style="font-size:12px;color:var(--on-surf-v)" data-i18n="tip1">Good lighting conditions</p></div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="ms" style="font-size:16px;color:var(--taupe)">straighten</span><p style="font-size:12px;color:var(--on-surf-v)" data-i18n="tip2">Keep the card flat &amp; horizontal</p></div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="ms" style="font-size:16px;color:var(--taupe)">center_focus_strong</span><p style="font-size:12px;color:var(--on-surf-v)" data-i18n="tip3">Fill the frame completely</p></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== SEARCH ===== -->
+<div id="view-search" class="app-view">
+  <header style="position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:0.5px solid var(--outline-v);padding:12px 20px">
+    <h1 style="font-size:18px;font-weight:700;color:var(--olive);margin-bottom:10px" data-i18n="networkSearch">Network Search</h1>
+    <div style="position:relative">
+      <span class="ms" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--outline);font-size:20px">search</span>
+      <input id="search-input" type="search" oninput="filterCards(this.value)" style="padding-left:40px;border-radius:10px" data-i18n="[placeholder]searchPh"/>
+    </div>
+  </header>
+  <main class="max-mobile" style="padding:16px 20px">
+    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;scrollbar-width:none">
+      <button class="filter-pill active" onclick="filterChip(this,'all')" data-filter="all" data-i18n="all">All</button>
+      <button class="filter-pill" onclick="filterChip(this,'tech')" data-filter="tech">Tech</button>
+      <button class="filter-pill" onclick="filterChip(this,'beauty')" data-filter="beauty">Beauty</button>
+      <button class="filter-pill" onclick="filterChip(this,'wellness')" data-filter="wellness">Wellness</button>
+      <button class="filter-pill" onclick="filterChip(this,'food')" data-filter="food">F&B</button>
+      <button class="filter-pill" onclick="filterChip(this,'marketing')" data-filter="marketing">Marketing</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <p id="result-count" style="font-size:12px;color:var(--outline);letter-spacing:.04em;text-transform:uppercase">6 CARDS FOUND</p>
+    </div>
+    <div id="card-list" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div style="text-align:center;padding:30px 0;display:none" id="no-results">
+      <span class="ms" style="font-size:48px;color:var(--outline-v)">person_search</span>
+      <p style="font-size:14px;color:var(--on-surf-v);margin-top:8px" data-i18n="noResults">No results found</p>
+    </div>
+  </main>
+</div>
+
+<!-- ===== MY PAGE ===== -->
+<div id="view-mypage" class="app-view">
+  <header style="position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:0.5px solid var(--outline-v);padding:12px 20px;display:flex;justify-content:space-between;align-items:center">
+    <h1 style="font-size:18px;font-weight:700;color:var(--olive)" data-i18n="myProfile">My Profile</h1>
+    <span class="badge badge-olive">v4.2.0</span>
+  </header>
+  <main class="max-mobile" style="padding:0 0 20px">
+    <div class="dark-card" style="border-radius:0;padding:24px 20px;margin-bottom:16px">
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:16px">
+        <div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;border:2px solid rgba(255,255,255,.2);flex-shrink:0">S</div>
+        <div>
+          <h2 style="font-size:20px;font-weight:800;color:#fff">Song Seunghun</h2>
+          <p style="font-size:13px;color:rgba(255,255,255,.7)">CEO · TomaLab</p>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <span style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px"><span class="ms" style="font-size:12px">groups</span><span data-i18n="hubMember">Hub Member</span></span>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        <div style="text-align:center;background:rgba(255,255,255,.07);border-radius:10px;padding:10px"><p style="font-size:22px;font-weight:800;color:#fff">1,284</p><p style="font-size:10px;color:rgba(255,255,255,.5)" data-i18n="cards">Cards</p></div>
+        <div style="text-align:center;background:rgba(255,255,255,.07);border-radius:10px;padding:10px"><p style="font-size:22px;font-weight:800;color:#fff">47</p><p style="font-size:10px;color:rgba(255,255,255,.5)" data-i18n="connections">Connections</p></div>
+        <div style="text-align:center;background:rgba(255,255,255,.07);border-radius:10px;padding:10px"><p style="font-size:22px;font-weight:800;color:#fff">3,000</p><p style="font-size:10px;color:rgba(255,255,255,.5)" data-i18n="network">Network</p></div>
+      </div>
+    </div>
+
+    <!-- ★ 언어 선택 — 10개국어 ★ -->
+    <div style="padding:0 20px;margin-bottom:16px">
+      <p style="font-size:12px;font-weight:700;color:var(--outline);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px" data-i18n="langLabel">Language</p>
+      <div id="lang-row" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none"></div>
+      <p style="font-size:10px;color:var(--outline);margin-top:8px" data-i18n="langHint">Scroll to see all 10 languages →</p>
+    </div>
+
+    <div style="padding:0 20px;margin-bottom:8px">
+      <p style="font-size:12px;font-weight:700;color:var(--outline);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px" data-i18n="account">Account</p>
+    </div>
+    <div style="background:#fff;border-top:0.5px solid var(--outline-v);border-bottom:0.5px solid var(--outline-v);margin-bottom:16px">
+      <div class="setting-row">
+        <div class="setting-icon" style="background:rgba(37,43,34,.08)"><span class="ms" style="color:var(--olive);font-size:20px">manage_accounts</span></div>
+        <div style="flex:1;min-width:0"><p style="font-size:15px;font-weight:600" data-i18n="accountSettings">Account Settings</p><p style="font-size:12px;color:var(--outline)" data-i18n="profileDesc">Profile · Email · Password</p></div>
+        <span class="ms" style="color:var(--outline-v)">chevron_right</span>
+      </div>
+      <div class="setting-row">
+        <div class="setting-icon" style="background:rgba(125,110,87,.1)"><span class="ms" style="color:var(--taupe);font-size:20px">link</span></div>
+        <div style="flex:1;min-width:0"><p style="font-size:15px;font-weight:600" data-i18n="connTracking">Connection Tracking</p><p style="font-size:12px;color:var(--outline)" data-i18n="connDesc">Mode · Alerts · Attribution</p></div>
+        <span class="ms" style="color:var(--outline-v)">chevron_right</span>
+      </div>
+      <div class="setting-row" style="border-bottom:none" onclick="syncDeviceContacts()">
+        <div class="setting-icon" style="background:rgba(26,107,56,.08)"><span class="ms" style="color:#1a6b38;font-size:20px">sync_alt</span></div>
+        <div style="flex:1;min-width:0"><p style="font-size:15px;font-weight:600" data-i18n="syncContacts">Sync Contacts</p><p style="font-size:12px;color:var(--outline)" data-i18n="syncDesc">Auto-match device contacts</p></div>
+        <span class="ms" style="color:var(--outline-v)">chevron_right</span>
+      </div>
+    </div>
+
+    <div style="padding:0 20px;margin-bottom:8px">
+      <p style="font-size:12px;font-weight:700;color:var(--outline);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px" data-i18n="hubsLabel">Business Hubs</p>
+    </div>
+    <div style="background:#fff;border-top:0.5px solid var(--outline-v);border-bottom:0.5px solid var(--outline-v);margin-bottom:16px">
+      <div class="setting-row">
+        <div class="setting-icon" style="background:rgba(37,43,34,.08)"><span class="ms" style="color:var(--olive);font-size:20px">groups</span></div>
+        <div style="flex:1;min-width:0"><p style="font-size:15px;font-weight:600" data-i18n="mySociety">My Business Society</p><p style="font-size:12px;color:var(--outline)">31 members · Hub Leader</p></div>
+        <span class="badge badge-olive">Active</span>
+      </div>
+      <div class="setting-row" style="border-bottom:none">
+        <div class="setting-icon" style="background:rgba(125,110,87,.1)"><span class="ms" style="color:var(--taupe);font-size:20px">auto_graph</span></div>
+        <div style="flex:1;min-width:0"><p style="font-size:15px;font-weight:600" data-i18n="crossHub">Cross-Hub Connections</p><p style="font-size:12px;color:var(--outline)">Pioneer ↔ Giants Hub</p></div>
+        <span class="ms" style="color:var(--outline-v)">chevron_right</span>
+      </div>
+    </div>
+
+    <div style="padding:0 20px">
+      <button style="width:100%;background:rgba(186,26,26,.08);border:1px solid rgba(186,26,26,.2);border-radius:12px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;color:var(--error);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span class="ms" style="font-size:18px">logout</span><span data-i18n="logout">Log Out</span>
+      </button>
+      <p style="text-align:center;margin-top:12px;font-size:11px;color:var(--outline)">CardBook v4.2.0 · Global Premium Edition</p>
+    </div>
+  </main>
+</div>
+
+<!-- ===== NAV ===== -->
+<nav class="bottom-nav max-mobile" style="left:50%;transform:translateX(-50%);right:auto;width:100%;max-width:430px">
+  <button class="nav-item active" id="nav-home" onclick="switchView('home')"><span class="ms" style="font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">contact_page</span><span data-i18n="navCards">My Cards</span></button>
+  <button class="nav-item" id="nav-scan" onclick="switchView('scan')"><span class="ms">center_focus_weak</span><span data-i18n="navScan">Scan</span></button>
+  <button class="nav-item" id="nav-search" onclick="switchView('search')"><span class="ms">search</span><span data-i18n="navNetwork">Network</span></button>
+  <button class="nav-item" id="nav-mypage" onclick="switchView('mypage')"><span class="ms">person</span><span data-i18n="navMy">My Page</span></button>
+</nav>
+
+<!-- ===== MODALS ===== -->
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:flex-end;justify-content:center" onclick="closeModal(event)">
+  <div id="modal-share" style="display:none;background:#fff;border-radius:20px 20px 0 0;padding:24px 20px;width:100%;max-width:430px">
+    <div style="width:40px;height:4px;background:var(--outline-v);border-radius:2px;margin:0 auto 20px"></div>
+    <h3 style="font-size:17px;font-weight:700;color:var(--olive);margin-bottom:16px" data-i18n="shareCard">Share My Card</h3>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+      <div style="text-align:center;cursor:pointer" onclick="share('kakao')"><div style="width:52px;height:52px;background:#FEE500;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 6px"><span style="font-size:22px">💬</span></div><p style="font-size:11px;color:var(--on-surf-v)">KakaoTalk</p></div>
+      <div style="text-align:center;cursor:pointer" onclick="share('sms')"><div style="width:52px;height:52px;background:#4CD964;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 6px"><span class="ms" style="color:#fff;font-size:24px">sms</span></div><p style="font-size:11px;color:var(--on-surf-v)" data-i18n="smsShare">Message</p></div>
+      <div style="text-align:center;cursor:pointer" onclick="share('link')"><div style="width:52px;height:52px;background:var(--olive);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 6px"><span class="ms" style="color:#fff;font-size:24px">link</span></div><p style="font-size:11px;color:var(--on-surf-v)" data-i18n="copyLink">Copy Link</p></div>
+      <div style="text-align:center;cursor:pointer" onclick="share('qr')"><div style="width:52px;height:52px;background:var(--taupe);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 6px"><span class="ms" style="color:#fff;font-size:24px">qr_code_2</span></div><p style="font-size:11px;color:var(--on-surf-v)">QR</p></div>
+    </div>
+    <button onclick="closeAllModals()" style="width:100%;background:var(--paper);border:0.5px solid var(--outline-v);border-radius:12px;padding:14px;font-family:inherit;font-size:15px;font-weight:600;color:var(--on-surf-v);cursor:pointer" data-i18n="close">Close</button>
+  </div>
+
+  <div id="modal-notify" style="display:none;background:#fff;border-radius:20px 20px 0 0;padding:24px 20px;width:100%;max-width:430px">
+    <div style="width:40px;height:4px;background:var(--outline-v);border-radius:2px;margin:0 auto 20px"></div>
+    <h3 style="font-size:17px;font-weight:700;color:var(--olive);margin-bottom:16px" data-i18n="notifications">Notifications</h3>
+    <div>
+      <div style="padding:12px;background:rgba(37,43,34,.04);border-radius:10px;margin-bottom:8px"><div style="display:flex;gap:10px"><span class="ms" style="color:var(--olive);font-size:20px;flex-shrink:0;font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24">trending_up</span><div><p style="font-size:13px;font-weight:600;color:var(--olive)" data-i18n="notif1Title">New connection made!</p><p style="font-size:12px;color:var(--on-surf-v)" data-i18n="notif1Desc">A new contact reached out via Lee H.</p><p style="font-size:11px;color:var(--outline);margin-top:4px">14 min ago</p></div></div></div>
+      <div style="padding:12px;border-radius:10px;margin-bottom:8px"><div style="display:flex;gap:10px"><span class="ms" style="color:var(--taupe);font-size:20px;flex-shrink:0">person_add</span><div><p style="font-size:13px;font-weight:600" data-i18n="notif2Title">Park S. scanned your card</p><p style="font-size:12px;color:var(--on-surf-v)">2h ago</p></div></div></div>
+    </div>
+    <button onclick="closeAllModals()" style="margin-top:16px;width:100%;background:var(--paper);border:0.5px solid var(--outline-v);border-radius:12px;padding:14px;font-family:inherit;font-size:15px;font-weight:600;color:var(--on-surf-v);cursor:pointer" data-i18n="close">Close</button>
+  </div>
+
+  <div id="modal-referral" style="display:none;background:#fff;border-radius:20px 20px 0 0;padding:24px 20px;width:100%;max-width:430px">
+    <div style="width:40px;height:4px;background:var(--outline-v);border-radius:2px;margin:0 auto 20px"></div>
+    <h3 style="font-size:17px;font-weight:700;color:var(--olive);margin-bottom:6px" data-i18n="connPath">Connection Path</h3>
+    <p style="font-size:13px;color:var(--on-surf-v);margin-bottom:16px" data-i18n="connPathDesc">The trusted network that introduced this contact.</p>
+    <div style="background:var(--paper);border-radius:12px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px"><span class="ms" style="font-size:14px;color:var(--taupe)">verified</span><p style="font-size:12px;color:var(--outline)" data-i18n="trustPath">Trusted Connection Path</p></div>
+      <div class="chain-bar">
+        <div class="chain-seg" style="background:#f0f4ee;color:var(--olive)"><span class="ms" style="font-size:11px;margin-right:2px">verified_user</span>Song S.</div>
+        <div class="chain-seg" style="background:#f7f4ef;color:var(--taupe)"><span class="ms" style="font-size:11px;margin-right:2px">handshake</span>Lee H.</div>
+        <div class="chain-seg" style="background:#fff;color:var(--outline)"><span class="ms" style="font-size:11px;margin-right:2px">person</span><span data-i18n="you">You</span></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button onclick="logAction('Call')" style="background:var(--olive);color:#fff;border:none;border-radius:12px;padding:14px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><span class="ms" style="font-size:18px">call</span><span data-i18n="call">Call</span></button>
+      <button onclick="logAction('Message')" style="background:#fff;border:0.5px solid var(--outline-v);border-radius:12px;padding:14px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--olive)"><span class="ms" style="font-size:18px">message</span><span data-i18n="message">Message</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--olive);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:200;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap"></div>
 
 <script>
+// =====================================================
+// i18n — 10개국어 완전 번역 테이블
+// =====================================================
+const LANGS = [
+  {code:'ko', flag:'🇰🇷', label:'한국어', dir:'ltr'},
+  {code:'en', flag:'🇺🇸', label:'English', dir:'ltr'},
+  {code:'jp', flag:'🇯🇵', label:'日本語', dir:'ltr'},
+  {code:'cn', flag:'🇨🇳', label:'中文', dir:'ltr'},
+  {code:'es', flag:'🇪🇸', label:'Español', dir:'ltr'},
+  {code:'fr', flag:'🇫🇷', label:'Français', dir:'ltr'},
+  {code:'de', flag:'🇩🇪', label:'Deutsch', dir:'ltr'},
+  {code:'ar', flag:'🇸🇦', label:'العربية', dir:'rtl'},
+  {code:'pt', flag:'🇧🇷', label:'Português', dir:'ltr'},
+  {code:'vi', flag:'🇻🇳', label:'Tiếng Việt', dir:'ltr'},
+];
+
+const T = {
+  mycard:       {ko:'내 디지털 명함',en:'My Digital Card',jp:'デジタル名刺',cn:'我的数字名片',es:'Mi Tarjeta Digital',fr:'Ma Carte Numérique',de:'Meine Digitale Karte',ar:'بطاقتي الرقمية',pt:'Meu Cartão Digital',vi:'Thẻ Kỹ Thuật Số'},
+  copy:         {ko:'복사',en:'Copy',jp:'コピー',cn:'复制',es:'Copiar',fr:'Copier',de:'Kopieren',ar:'نسخ',pt:'Copiar',vi:'Sao chép'},
+  share:        {ko:'공유',en:'Share',jp:'シェア',cn:'分享',es:'Compartir',fr:'Partager',de:'Teilen',ar:'مشاركة',pt:'Compartilhar',vi:'Chia sẻ'},
+  edit:         {ko:'편집',en:'Edit',jp:'編集',cn:'编辑',es:'Editar',fr:'Modifier',de:'Bearbeiten',ar:'تعديل',pt:'Editar',vi:'Chỉnh sửa'},
+  dashboard:    {ko:'인맥 자산 & 연결 대시보드',en:'Connection Dashboard',jp:'ネットワーク管理',cn:'连接仪表板',es:'Panel de Conexiones',fr:'Tableau de Bord',de:'Verbindungs-Dashboard',ar:'لوحة الاتصالات',pt:'Painel de Conexões',vi:'Bảng Điều Khiển'},
+  thisMonth:    {ko:'이번달',en:'This Month',jp:'今月',cn:'本月',es:'Este Mes',fr:'Ce Mois',de:'Diesen Monat',ar:'هذا الشهر',pt:'Este Mês',vi:'Tháng Này'},
+  totalConn:    {ko:'총 연결 자산',en:'Total Connections',jp:'総コネクション',cn:'总连接数',es:'Conexiones Totales',fr:'Connexions Totales',de:'Gesamtverbindungen',ar:'إجمالي الاتصالات',pt:'Conexões Totais',vi:'Tổng Kết Nối'},
+  converted:    {ko:'전환 완료',en:'Converted',jp:'成約済み',cn:'已转化',es:'Convertidos',fr:'Convertis',de:'Konvertiert',ar:'تم التحويل',pt:'Convertidos',vi:'Đã Chuyển Đổi'},
+  inProgress:   {ko:'진행 중',en:'In Progress',jp:'進行中',cn:'进行中',es:'En Progreso',fr:'En Cours',de:'In Bearbeitung',ar:'قيد التنفيذ',pt:'Em Andamento',vi:'Đang Tiến Hành'},
+  netReach:     {ko:'네트워크 확장력',en:'Network Reach',jp:'ネットワーク拡張',cn:'网络覆盖',es:'Alcance de Red',fr:'Portée Réseau',de:'Netzwerkreichweite',ar:'نطاق الشبكة',pt:'Alcance da Rede',vi:'Độ Phủ Mạng'},
+  trustPath:    {ko:'신뢰 연결 경로',en:'Trusted Connection Path',jp:'信頼ネットワーク経路',cn:'信任连接路径',es:'Ruta de Conexión de Confianza',fr:'Chemin de Confiance',de:'Vertrauenspfad',ar:'مسار الاتصال الموثوق',pt:'Caminho de Confiança',vi:'Đường Dẫn Tin Cậy'},
+  newConn:      {ko:'신규',en:'New',jp:'新規',cn:'新',es:'Nuevo',fr:'Nouveau',de:'Neu',ar:'جديد',pt:'Novo',vi:'Mới'},
+  introdBy:     {ko:'소개자',en:'Introduced by',jp:'紹介者',cn:'介绍人',es:'Presentado por',fr:'Présenté par',de:'Vorgestellt von',ar:'قدّمه',pt:'Apresentado por',vi:'Giới thiệu bởi'},
+  pending:      {ko:'진행 중',en:'Pending',jp:'保留中',cn:'待处理',es:'Pendiente',fr:'En attente',de:'Ausstehend',ar:'معلّق',pt:'Pendente',vi:'Đang Chờ'},
+  recentActivity:{ko:'최근 연결 활동',en:'Recent Activity',jp:'最近のアクティビティ',cn:'最近活动',es:'Actividad Reciente',fr:'Activité Récente',de:'Letzte Aktivität',ar:'النشاط الأخير',pt:'Atividade Recente',vi:'Hoạt Động Gần Đây'},
+  viewAll:      {ko:'전체보기 ›',en:'View All ›',jp:'すべて見る ›',cn:'查看全部 ›',es:'Ver Todo ›',fr:'Tout Voir ›',de:'Alle Anzeigen ›',ar:'‹ عرض الكل',pt:'Ver Tudo ›',vi:'Xem Tất Cả ›'},
+  scanTitle:    {ko:'명함 스캔 · OCR',en:'Card Scanner · OCR',jp:'名刺スキャン · OCR',cn:'名片扫描 · OCR',es:'Escáner de Tarjetas · OCR',fr:'Scanner de Cartes · OCR',de:'Karten-Scanner · OCR',ar:'ماسح البطاقات · OCR',pt:'Scanner de Cartões · OCR',vi:'Quét Danh Thiếp · OCR'},
+  placeCard:    {ko:'명함을 프레임 안에',en:'Place card within the frame',jp:'名刺をフレーム内に',cn:'将名片放入框内',es:'Coloque la tarjeta en el marco',fr:'Placez la carte dans le cadre',de:'Karte im Rahmen platzieren',ar:'ضع البطاقة في الإطار',pt:'Coloque o cartão no quadro',vi:'Đặt thẻ trong khung'},
+  gallery:      {ko:'갤러리에서 선택',en:'Choose from Gallery',jp:'ギャラリーから選ぶ',cn:'从相册选择',es:'Elegir de Galería',fr:'Choisir dans la Galerie',de:'Aus Galerie wählen',ar:'اختر من المعرض',pt:'Escolher da Galeria',vi:'Chọn từ Thư Viện'},
+  ocrResult:    {ko:'OCR 인식 결과',en:'OCR Result',jp:'OCR認識結果',cn:'OCR识别结果',es:'Resultado OCR',fr:'Résultat OCR',de:'OCR-Ergebnis',ar:'نتيجة OCR',pt:'Resultado OCR',vi:'Kết Quả OCR'},
+  detected:     {ko:'인식완료',en:'Detected',jp:'認識完了',cn:'识别完成',es:'Detectado',fr:'Détecté',de:'Erkannt',ar:'تم الكشف',pt:'Detectado',vi:'Đã Nhận Diện'},
+  fname:        {ko:'이름',en:'Name',jp:'氏名',cn:'姓名',es:'Nombre',fr:'Nom',de:'Name',ar:'الاسم',pt:'Nome',vi:'Tên'},
+  ftitle:       {ko:'직함',en:'Title',jp:'役職',cn:'职称',es:'Cargo',fr:'Titre',de:'Titel',ar:'المسمى',pt:'Cargo',vi:'Chức Danh'},
+  fcompany:     {ko:'회사',en:'Company',jp:'会社',cn:'公司',es:'Empresa',fr:'Société',de:'Unternehmen',ar:'الشركة',pt:'Empresa',vi:'Công Ty'},
+  fphone:       {ko:'연락처',en:'Phone',jp:'電話番号',cn:'电话',es:'Teléfono',fr:'Téléphone',de:'Telefon',ar:'الهاتف',pt:'Telefone',vi:'Điện Thoại'},
+  refCodeTitle: {ko:'인맥 추천 코드 자동 링크',en:'Connection Code Auto-Link',jp:'紹介コード自動リンク',cn:'推荐码自动链接',es:'Código de Conexión Auto-Link',fr:'Lien de Code Auto',de:'Verbindungscode Auto-Link',ar:'رابط الكود التلقائي',pt:'Link Automático de Código',vi:'Liên Kết Mã Tự Động'},
+  refCodeDesc:  {ko:'안심하고 저장하세요. 이 명함을 공유해 준 추천인의 정보가 함께 기록되어, 사후 인맥 관리를 안전하게 도와줍니다.',en:'Save with confidence. The person who introduced this card is recorded to help you manage your network safely.',jp:'安心して保存してください。紹介者の情報が記録され、後日のネットワーク管理に役立てられます。',cn:'放心保存。介绍此名片的人的信息将被记录，以帮助您安全管理人脉。',es:'Guarde con confianza. La persona que presentó esta tarjeta queda registrada para ayudarle a gestionar su red de forma segura.',fr:'Enregistrez en toute confiance. La personne qui a présenté cette carte est enregistrée pour vous aider à gérer votre réseau en sécurité.',de:'Speichern Sie sorgenfrei. Die Person, die diese Karte vorgestellt hat, wird aufgezeichnet, um Ihr Netzwerk sicher zu verwalten.',ar:'احفظ بثقة. يتم تسجيل الشخص الذي قدم هذه البطاقة لمساعدتك في إدارة شبكتك بأمان.',pt:'Salve com confiança. A pessoa que apresentou este cartão é registrada para ajudá-lo a gerenciar sua rede com segurança.',vi:'Lưu một cách tự tin. Người giới thiệu thẻ này được ghi lại để giúp bạn quản lý mạng lưới an toàn.'},
+  saveCard:     {ko:'명함 저장 + 추적 시작',en:'Save Card & Start Tracking',jp:'名刺を保存してトラッキング開始',cn:'保存名片并开始跟踪',es:'Guardar Tarjeta e Iniciar Seguimiento',fr:'Enregistrer et Commencer le Suivi',de:'Karte Speichern & Tracking Starten',ar:'حفظ البطاقة وبدء التتبع',pt:'Salvar Cartão e Iniciar Rastreamento',vi:'Lưu Thẻ & Bắt Đầu Theo Dõi'},
+  scanTips:     {ko:'스캔 팁',en:'Scan Tips',jp:'スキャンのヒント',cn:'扫描技巧',es:'Consejos de Escaneo',fr:'Conseils de Scan',de:'Scan-Tipps',ar:'نصائح المسح',pt:'Dicas de Digitalização',vi:'Mẹo Quét'},
+  tip1:         {ko:'밝은 환경에서 스캔',en:'Good lighting conditions',jp:'明るい場所でスキャン',cn:'在光线充足的环境下扫描',es:'Buenas condiciones de iluminación',fr:'Bonnes conditions d\'éclairage',de:'Gute Lichtverhältnisse',ar:'إضاءة جيدة',pt:'Boas condições de iluminação',vi:'Điều kiện ánh sáng tốt'},
+  tip2:         {ko:'명함을 수평으로 유지',en:'Keep the card flat & horizontal',jp:'名刺を水平に保つ',cn:'保持名片水平放置',es:'Mantener la tarjeta plana y horizontal',fr:'Gardez la carte à plat et horizontale',de:'Karte flach und horizontal halten',ar:'أبقِ البطاقة مسطحة وأفقية',pt:'Mantenha o cartão plano e horizontal',vi:'Giữ thẻ phẳng và ngang'},
+  tip3:         {ko:'프레임 꽉 채우기',en:'Fill the frame completely',jp:'フレームをいっぱいにする',cn:'完全填满框架',es:'Llenar completamente el marco',fr:'Remplir complètement le cadre',de:'Rahmen vollständig ausfüllen',ar:'املأ الإطار بالكامل',pt:'Preencher completamente o quadro',vi:'Lấp đầy khung hình'},
+  networkSearch:{ko:'인맥 검색',en:'Network Search',jp:'ネットワーク検索',cn:'人脉搜索',es:'Búsqueda de Red',fr:'Recherche Réseau',de:'Netzwerksuche',ar:'بحث الشبكة',pt:'Busca na Rede',vi:'Tìm Kiếm Mạng Lưới'},
+  searchPh:     {ko:'이름, 직함, 업종 검색...',en:'Name, title, industry...',jp:'名前、役職、業種...',cn:'姓名、职位、行业...',es:'Nombre, cargo, sector...',fr:'Nom, titre, secteur...',de:'Name, Titel, Branche...',ar:'الاسم، المسمى، القطاع...',pt:'Nome, cargo, setor...',vi:'Tên, chức danh, ngành...'},
+  all:          {ko:'전체',en:'All',jp:'すべて',cn:'全部',es:'Todos',fr:'Tous',de:'Alle',ar:'الكل',pt:'Todos',vi:'Tất Cả'},
+  noResults:    {ko:'검색 결과 없음',en:'No results found',jp:'結果が見つかりません',cn:'未找到结果',es:'No se encontraron resultados',fr:'Aucun résultat',de:'Keine Ergebnisse',ar:'لم يتم العثور على نتائج',pt:'Nenhum resultado encontrado',vi:'Không tìm thấy kết quả'},
+  myProfile:    {ko:'마이페이지',en:'My Profile',jp:'マイページ',cn:'我的主页',es:'Mi Perfil',fr:'Mon Profil',de:'Mein Profil',ar:'ملفي الشخصي',pt:'Meu Perfil',vi:'Trang Của Tôi'},
+  langLabel:    {ko:'언어',en:'Language',jp:'言語',cn:'语言',es:'Idioma',fr:'Langue',de:'Sprache',ar:'اللغة',pt:'Idioma',vi:'Ngôn Ngữ'},
+  langHint:     {ko:'스크롤하면 10개국어 전체 표시 →',en:'Scroll to see all 10 languages →',jp:'スクロールで10言語を表示 →',cn:'滑动查看全部10种语言 →',es:'Desliza para ver los 10 idiomas →',fr:'Faites défiler pour voir les 10 langues →',de:'Scrollen für alle 10 Sprachen →',ar:'→ مرّر لرؤية جميع اللغات العشر',pt:'Role para ver todos os 10 idiomas →',vi:'Cuộn để xem tất cả 10 ngôn ngữ →'},
+  account:      {ko:'계정',en:'Account',jp:'アカウント',cn:'账户',es:'Cuenta',fr:'Compte',de:'Konto',ar:'الحساب',pt:'Conta',vi:'Tài Khoản'},
+  accountSettings:{ko:'계정 설정',en:'Account Settings',jp:'アカウント設定',cn:'账户设置',es:'Configuración de Cuenta',fr:'Paramètres du Compte',de:'Kontoeinstellungen',ar:'إعدادات الحساب',pt:'Configurações da Conta',vi:'Cài Đặt Tài Khoản'},
+  profileDesc:  {ko:'프로필 · 이메일 · 비밀번호',en:'Profile · Email · Password',jp:'プロフィール・メール・パスワード',cn:'个人资料·邮箱·密码',es:'Perfil · Email · Contraseña',fr:'Profil · Email · Mot de passe',de:'Profil · E-Mail · Passwort',ar:'الملف الشخصي · البريد · كلمة المرور',pt:'Perfil · Email · Senha',vi:'Hồ sơ · Email · Mật khẩu'},
+  connTracking: {ko:'연결 추적 설정',en:'Connection Tracking',jp:'接続追跡設定',cn:'连接追踪设置',es:'Seguimiento de Conexión',fr:'Suivi des Connexions',de:'Verbindungsverfolgung',ar:'تتبع الاتصالات',pt:'Rastreamento de Conexões',vi:'Theo Dõi Kết Nối'},
+  connDesc:     {ko:'추적 방식 · 알림 · 귀속',en:'Mode · Alerts · Attribution',jp:'モード・アラート・帰属',cn:'模式·提醒·归因',es:'Modo · Alertas · Atribución',fr:'Mode · Alertes · Attribution',de:'Modus · Benachrichtigung · Zuordnung',ar:'الوضع · التنبيهات · الإسناد',pt:'Modo · Alertas · Atribuição',vi:'Chế Độ · Cảnh Báo · Phân Bổ'},
+  syncContacts: {ko:'연락처 동기화',en:'Sync Contacts',jp:'連絡先を同期',cn:'同步联系人',es:'Sincronizar Contactos',fr:'Synchroniser les Contacts',de:'Kontakte Synchronisieren',ar:'مزامنة جهات الاتصال',pt:'Sincronizar Contatos',vi:'Đồng Bộ Danh Bạ'},
+  syncDesc:     {ko:'디바이스 연락처 자동 매칭',en:'Auto-match device contacts',jp:'デバイスの連絡先を自動マッチング',cn:'自动匹配设备联系人',es:'Coincidencia automática de contactos',fr:'Correspondance automatique des contacts',de:'Gerätekontakte automatisch abgleichen',ar:'مطابقة جهات الاتصال تلقائياً',pt:'Correspondência automática de contatos',vi:'Tự Động Khớp Danh Bạ Thiết Bị'},
+  hubsLabel:    {ko:'그룹 · 비즈니스 허브',en:'Business Hubs',jp:'ビジネスハブ',cn:'商业枢纽',es:'Centros de Negocios',fr:'Hubs d\'Affaires',de:'Business-Hubs',ar:'مراكز الأعمال',pt:'Hubs de Negócios',vi:'Trung Tâm Kinh Doanh'},
+  mySociety:    {ko:'내 비즈니스 소사이어티',en:'My Business Society',jp:'私のビジネスソサエティ',cn:'我的商业社群',es:'Mi Sociedad de Negocios',fr:'Ma Société d\'Affaires',de:'Meine Business-Gesellschaft',ar:'مجتمعي التجاري',pt:'Minha Sociedade de Negócios',vi:'Cộng Đồng Kinh Doanh Của Tôi'},
+  crossHub:     {ko:'허브 간 연결',en:'Cross-Hub Connections',jp:'クロスハブ接続',cn:'跨枢纽连接',es:'Conexiones entre Hubs',fr:'Connexions Inter-Hubs',de:'Hub-übergreifende Verbindungen',ar:'الاتصالات بين المراكز',pt:'Conexões entre Hubs',vi:'Kết Nối Liên Hub'},
+  logout:       {ko:'로그아웃',en:'Log Out',jp:'ログアウト',cn:'退出登录',es:'Cerrar Sesión',fr:'Se Déconnecter',de:'Abmelden',ar:'تسجيل الخروج',pt:'Sair',vi:'Đăng Xuất'},
+  hubMember:    {ko:'허브 멤버',en:'Hub Member',jp:'ハブメンバー',cn:'枢纽成员',es:'Miembro del Hub',fr:'Membre du Hub',de:'Hub-Mitglied',ar:'عضو المركز',pt:'Membro do Hub',vi:'Thành Viên Hub'},
+  cards:        {ko:'명함',en:'Cards',jp:'名刺',cn:'名片',es:'Tarjetas',fr:'Cartes',de:'Karten',ar:'بطاقات',pt:'Cartões',vi:'Thẻ'},
+  connections:  {ko:'연결',en:'Connections',jp:'接続',cn:'连接',es:'Conexiones',fr:'Connexions',de:'Verbindungen',ar:'اتصالات',pt:'Conexões',vi:'Kết Nối'},
+  network:      {ko:'네트워크',en:'Network',jp:'ネットワーク',cn:'网络',es:'Red',fr:'Réseau',de:'Netzwerk',ar:'الشبكة',pt:'Rede',vi:'Mạng Lưới'},
+  shareCard:    {ko:'내 명함 공유',en:'Share My Card',jp:'名刺をシェア',cn:'分享我的名片',es:'Compartir Mi Tarjeta',fr:'Partager Ma Carte',de:'Meine Karte Teilen',ar:'مشاركة بطاقتي',pt:'Compartilhar Meu Cartão',vi:'Chia Sẻ Thẻ Của Tôi'},
+  smsShare:     {ko:'문자',en:'Message',jp:'メッセージ',cn:'短信',es:'Mensaje',fr:'Message',de:'Nachricht',ar:'رسالة',pt:'Mensagem',vi:'Tin Nhắn'},
+  copyLink:     {ko:'링크 복사',en:'Copy Link',jp:'リンクをコピー',cn:'复制链接',es:'Copiar Enlace',fr:'Copier le Lien',de:'Link Kopieren',ar:'نسخ الرابط',pt:'Copiar Link',vi:'Sao Chép Liên Kết'},
+  close:        {ko:'닫기',en:'Close',jp:'閉じる',cn:'关闭',es:'Cerrar',fr:'Fermer',de:'Schließen',ar:'إغلاق',pt:'Fechar',vi:'Đóng'},
+  notifications:{ko:'알림',en:'Notifications',jp:'通知',cn:'通知',es:'Notificaciones',fr:'Notifications',de:'Benachrichtigungen',ar:'الإشعارات',pt:'Notificações',vi:'Thông Báo'},
+  notif1Title:  {ko:'새 연결 성사!',en:'New connection made!',jp:'新しいコネクションが成立！',cn:'新连接建立！',es:'¡Nueva conexión establecida!',fr:'Nouvelle connexion établie !',de:'Neue Verbindung hergestellt!',ar:'تم إنشاء اتصال جديد!',pt:'Nova conexão feita!',vi:'Kết nối mới được tạo!'},
+  notif1Desc:   {ko:'Lee H.를 통해 새 연락이 왔습니다.',en:'A new contact reached out via Lee H.',jp:'Lee H.を通じて新しい連絡が来ました。',cn:'通过Lee H.有新联系人联系了您。',es:'Un nuevo contacto se comunicó a través de Lee H.',fr:'Un nouveau contact vous a contacté via Lee H.',de:'Ein neuer Kontakt hat sich über Lee H. gemeldet.',ar:'تواصل معك جهة اتصال جديدة عبر Lee H.',pt:'Um novo contato entrou em contato via Lee H.',vi:'Một liên lạc mới được kết nối qua Lee H.'},
+  notif2Title:  {ko:'Park S.가 명함을 스캔했습니다.',en:'Park S. scanned your card',jp:'Park S.が名刺をスキャンしました',cn:'Park S.扫描了您的名片',es:'Park S. escaneó tu tarjeta',fr:'Park S. a scanné votre carte',de:'Park S. hat Ihre Karte gescannt',ar:'قام Park S. بمسح بطاقتك',pt:'Park S. escaneou seu cartão',vi:'Park S. đã quét thẻ của bạn'},
+  connPath:     {ko:'소개 경로 확인',en:'Connection Path',jp:'紹介経路の確認',cn:'连接路径确认',es:'Ruta de Conexión',fr:'Chemin de Connexion',de:'Verbindungspfad',ar:'مسار الاتصال',pt:'Caminho de Conexão',vi:'Đường Dẫn Kết Nối'},
+  connPathDesc: {ko:'이 분을 소개해 주신 신뢰 인맥입니다.',en:'The trusted network that introduced this contact.',jp:'この方を紹介してくれた信頼できるネットワークです。',cn:'这是介绍此联系人的可信人脉。',es:'La red de confianza que presentó este contacto.',fr:'Le réseau de confiance qui a présenté ce contact.',de:'Das vertrauenswürdige Netzwerk, das diesen Kontakt vorgestellt hat.',ar:'الشبكة الموثوقة التي قدمت هذا الاتصال.',pt:'A rede confiável que apresentou este contato.',vi:'Mạng lưới tin cậy đã giới thiệu liên lạc này.'},
+  you:          {ko:'귀하',en:'You',jp:'あなた',cn:'您',es:'Usted',fr:'Vous',de:'Sie',ar:'أنت',pt:'Você',vi:'Bạn'},
+  call:         {ko:'전화하기',en:'Call',jp:'電話する',cn:'拨打电话',es:'Llamar',fr:'Appeler',de:'Anrufen',ar:'اتصال',pt:'Ligar',vi:'Gọi Điện'},
+  message:      {ko:'문의하기',en:'Message',jp:'メッセージ',cn:'发消息',es:'Mensaje',fr:'Message',de:'Nachricht',ar:'رسالة',pt:'Mensagem',vi:'Nhắn Tin'},
+  navCards:     {ko:'내 명함',en:'My Cards',jp:'名刺',cn:'名片',es:'Mis Tarjetas',fr:'Mes Cartes',de:'Meine Karten',ar:'بطاقاتي',pt:'Meus Cartões',vi:'Thẻ Của Tôi'},
+  navScan:      {ko:'스캔',en:'Scan',jp:'スキャン',cn:'扫描',es:'Escanear',fr:'Scanner',de:'Scannen',ar:'مسح',pt:'Digitalizar',vi:'Quét'},
+  navNetwork:   {ko:'인맥 검색',en:'Network',jp:'検索',cn:'人脉',es:'Red',fr:'Réseau',de:'Netzwerk',ar:'الشبكة',pt:'Rede',vi:'Mạng Lưới'},
+  navMy:        {ko:'마이',en:'My Page',jp:'マイ',cn:'我的',es:'Mi Página',fr:'Mon Page',de:'Mein',ar:'صفحتي',pt:'Minha Página',vi:'Trang Của Tôi'},
+};
+
+let currentLang = 'ko';
+
+function setLang(code){
+  currentLang = code;
+  // 버튼 active 상태
+  document.querySelectorAll('.lang-pill').forEach(b=>{
+    b.classList.toggle('active', b.dataset.lang === code);
+  });
+  // RTL/LTR
+  const langObj = LANGS.find(l=>l.code===code);
+  document.documentElement.dir = langObj?.dir || 'ltr';
+  document.documentElement.lang = code;
+
+  // 텍스트 교체 — data-i18n 속성 있는 모든 엘리먼트
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const key = el.dataset.i18n;
+    if(key.startsWith('[placeholder]')){
+      const k = key.replace('[placeholder]','');
+      if(T[k]) el.placeholder = T[k][code] || T[k]['en'];
+    } else {
+      if(T[key]) el.textContent = T[key][code] || T[key]['en'];
+    }
+  });
+
+  // 카드 리스트 다시 렌더 (내부 텍스트 포함)
+  renderCards(currentFilter);
+  renderLogs();
+
+  showToast((langObj?.flag||'')+'  '+( langObj?.label||code));
+}
+
+function buildLangRow(){
+  const row = document.getElementById('lang-row');
+  row.innerHTML = LANGS.map(l=>`
+    <button class="lang-pill ${l.code===currentLang?'active':''}" data-lang="${l.code}" onclick="setLang('${l.code}')">
+      ${l.flag} ${l.label}
+    </button>`).join('');
+}
+
+// =====================================================
+// DATA
+// =====================================================
+const Referral_Logs = [
+  {owner_id:'Lee H.',referrer_chain:'seunghun>hwachun',action_type:'Call',status:'Completed',time:'14:32',date:'Today'},
+  {owner_id:'Park S.',referrer_chain:'seunghun',action_type:'Message',status:'Pending',time:'11:15',date:'Today'},
+  {owner_id:'New Client A',referrer_chain:'seunghun>seowon>misong',action_type:'Call',status:'Pending',time:'09:40',date:'Yesterday'},
+  {owner_id:'New Client B',referrer_chain:'seunghun',action_type:'Contract',status:'Completed',time:'16:20',date:'Yesterday'},
+];
+
+const cards = [
+  {id:'hwachun',name:'Lee Hwachun',title:'CEO',company:'HWA Beauty Lab',industry:'beauty',tags:['Beauty','Skincare'],referrer:'Direct',chain:'seunghun',avatar:'L'},
+  {id:'seowon',name:'Lee Seowon',title:'CEO',company:'Wellson T.',industry:'wellness',tags:['Wellness','Health'],referrer:'Song S.',chain:'seunghun',avatar:'S'},
+  {id:'sungkwon',name:'Park Sungjun',title:'Director',company:'SJ Enterprise',industry:'marketing',tags:['Marketing','Consulting'],referrer:'Lee H. → You',chain:'seunghun>hwachun',avatar:'P'},
+  {id:'mihee',name:'Lee Miyeh',title:'CEO',company:'Miyeh Salon',industry:'beauty',tags:['Beauty','Lifestyle'],referrer:'Song S.',chain:'seunghun',avatar:'L'},
+  {id:'misong',name:'Kim Misong',title:'Coach',company:'Misong Coaching',industry:'wellness',tags:['Wellness','Coaching'],referrer:'Lee S. → You',chain:'seunghun>seowon',avatar:'K'},
+  {id:'tae',name:'Kim Taehyung',title:'CEO',company:'TH F&B Group',industry:'food',tags:['F&B','Startup'],referrer:'Direct',chain:'seunghun',avatar:'K'},
+];
+
+// =====================================================
+// RENDER
+// =====================================================
+function renderQR(){
+  const g = document.getElementById('qr-display');
+  if(!g) return;
+  const p=[1,1,1,0,1,1,1,1,0,1,1,1,0,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,0,1,0,0,1,0,1,1,0,0,1,0,1];
+  g.innerHTML = p.map(v=>`<div class="qr-cell" style="background:${v?'#252B22':'transparent'}"></div>`).join('');
+}
+
+function renderLogs(){
+  const c = document.getElementById('log-list');
+  if(!c) return;
+  const lang = currentLang;
+  const statusLabel = {Completed:{ko:'완료',en:'Completed',jp:'完了',cn:'已完成',es:'Completado',fr:'Terminé',de:'Abgeschlossen',ar:'مكتمل',pt:'Concluído',vi:'Hoàn Thành'},Pending:{ko:'진행 중',en:'Pending',jp:'保留中',cn:'待处理',es:'Pendiente',fr:'En attente',de:'Ausstehend',ar:'معلّق',pt:'Pendente',vi:'Đang Chờ'}};
+  c.innerHTML = Referral_Logs.map(l=>{
+    const icon = l.action_type==='Call'?'call':l.action_type==='Message'?'message':'handshake';
+    const chain = l.referrer_chain.split('>').join(' › ');
+    const sBadge = l.status==='Completed'?'badge-green':'badge-amber';
+    const sLabel = statusLabel[l.status]?.[lang] || l.status;
+    return `<div class="log-row">
+      <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:0">
+        <span class="ms" style="font-size:18px;color:var(--taupe);flex-shrink:0">${icon}</span>
+        <div style="min-width:0">
+          <p style="font-size:13px;font-weight:600">${l.owner_id}</p>
+          <p style="font-size:10px;color:var(--outline);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chain}</p>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+        <span class="badge ${sBadge}">${sLabel}</span>
+        <p style="font-size:10px;color:var(--outline)">${l.date} ${l.time}</p>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let currentFilter = 'all';
+function renderCards(filter){
+  currentFilter = filter;
+  const query = document.getElementById('search-input')?.value.toLowerCase()||'';
+  const list = document.getElementById('card-list');
+  const noRes = document.getElementById('no-results');
+  const count = document.getElementById('result-count');
+  if(!list) return;
+  const filtered = cards.filter(c=>{
+    const mf = filter==='all'||c.industry===filter;
+    const mq = !query||c.name.toLowerCase().includes(query)||c.title.toLowerCase().includes(query)||c.company.toLowerCase().includes(query);
+    return mf&&mq;
+  });
+  const allText = T.all?.[currentLang]||'All';
+  const directText = T.newConn?.[currentLang]||'Direct';
+  if(count) count.textContent = `${filtered.length} ${T.cards?.[currentLang]?.toUpperCase()||'CARDS'} FOUND`;
+  if(noRes) noRes.style.display = filtered.length?'none':'block';
+  list.style.display = filtered.length?'flex':'none';
+  list.innerHTML = filtered.map(c=>{
+    const isMulti = c.chain.split('>').length>1;
+    const tags = c.tags.map(t=>`<span class="badge badge-taupe">${t}</span>`).join('');
+    const refBadge = isMulti
+      ? `<span class="badge badge-amber"><span class="ms" style="font-size:10px;margin-right:2px">verified</span>${c.referrer}</span>`
+      : `<span class="badge badge-olive">Direct</span>`;
+    return `<div class="card-item" onclick="showReferralModal()">
+      <div class="avatar">${c.avatar}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px">
+          <p style="font-size:15px;font-weight:700">${c.name}</p>${refBadge}
+        </div>
+        <p style="font-size:12px;color:var(--on-surf-v)">${c.title} · ${c.company}</p>
+        <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">${tags}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterCards(q){ renderCards(currentFilter); }
+function filterChip(btn,filter){
+  document.querySelectorAll('.filter-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCards(filter);
+}
+
+// =====================================================
+// VIEW ROUTER
+// =====================================================
+function switchView(name){
+  document.querySelectorAll('.app-view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>{
+    b.classList.remove('active');
+    const ms=b.querySelector('.ms');
+    if(ms) ms.style.fontVariationSettings="'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24";
+  });
+  document.getElementById('view-'+name).classList.add('active');
+  const nav=document.getElementById('nav-'+name);
+  if(nav){
+    nav.classList.add('active');
+    const ms=nav.querySelector('.ms');
+    if(ms) ms.style.fontVariationSettings="'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24";
+  }
+  window.scrollTo(0,0);
+}
+
+// =====================================================
+// MODALS
+// =====================================================
+function showModal(type){
+  const o=document.getElementById('modal-overlay');
+  o.style.display='flex';
+  ['share','notify','referral'].forEach(m=>{
+    const el=document.getElementById('modal-'+m);
+    if(el) el.style.display='none';
+  });
+  const t=document.getElementById('modal-'+type);
+  if(t) t.style.display='block';
+}
+function showReferralModal(){ showModal('referral'); }
+function closeModal(e){ if(e.target===document.getElementById('modal-overlay')) closeAllModals(); }
+function closeAllModals(){ document.getElementById('modal-overlay').style.display='none'; }
+
+// =====================================================
+// ACTIONS
+// =====================================================
+function copyLink(){
+  navigator.clipboard?.writeText('https://cardbook.io/seunghun?chain=seunghun').catch(()=>{});
+  showToast('📋 '+(T.copyLink?.[currentLang]||'Link copied'));
+}
+function shareCard(){ showModal('share'); }
+function share(type){ closeAllModals(); showToast('✓ '+type); }
+function simulateScan(){
+  document.getElementById('scan-result').style.display='block';
+  document.getElementById('scan-tips').style.display='none';
+}
+function saveScan(){
+  document.getElementById('scan-result').style.display='none';
+  document.getElementById('scan-tips').style.display='block';
+  showToast('✓ '+(T.saveCard?.[currentLang]||'Card saved'));
+}
+function logAction(type){
+  const chain=sessionStorage.getItem('referrer_chain')||'seunghun';
+  Referral_Logs.unshift({owner_id:'Contact',referrer_chain:chain,action_type:type,status:'Pending',time:new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),date:'Today'});
+  closeAllModals();
+  showToast('✓ '+(T[type.toLowerCase()]?.[currentLang]||type)+' logged');
+}
+async function syncDeviceContacts(){
+  try {
+    if('contacts' in navigator && 'ContactsManager' in window){
+      const contacts = await navigator.contacts.select(['name','tel','email'],{multiple:true});
+      if(contacts.length>0){ showToast('✓ '+contacts.length+' contacts synced'); }
+      else { showToast('⚠️ No contacts selected'); }
+    } else {
+      showToast('⚠️ '+(currentLang==='ko'?'이 브라우저는 자동 연락처 동기화를 지원하지 않습니다.':'Contact Picker API not supported'));
+    }
+  } catch(e){ showToast('❌ Sync cancelled'); }
+}
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.style.opacity='1';
+  clearTimeout(window._tt);
+  window._tt=setTimeout(()=>t.style.opacity='0',2400);
+}
+
+// =====================================================
+// INIT
+// =====================================================
+function init(){
+  buildLangRow();
+  renderQR();
+  renderLogs();
+  renderCards('all');
+}
+
 // ===== Firebase 초기화 =====
 const firebaseConfig = {
   apiKey: "AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0",
@@ -156,78 +709,54 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-
-// ===== 카카오 초기화 =====
-if(typeof Kakao !== 'undefined' && !Kakao.isInitialized()) {
-  Kakao.init('7a736ceca6b6865251e078261ed9596f');
-}
-
 let currentUser = null;
-let allCards = [];
-let currentChapter = '전체';
-let searchTimer = null;
 let authMode = 'login';
-const CHAPTERS = ['전체','파이오니어','자이언츠','기타'];
-
-// ===== 유틸 =====
-function showToast(msg, ms=2500) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), ms);
-}
-function fmtDate(iso) {
-  if(!iso) return '';
-  try { return new Date(iso).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'}); }
-  catch{ return iso; }
-}
-function initial(n) { return n ? n.charAt(0) : '?'; }
 
 // ===== 로그인 화면 =====
 function renderLogin() {
-  document.getElementById('appRoot').innerHTML = `
-    <div class="login-screen">
-      <div class="login-icon">🗂️</div>
-      <div class="login-title">BNI 명함첩</div>
-      <div class="login-desc">전문가 명함을 스마트하게 관리하세요</div>
-      <div class="auth-tabs">
-        <button class="auth-tab ${authMode==='login'?'active':''}" onclick="setAuthMode('login')">로그인</button>
-        <button class="auth-tab ${authMode==='signup'?'active':''}" onclick="setAuthMode('signup')">회원가입</button>
-      </div>
-      <div class="auth-form">
-        <input type="email" id="authEmail" class="auth-input" placeholder="이메일" autocomplete="email">
-        <input type="password" id="authPassword" class="auth-input" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">
-        <button class="auth-submit" onclick="handleEmailAuth()">${authMode==='login'?'로그인':'회원가입'}</button>
-        <div id="authError" class="error-msg"></div>
-      </div>
-      <div class="social-divider"><div></div><span>또는</span><div></div></div>
-      <div class="social-buttons">
-        <button class="google-btn" onclick="doGoogleLogin()">
-          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          Google
-        </button>
-        <button class="kakao-btn" onclick="doKakaoLogin()" style="display:none">
-          <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#3c1e1e" d="M9 1.5C4.86 1.5 1.5 4.14 1.5 7.38c0 2.07 1.35 3.87 3.39 4.92l-.87 3.21 3.72-2.46c.42.06.84.09 1.26.09 4.14 0 7.5-2.64 7.5-5.88S13.14 1.5 9 1.5z"/></svg>
-          카카오
-        </button>
-      </div>
+  document.body.innerHTML = `
+  <div style="max-width:430px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;background:#fcf9f7;">
+    <div style="margin-bottom:28px;text-align:center;">
+      <div style="font-size:42px;margin-bottom:8px;">🗂️</div>
+      <h1 style="font-size:26px;font-weight:800;color:#252B22;letter-spacing:-0.02em;">CardBook</h1>
+      <p style="font-size:13px;color:#7D6E57;margin-top:6px;">Global Premium Business Card</p>
     </div>
-    <div class="bottom-nav">
-      <a href="https://jinjjabg-hub.github.io/BNI-PIONEER-cards/송승훈/" class="nav-btn"><span class="icon">📇</span><span>내 명함</span></a>
-      <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
-      <button class="nav-btn" onclick="shareApp()"><span class="icon">📤</span><span>공유</span></button>
+    <div style="width:100%;background:#fff;border-radius:20px;padding:28px;border:0.5px solid #c5c7bf;box-shadow:0 4px 24px rgba(37,43,34,0.08);">
+      <div style="display:flex;gap:8px;margin-bottom:20px;">
+        <button onclick="setAuthMode('login')" id="btnLogin"
+          style="flex:1;padding:10px;border-radius:10px;border:none;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;background:#252B22;color:#fff;">로그인</button>
+        <button onclick="setAuthMode('signup')" id="btnSignup"
+          style="flex:1;padding:10px;border-radius:10px;border:1.5px solid #c5c7bf;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;background:#fff;color:#252B22;">회원가입</button>
+      </div>
+      <input id="authEmail" type="email" placeholder="이메일" style="width:100%;padding:12px 14px;border:1px solid #c5c7bf;border-radius:10px;font-family:inherit;font-size:15px;margin-bottom:10px;outline:none;"/>
+      <input id="authPassword" type="password" placeholder="비밀번호 (6자 이상)" style="width:100%;padding:12px 14px;border:1px solid #c5c7bf;border-radius:10px;font-family:inherit;font-size:15px;margin-bottom:4px;outline:none;"/>
+      <p id="authError" style="font-size:12px;color:#ba1a1a;margin-bottom:12px;min-height:18px;"></p>
+      <button onclick="handleEmailAuth()"
+        style="width:100%;padding:14px;border-radius:12px;border:none;background:#252B22;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:16px;">시작하기</button>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div style="flex:1;height:1px;background:#c5c7bf;"></div>
+        <span style="font-size:12px;color:#7D6E57;">또는</span>
+        <div style="flex:1;height:1px;background:#c5c7bf;"></div>
+      </div>
+      <button onclick="doGoogleLogin()"
+        style="width:100%;padding:13px;border-radius:12px;border:1.5px solid #c5c7bf;background:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        Google로 계속하기
+      </button>
     </div>
-  `;
-  // 엔터키 지원
-  setTimeout(() => {
-    const pw = document.getElementById('authPassword');
-    if(pw) pw.addEventListener('keypress', e => { if(e.key==='Enter') handleEmailAuth(); });
-  }, 100);
+  </div>`;
 }
 
-window.setAuthMode = function(mode) { authMode = mode; renderLogin(); };
+function setAuthMode(mode) {
+  authMode = mode;
+  document.getElementById('btnLogin').style.background = mode==='login' ? '#252B22' : '#fff';
+  document.getElementById('btnLogin').style.color = mode==='login' ? '#fff' : '#252B22';
+  document.getElementById('btnLogin').style.border = mode==='login' ? 'none' : '1.5px solid #c5c7bf';
+  document.getElementById('btnSignup').style.background = mode==='signup' ? '#252B22' : '#fff';
+  document.getElementById('btnSignup').style.color = mode==='signup' ? '#fff' : '#252B22';
+  document.getElementById('btnSignup').style.border = mode==='signup' ? 'none' : '1.5px solid #c5c7bf';
+}
 
-// ===== 이메일 로그인/회원가입 =====
 window.handleEmailAuth = async function() {
   const email = document.getElementById('authEmail')?.value.trim();
   const pw = document.getElementById('authPassword')?.value.trim();
@@ -238,8 +767,7 @@ window.handleEmailAuth = async function() {
     if(authMode === 'login') {
       await auth.signInWithEmailAndPassword(email, pw);
     } else {
-      const cred = await auth.createUserWithEmailAndPassword(email, pw);
-      showToast('✅ 회원가입 완료!');
+      await auth.createUserWithEmailAndPassword(email, pw);
     }
   } catch(e) {
     const msgs = {
@@ -248,335 +776,24 @@ window.handleEmailAuth = async function() {
       'auth/user-not-found': '등록되지 않은 이메일입니다.',
       'auth/weak-password': '비밀번호는 6자 이상이어야 합니다.',
       'auth/invalid-email': '이메일 형식이 올바르지 않습니다.',
+      'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않습니다.',
     };
     errEl.innerText = msgs[e.code] || e.message;
   }
 };
 
-// ===== Google 로그인 =====
 window.doGoogleLogin = async function() {
   try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
-  catch(e) { if(e.code !== 'auth/popup-closed-by-user') showToast('Google 로그인 실패'); }
-};
-
-// ===== 카카오 로그인 (안정화 버전) =====
-// 핵심: kakaoId 기반 고정 비밀번호 사용 (getTime 제거)
-window.doKakaoLogin = async function() {
-  if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
-    showToast('카카오 SDK 초기화 중... 잠시 후 다시 시도해주세요.'); return;
-  }
-  try {
-    // 1. 카카오 로그인
-    await new Promise((resolve, reject) => {
-      Kakao.Auth.login({ success: resolve, fail: reject });
-    });
-    // 2. 사용자 정보
-    const profile = await new Promise((resolve, reject) => {
-      Kakao.API.request({ url: '/v2/user/me', success: resolve, fail: reject });
-    });
-    const kakaoId = String(profile.id);
-    const email = profile.kakao_account?.email || `kakao_${kakaoId}@cardbook.bni`;
-    const name = profile.properties?.nickname || '카카오사용자';
-    const photo = profile.properties?.profile_image || null;
-
-    // 3. 고정 비밀번호 (kakaoId 기반 — 매번 동일)
-    const fixedPw = `kb_${kakaoId}_fixed`;
-
-    try {
-      await auth.signInWithEmailAndPassword(email, fixedPw);
-      showToast('✅ 카카오 로그인 성공');
-    } catch(e) {
-      if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-        // 신규 사용자 — 계정 생성
-        await auth.createUserWithEmailAndPassword(email, fixedPw);
-        await auth.currentUser.updateProfile({ displayName: name, photoURL: photo });
-        showToast('✅ 카카오로 가입 완료!');
-      } else if(e.code === 'auth/wrong-password') {
-        // 같은 이메일로 다른 방식으로 가입된 경우
-        showToast('이미 다른 방식으로 가입된 이메일입니다.');
-      } else throw e;
-    }
-  } catch(e) {
-    if(e.error === 'access_denied') showToast('카카오 로그인 취소');
-    else { console.error(e); showToast('카카오 로그인 실패: ' + (e.message || '오류')); }
-  }
-};
-
-// ===== 로그아웃 =====
-window.doLogout = async function() {
-  // 카카오 로그아웃도 같이
-  if(typeof Kakao !== 'undefined' && Kakao.isInitialized() && Kakao.Auth.getAccessToken()) {
-    Kakao.Auth.logout();
-  }
-  await auth.signOut();
-};
-
-// ===== 앱 렌더링 =====
-function renderApp() {
-  document.getElementById('appRoot').innerHTML = `
-    <div class="top-bar">
-      <div class="top-row">
-        <div class="top-title">🗂️ <span>명함첩</span></div>
-        <div class="user-row">
-          <span class="user-name" id="userName"></span>
-          <button class="logout-btn" onclick="doLogout()">로그아웃</button>
-        </div>
-      </div>
-      <div class="search-wrap">
-        <input class="search-input" id="searchInput" placeholder="이름, 업종, 리퍼럴 키워드 검색..." oninput="onSearch(this.value)">
-        <span class="search-icon">🔍</span>
-      </div>
-      <div><span class="ai-badge">✨ AI 검색 지원</span></div>
-    </div>
-    <div class="chapter-tabs">
-      ${CHAPTERS.map(c=>`<button class="tab${c==='전체'?' active':''}" onclick="filterChapter('${c}')">${c}</button>`).join('')}
-    </div>
-    <div id="aiResult"></div>
-    <div class="count-bar"><span class="count-label">CARDS</span><span class="count-num" id="countNum">0</span></div>
-    <div class="card-list" id="cardList"></div>
-    <div class="bottom-nav">
-      <a href="https://jinjjabg-hub.github.io/BNI-PIONEER-cards/송승훈/" class="nav-btn"><span class="icon">📇</span><span>내 명함</span></a>
-      <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
-      <button class="nav-btn" onclick="shareApp()"><span class="icon">📤</span><span>공유</span></button>
-    </div>
-  `;
-  document.getElementById('userName').textContent = currentUser.displayName || currentUser.email || '사용자';
-  renderCards(allCards);
-}
-
-// ===== 카드 렌더링 =====
-function renderCards(cards) {
-  const countEl = document.getElementById('countNum');
-  const list = document.getElementById('cardList');
-  if(!list) return;
-  if(countEl) countEl.textContent = cards.length;
-
-  if(cards.length === 0) {
-    list.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂️</div><div class="empty-title">${currentChapter==='전체'?'저장된 명함이 없어요':currentChapter+' 챕터 명함이 없어요'}</div><div class="empty-desc">명함 페이지에서<br>"명함 저장하기" 버튼을 눌러 추가하세요.</div></div>`;
-    return;
-  }
-
-  list.innerHTML = cards.map((card, i) => {
-    const avatarHtml = card.avatar
-      ? `<img src="${card.avatar}" alt="${card.name}" onerror="this.style.display='none'">`
-      : initial(card.name);
-    const bniHtml = card.bni ? `<div class="bni-badge"><div class="bni-dot"></div>${card.bni}</div>` : '';
-    const meetings = card.meetings || [];
-    const referrals = card.referrals || [];
-    const lastContact = card.lastContact || '';
-    const meetingLogs = meetings.map((m,mi) => `
-      <div class="crm-item">
-        <span class="crm-item-text">📅 121 · ${m.date}${m.memo?' · '+m.memo:''}</span>
-        <button class="crm-item-del" onclick="deleteCRM('${card.docId}','meetings',${mi})">✕</button>
-      </div>`).join('');
-    const referralLogs = referrals.map((r,ri) => `
-      <div class="crm-item">
-        <span class="crm-item-text">🤝 리퍼럴 · ${r.date}${r.memo?' · '+r.memo:''}</span>
-        <button class="crm-item-del" onclick="deleteCRM('${card.docId}','referrals',${ri})">✕</button>
-      </div>`).join('');
-    const lastContactStr = lastContact ? `<div class="crm-item"><span class="crm-item-text">⏱️ 마지막 연락 · ${fmtDate(lastContact)}</span></div>` : '';
-    const crmCount = meetings.length + referrals.length;
-
-    return `
-    <div class="biz-card">
-      <div class="card-main">
-        <div class="card-avatar">${avatarHtml}</div>
-        <div class="card-info">
-          <div class="card-name">${card.name||'이름 없음'}</div>
-          ${card.nameEn?`<div class="card-name-en">${card.nameEn}</div>`:''}
-          ${card.company?`<div class="card-company">${card.company}</div>`:''}
-          ${card.chapter?`<div class="card-chapter">📍 ${card.chapter}</div>`:''}
-          ${bniHtml}
-        </div>
-      </div>
-      <div class="card-actions">
-        ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 ${card.phone}</a>`:'<span></span>'}
-        ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 명함 보기</a>`:''}
-        <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️</button>
-      </div>
-      <button class="crm-toggle" onclick="toggleCRM(this)">
-        <span class="crm-arrow">▶</span> BNI 활동 기록
-        ${crmCount>0?`<span style="color:var(--gold);margin-left:4px;">(${crmCount}건)</span>`:''}
-      </button>
-      <div class="card-crm">
-        <div class="crm-title">121 미팅 기록</div>
-        <div class="crm-row">
-          <input class="crm-input meet-date" type="date">
-          <input class="crm-input meet-memo" placeholder="메모" style="flex:2">
-          <button class="crm-save" onclick="addCRM(this,'${card.docId}','meetings')">저장</button>
-        </div>
-        <div class="crm-title" style="margin-top:8px">리퍼럴 기록</div>
-        <div class="crm-row">
-          <input class="crm-input ref-date" type="date">
-          <input class="crm-input ref-memo" placeholder="메모" style="flex:2">
-          <button class="crm-save" onclick="addCRM(this,'${card.docId}','referrals')">저장</button>
-        </div>
-        <div class="crm-log">
-          ${lastContactStr}${meetingLogs}${referralLogs}
-          ${!lastContact&&crmCount===0?'<div class="crm-item"><span class="crm-item-text" style="opacity:.4">기록 없음</span></div>':''}
-        </div>
-      </div>
-      <div class="card-saved">저장일: ${fmtDate(card.savedAt)}</div>
-    </div>`;
-  }).join('');
-
-  // 오늘 날짜 기본값
-  document.querySelectorAll('.meet-date,.ref-date').forEach(el => {
-    if(!el.value) el.value = new Date().toISOString().split('T')[0];
-  });
-}
-
-// ===== CRM 토글 =====
-window.toggleCRM = function(btn) {
-  const crm = btn.nextElementSibling;
-  const arrow = btn.querySelector('.crm-arrow');
-  crm.classList.toggle('open');
-  arrow.textContent = crm.classList.contains('open') ? '▼' : '▶';
-};
-
-// ===== CRM 추가 =====
-window.addCRM = async function(btn, docId, type) {
-  const row = btn.closest('.crm-row');
-  const isM = type === 'meetings';
-  const dateEl = row.querySelector(isM ? '.meet-date' : '.ref-date');
-  const memoEl = row.querySelector(isM ? '.meet-memo' : '.ref-memo');
-  if(!dateEl.value) { showToast('날짜를 선택해주세요'); return; }
-  const entry = { date: dateEl.value, memo: memoEl.value };
-  try {
-    const ref = db.collection('users').doc(currentUser.uid).collection('cards').doc(docId);
-    const snap = await ref.get();
-    const arr = snap.data()[type] || [];
-    arr.unshift(entry);
-    await ref.update({ [type]: arr, lastContact: new Date().toISOString() });
-    memoEl.value = '';
-    await loadCards();
-    showToast('✅ 기록 저장됨');
-  } catch(e) { showToast('❌ ' + e.message); }
-};
-
-// ===== CRM 삭제 =====
-window.deleteCRM = async function(docId, type, idx) {
-  try {
-    const ref = db.collection('users').doc(currentUser.uid).collection('cards').doc(docId);
-    const snap = await ref.get();
-    const arr = snap.data()[type] || [];
-    arr.splice(idx, 1);
-    await ref.update({ [type]: arr });
-    await loadCards();
-    showToast('🗑️ 삭제됨');
-  } catch(e) { showToast('❌ ' + e.message); }
-};
-
-// ===== 마지막 연락일 =====
-window.updateLastContact = async function(docId) {
-  try {
-    await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId)
-      .update({ lastContact: new Date().toISOString() });
-  } catch(e) {}
-};
-
-// ===== 챕터 필터 =====
-window.filterChapter = function(chapter) {
-  currentChapter = chapter;
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.trim() === chapter));
-  applyFilter();
-};
-
-function applyFilter() {
-  let cards = [...allCards];
-  if(currentChapter !== '전체') {
-    cards = cards.filter(c => (c.chapter||'기타') === currentChapter);
-  }
-  renderCards(cards);
-}
-
-// ===== 검색 =====
-window.onSearch = function(val) {
-  clearTimeout(searchTimer);
-  const q = val.trim();
-  const aiEl = document.getElementById('aiResult');
-  if(!q) { if(aiEl) aiEl.innerHTML=''; applyFilter(); return; }
-
-  // 기본 검색 즉시
-  const basic = allCards.filter(c => {
-    const text = [c.name,c.nameEn,c.company,c.title,c.bni,c.fullText,c.chapter].filter(Boolean).join(' ').toLowerCase();
-    return text.includes(q.toLowerCase());
-  });
-  renderCards(basic);
-
-  // AI 검색 딜레이
-  searchTimer = setTimeout(() => aiSearch(q), 800);
-};
-
-async function aiSearch(query) {
-  if(allCards.length === 0) return;
-  const aiEl = document.getElementById('aiResult');
-  if(!aiEl) return;
-  aiEl.innerHTML = `<div class="ai-loading"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div><span style="font-size:11px;color:var(--muted);margin-left:4px">AI 검색 중...</span></div>`;
-
-  const summaries = allCards.map((c,i) =>
-    `[${i}] ${c.name}(${c.chapter||'기타'}) ${c.company||''} ${c.title||''} ${c.bni||''} ${(c.fullText||'').slice(0,200)}`
-  ).join('\n');
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        system: '당신은 BNI 명함첩 AI 검색 도우미입니다. JSON만 반환하세요: {"matched":[인덱스배열],"summary":"한줄요약"}',
-        messages: [{ role: 'user', content: `검색어: "${query}"\n\n명함 목록:\n${summaries}\n\n검색어와 관련된 명함 인덱스를 찾아주세요. 업종, 전문분야, 리퍼럴 대상, 이름 등을 의미적으로 매칭하세요.` }]
-      })
-    });
-    const data = await res.json();
-    const text = data.content?.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
-    const result = JSON.parse(text);
-    const matched = result.matched || [];
-    if(matched.length > 0) {
-      aiEl.innerHTML = `<div class="ai-result">✨ ${result.summary||''}</div>`;
-      renderCards(matched.map(i=>allCards[i]).filter(Boolean));
-    } else {
-      aiEl.innerHTML = `<div class="ai-result">검색 결과가 없어요.</div>`;
-      renderCards([]);
-    }
-  } catch(e) { aiEl.innerHTML = ''; }
-}
-
-// ===== 카드 삭제 =====
-window.deleteCard = async function(docId, name) {
-  if(!confirm(`"${name}" 명함을 삭제할까요?`)) return;
-  try {
-    await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).delete();
-    await loadCards();
-    showToast('🗑️ 삭제되었습니다.');
-  } catch(e) { showToast('❌ ' + e.message); }
-};
-
-// ===== 카드 로드 =====
-async function loadCards() {
-  try {
-    const snap = await db.collection('users').doc(currentUser.uid).collection('cards').orderBy('savedAt','desc').get();
-    allCards = snap.docs.map(d => ({ ...d.data(), docId: d.id }));
-    applyFilter();
-  } catch(e) { showToast('❌ 불러오기 실패'); }
-}
-
-// ===== 공유 =====
-window.shareApp = function() {
-  if(navigator.share) navigator.share({ title:'BNI 명함첩', url: window.location.href });
-  else { navigator.clipboard?.writeText(window.location.href); showToast('📋 링크 복사됨'); }
+  catch(e) { if(e.code !== 'auth/popup-closed-by-user') alert('Google 로그인 실패'); }
 };
 
 // ===== Auth 상태 감지 =====
-auth.onAuthStateChanged(async user => {
+auth.onAuthStateChanged(user => {
   if(user) {
     currentUser = user;
-    renderApp();
-    await loadCards();
+    init();
   } else {
     currentUser = null;
-    allCards = [];
     renderLogin();
   }
 });
