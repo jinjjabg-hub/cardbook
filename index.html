@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <style>
 :root{
   --olive:#252B22;--olive-mid:#343D30;--taupe:#7D6E57;
@@ -82,21 +83,21 @@ input:focus{border-color:var(--olive)}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
         <div style="flex:1;min-width:0">
           <p style="font-size:11px;color:rgba(255,255,255,.5);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px" data-i18n="mycard">My Digital Card</p>
-          <h2 style="font-size:22px;font-weight:800;color:#fff;margin-bottom:4px">Song Seunghun</h2>
-          <p style="font-size:13px;color:rgba(255,255,255,.7)">CEO · TomaLab</p>
+          <h2 id="home-name" style="font-size:22px;font-weight:800;color:#fff;margin-bottom:4px">-</h2>
+          <p id="home-title-co" style="font-size:13px;color:rgba(255,255,255,.7)">-</p>
           <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
             <span class="badge" style="background:rgba(125,110,87,.3);color:rgba(255,255,255,.85)">F&B Consultant</span>
             <span class="badge" style="background:rgba(125,110,87,.3);color:rgba(255,255,255,.85)">Wellness</span>
           </div>
         </div>
         <div style="background:rgba(255,255,255,.9);border-radius:10px;padding:8px;flex-shrink:0;margin-left:12px">
-          <div class="qr-grid" id="qr-display"></div>
+          <canvas id="qr-display" width="100" height="100" style="display:block;border-radius:6px"></canvas>
         </div>
       </div>
       <div style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px 12px;margin-bottom:14px">
         <p style="font-size:10px;color:rgba(255,255,255,.5);letter-spacing:.06em;margin-bottom:4px">CONNECTION LINK</p>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <p style="font-size:12px;color:rgba(255,255,255,.8);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">cardbook.io/seunghun?chain=seunghun</p>
+          <p id="my-link-text" style="font-size:12px;color:rgba(255,255,255,.8);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">cardbook.io/?uid=...</p>
           <button onclick="copyLink()" style="background:rgba(255,255,255,.15);border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;color:#fff;cursor:pointer;white-space:nowrap;flex-shrink:0" data-i18n="copy">Copy</button>
         </div>
       </div>
@@ -258,8 +259,8 @@ input:focus{border-color:var(--olive)}
       <div style="display:flex;gap:14px;align-items:center;margin-bottom:16px">
         <div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;border:2px solid rgba(255,255,255,.2);flex-shrink:0">S</div>
         <div>
-          <h2 style="font-size:20px;font-weight:800;color:#fff">Song Seunghun</h2>
-          <p style="font-size:13px;color:rgba(255,255,255,.7)">CEO · TomaLab</p>
+          <h2 id="my-name" style="font-size:20px;font-weight:800;color:#fff">-</h2>
+          <p id="my-title-co" style="font-size:13px;color:rgba(255,255,255,.7)">-</p>
           <div style="display:flex;gap:6px;margin-top:6px">
             <span style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:3px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px"><span class="ms" style="font-size:12px">groups</span><span data-i18n="hubMember">Hub Member</span></span>
           </div>
@@ -317,7 +318,7 @@ input:focus{border-color:var(--olive)}
     </div>
 
     <div style="padding:0 20px">
-      <button style="width:100%;background:rgba(186,26,26,.08);border:1px solid rgba(186,26,26,.2);border-radius:12px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;color:var(--error);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+      <button onclick="auth.signOut()" style="width:100%;background:rgba(186,26,26,.08);border:1px solid rgba(186,26,26,.2);border-radius:12px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;color:var(--error);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
         <span class="ms" style="font-size:18px">logout</span><span data-i18n="logout">Log Out</span>
       </button>
       <p style="text-align:center;margin-top:12px;font-size:11px;color:var(--outline)">CardBook v4.2.0 · Global Premium Edition</p>
@@ -518,24 +519,12 @@ const Referral_Logs = [
   {owner_id:'New Client B',referrer_chain:'seunghun',action_type:'Contract',status:'Completed',time:'16:20',date:'Yesterday'},
 ];
 
-const cards = [
-  {id:'hwachun',name:'Lee Hwachun',title:'CEO',company:'HWA Beauty Lab',industry:'beauty',tags:['Beauty','Skincare'],referrer:'Direct',chain:'seunghun',avatar:'L'},
-  {id:'seowon',name:'Lee Seowon',title:'CEO',company:'Wellson T.',industry:'wellness',tags:['Wellness','Health'],referrer:'Song S.',chain:'seunghun',avatar:'S'},
-  {id:'sungkwon',name:'Park Sungjun',title:'Director',company:'SJ Enterprise',industry:'marketing',tags:['Marketing','Consulting'],referrer:'Lee H. → You',chain:'seunghun>hwachun',avatar:'P'},
-  {id:'mihee',name:'Lee Miyeh',title:'CEO',company:'Miyeh Salon',industry:'beauty',tags:['Beauty','Lifestyle'],referrer:'Song S.',chain:'seunghun',avatar:'L'},
-  {id:'misong',name:'Kim Misong',title:'Coach',company:'Misong Coaching',industry:'wellness',tags:['Wellness','Coaching'],referrer:'Lee S. → You',chain:'seunghun>seowon',avatar:'K'},
-  {id:'tae',name:'Kim Taehyung',title:'CEO',company:'TH F&B Group',industry:'food',tags:['F&B','Startup'],referrer:'Direct',chain:'seunghun',avatar:'K'},
-];
+// cards 배열은 Firestore에서 loadMyCards()로 채워짐 (단계2)
 
 // =====================================================
 // RENDER
 // =====================================================
-function renderQR(){
-  const g = document.getElementById('qr-display');
-  if(!g) return;
-  const p=[1,1,1,0,1,1,1,1,0,1,1,1,0,1,1,1,1,0,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,0,1,0,0,1,0,1,1,0,0,1,0,1];
-  g.innerHTML = p.map(v=>`<div class="qr-cell" style="background:${v?'#252B22':'transparent'}"></div>`).join('');
-}
+function renderQR(){ /* QR은 generateMyQR()로 대체됨 */ }
 
 function renderLogs(){
   const c = document.getElementById('log-list');
@@ -647,20 +636,11 @@ function closeAllModals(){ document.getElementById('modal-overlay').style.displa
 // =====================================================
 // ACTIONS
 // =====================================================
-function copyLink(){
-  navigator.clipboard?.writeText('https://cardbook.io/seunghun?chain=seunghun').catch(()=>{});
-  showToast('📋 '+(T.copyLink?.[currentLang]||'Link copied'));
-}
 function shareCard(){ showModal('share'); }
 function share(type){ closeAllModals(); showToast('✓ '+type); }
 function simulateScan(){
   document.getElementById('scan-result').style.display='block';
   document.getElementById('scan-tips').style.display='none';
-}
-function saveScan(){
-  document.getElementById('scan-result').style.display='none';
-  document.getElementById('scan-tips').style.display='block';
-  showToast('✓ '+(T.saveCard?.[currentLang]||'Card saved'));
 }
 function logAction(type){
   const chain=sessionStorage.getItem('referrer_chain')||'seunghun';
@@ -767,7 +747,14 @@ window.handleEmailAuth = async function() {
     if(authMode === 'login') {
       await auth.signInWithEmailAndPassword(email, pw);
     } else {
-      await auth.createUserWithEmailAndPassword(email, pw);
+      const cred = await auth.createUserWithEmailAndPassword(email, pw);
+      await db.collection('users').doc(cred.user.uid).set({
+        name: email.split('@')[0],
+        title: '',
+        company: '',
+        uid: cred.user.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
     }
   } catch(e) {
     const msgs = {
@@ -783,20 +770,148 @@ window.handleEmailAuth = async function() {
 };
 
 window.doGoogleLogin = async function() {
-  try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
-  catch(e) { if(e.code !== 'auth/popup-closed-by-user') alert('Google 로그인 실패'); }
+  try {
+    const result = await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    const u = result.user;
+    await db.collection('users').doc(u.uid).set({
+      name: u.displayName || u.email.split('@')[0],
+      title: '',
+      company: '',
+      uid: u.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch(e) {
+    if(e.code !== 'auth/popup-closed-by-user') alert('Google 로그인 실패');
+  }
 };
 
 // ===== Auth 상태 감지 =====
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async user => {
   if(user) {
     currentUser = user;
+    await loadUserProfile(user.uid);
     init();
+    loadMyCards();
   } else {
     currentUser = null;
     renderLogin();
   }
 });
+
+// =====================================================
+// 단계 1 — Firestore users 프로필 로드 + URL 생성
+// =====================================================
+async function loadUserProfile(uid) {
+  try {
+    const doc = await db.collection('users').doc(uid).get();
+    let name = '이름 없음', title = '', company = '';
+    if(doc.exists) {
+      const d = doc.data();
+      name = d.name || name;
+      title = d.title || '';
+      company = d.company || '';
+    }
+    const titleCo = (title && company) ? `${title} · ${company}` : (title || company || '');
+    const initial = name.charAt(0).toUpperCase();
+
+    const el = (id) => document.getElementById(id);
+    if(el('home-name'))     el('home-name').textContent = name;
+    if(el('home-title-co')) el('home-title-co').textContent = titleCo;
+    if(el('my-name'))       el('my-name').textContent = name;
+    if(el('my-title-co'))   el('my-title-co').textContent = titleCo;
+    if(el('my-link-text'))  el('my-link-text').textContent = `cardbook.io/?uid=${uid}`;
+
+    // 홈 아바타 이니셜 (헤더 오른쪽 원)
+    const avatarEl = document.querySelector('[onclick="switchView(\'mypage\')"]');
+    if(avatarEl) avatarEl.textContent = initial;
+
+    generateMyQR(uid);
+  } catch(e) {
+    console.error('프로필 로드 실패', e);
+  }
+}
+
+// =====================================================
+// 단계 3 — QR 동적 생성
+// =====================================================
+function generateMyQR(uid) {
+  const canvas = document.getElementById('qr-display');
+  if(!canvas || typeof QRCode === 'undefined') return;
+  QRCode.toCanvas(canvas, `https://cardbook.io/?uid=${uid}`, {
+    width: 100, margin: 1,
+    color: { dark: '#252B22', light: '#FFFFFF' }
+  }, err => { if(err) console.error('QR 오류', err); });
+}
+
+function copyLink(){
+  const uid = currentUser?.uid || '';
+  navigator.clipboard?.writeText(`https://cardbook.io/?uid=${uid}`).catch(()=>{});
+  showToast('📋 '+(T.copyLink?.[currentLang]||'Link copied'));
+}
+
+// =====================================================
+// 단계 2 — Firestore cards CRUD
+// =====================================================
+let cards = [];
+
+async function loadMyCards() {
+  if(!currentUser) return;
+  try {
+    const snap = await db.collection('cards')
+      .where('owner_uid', '==', currentUser.uid)
+      .orderBy('savedAt', 'desc')
+      .get();
+    cards = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderCards(currentFilter);
+    renderLogs();
+  } catch(e) {
+    // 인덱스 미생성 시 fallback
+    try {
+      const snap2 = await db.collection('cards')
+        .where('owner_uid', '==', currentUser.uid).get();
+      cards = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderCards(currentFilter);
+    } catch(e2) { console.error('카드 로드 실패', e2); }
+  }
+}
+
+window.saveScan = async function() {
+  if(!currentUser) { showToast('❌ 로그인 필요'); return; }
+  const inputs = document.querySelectorAll('#scan-result input[type=text]');
+  const nameVal    = inputs[0]?.value || '';
+  const titleVal   = inputs[1]?.value || '';
+  const companyVal = inputs[2]?.value || '';
+  const phoneVal   = inputs[3]?.value || '';
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const refChain = urlParams.get('chain') || currentUser.uid;
+
+  try {
+    await db.collection('cards').add({
+      owner_uid: currentUser.uid,
+      name: nameVal, title: titleVal,
+      company: companyVal, phone: phoneVal,
+      industry: 'etc', tags: [],
+      referrer: refChain, chain: refChain,
+      avatar: nameVal.charAt(0).toUpperCase() || '?',
+      savedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await db.collection('Referral_Logs').add({
+      owner_uid: currentUser.uid,
+      saved_card_name: nameVal,
+      referrer_chain: refChain,
+      action_type: 'Save',
+      status: 'Completed',
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    document.getElementById('scan-result').style.display='none';
+    document.getElementById('scan-tips').style.display='block';
+    showToast('✓ '+(T.saveCard?.[currentLang]||'Card saved'));
+    loadMyCards();
+  } catch(e) {
+    showToast('❌ 저장 실패: '+e.message);
+  }
+};
 </script>
 </body>
 </html>
