@@ -355,7 +355,7 @@ function renderApp() {
     <div class="bottom-nav">
       <a href="https://jinjjabg-hub.github.io/BNI-PIONEER-cards/송승훈/" class="nav-btn"><span class="icon">📇</span><span>내 명함</span></a>
       <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
-      <button class="nav-btn" onclick="shareApp()"><span class="icon">📤</span><span>공유</span></button>
+      <button class="nav-btn" onclick="openScanModal()"><span class="icon">📷</span><span>명함스캔</span></button>
     </div>
   `;
   renderCards(allCards);
@@ -726,5 +726,62 @@ function toggleQR() {
   }
 }
 </script>
+
+<!-- ===== OCR 스캔 모달 ===== -->
+<div id="scanModal" class="scan-modal" style="display:none" onclick="closeScanModal(event)">
+  <div class="scan-sheet" id="scanSheet">
+    <div class="scan-sheet-title">📷 명함 스캔</div>
+
+    <!-- 단계1: 촬영/선택 -->
+    <div id="scanStep1">
+      <div class="scan-btn-row">
+        <button class="scan-action-btn cam" onclick="triggerCamera()">
+          <span class="bi">📷</span>카메라 촬영
+        </button>
+        <button class="scan-action-btn gal" onclick="triggerGallery()">
+          <span class="bi">🖼️</span>갤러리 선택
+        </button>
+      </div>
+      <p style="font-size:12px;color:#5a7a68;text-align:center;line-height:1.6">
+        명함을 평평하게 놓고 촬영하세요<br>이름·직함·회사·전화번호 자동 인식
+      </p>
+    </div>
+
+    <!-- 단계2: OCR 처리 중 -->
+    <div id="scanStep2" style="display:none">
+      <div class="ocr-loading">
+        <div class="ocr-spinner"></div>
+        <div style="font-size:14px;font-weight:700">명함 인식 중...</div>
+        <div style="font-size:12px;color:#5a7a68;margin-top:6px">잠시만 기다려주세요</div>
+      </div>
+    </div>
+
+    <!-- 단계3: 결과 확인 -->
+    <div id="scanStep3" style="display:none">
+      <img id="ocrPreview" class="ocr-preview" src="" alt="명함 미리보기"/>
+      <div style="font-size:12px;color:#5a7a68;margin-bottom:14px">✏️ 인식된 정보를 확인·수정 후 저장하세요</div>
+      <div class="ocr-field"><div class="ocr-label">이름</div><input class="ocr-input" id="ocrName" placeholder="이름"/></div>
+      <div class="ocr-field"><div class="ocr-label">영문 이름</div><input class="ocr-input" id="ocrNameEn" placeholder="Name in English"/></div>
+      <div class="ocr-field"><div class="ocr-label">직함</div><input class="ocr-input" id="ocrTitle" placeholder="직함"/></div>
+      <div class="ocr-field"><div class="ocr-label">회사</div><input class="ocr-input" id="ocrCompany" placeholder="회사명"/></div>
+      <div class="ocr-field"><div class="ocr-label">전화번호</div><input class="ocr-input" id="ocrPhone" placeholder="010-0000-0000" type="tel"/></div>
+      <div class="ocr-field"><div class="ocr-label">이메일</div><input class="ocr-input" id="ocrEmail" placeholder="email@example.com" type="email"/></div>
+      <div class="ocr-field">
+        <div class="ocr-label">챕터</div>
+        <select class="ocr-input" id="ocrChapter">
+          <option value="파이오니어">파이오니어</option>
+          <option value="자이언츠">자이언츠</option>
+          <option value="기타" selected>기타</option>
+        </select>
+      </div>
+      <button class="ocr-save-btn" onclick="saveOcrCard()">💾 명함 저장</button>
+    </div>
+
+    <!-- 숨겨진 파일 input -->
+    <input type="file" id="ocrFileInput" accept="image/*" style="display:none" onchange="handleOcrFile(event)"/>
+    <input type="file" id="ocrCamInput" accept="image/*" capture="environment" style="display:none" onchange="handleOcrFile(event)"/>
+  </div>
+</div>
+
 </body>
 </html>
