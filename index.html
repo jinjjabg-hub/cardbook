@@ -130,7 +130,7 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .empty-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:6px;}
 .empty-desc{font-size:12px;color:var(--muted);line-height:1.75;}
 .ai-result{margin:0 12px 8px;padding:10px 14px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:10px;font-size:12px;color:rgba(240,232,216,0.7);line-height:1.6;}
-.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:430px;background:rgba(10,10,10,0.97);backdrop-filter:blur(16px);border-top:1px solid var(--border);z-index:200;display:flex;}
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:430px;background:rgba(240,250,244,0.97);backdrop-filter:blur(16px);border-top:1px solid rgba(30,100,60,0.15);z-index:200;display:flex;}
 .nav-btn{flex:1;padding:13px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--muted);text-decoration:none;background:none;border:none;cursor:pointer;transition:all .3s;font-family:'Noto Sans KR',sans-serif;}
 .nav-btn .icon{font-size:20px;line-height:1;}
 .nav-btn:hover,.nav-btn.active{color:var(--gold);}
@@ -142,6 +142,12 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .ai-dot:nth-child(3){animation-delay:.3s;}
 @keyframes bounce{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
 </style>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="명함첩">
+  <meta name="theme-color" content="#f0faf4">
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
 <div id="appRoot">
@@ -657,6 +663,11 @@ auth.onAuthStateChanged(async user => {
     renderApp();
     await loadUserProfile(user.uid);
     await loadCards();
+    // 홈화면 추가 배너 — 닫은 적 없으면 항상 표시
+    if(!localStorage.getItem("addHomeDismissed")) {
+      const b = document.getElementById("addHomeBanner");
+      if(b) b.style.display = "block";
+    }
   } else {
     currentUser = null;
     allCards = [];
