@@ -587,6 +587,135 @@ async function loadCards() {
 
 // ===== 공유 =====
 
+
+
+// ===== 홈화면 추가 안내 =====
+function showInstallPopup() {
+  // 이미 설치됐으면 스킵
+  if(window.matchMedia('(display-mode: standalone)').matches) return;
+  // 한 번 닫은 적 있으면 스킵
+  if(localStorage.getItem('installSkipped')) return;
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|chrome/i.test(navigator.userAgent);
+  const isAndroid = /android/i.test(navigator.userAgent);
+
+  const stepsEl = document.getElementById('installSteps');
+  const mainBtn = document.getElementById('installMainBtn');
+
+  if(isIOS && isSafari) {
+    // iOS Safari — 수동 안내
+    stepsEl.innerHTML = `
+      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">하단 <b>공유 버튼(□↑)</b> 탭</div></div>
+      <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 선택</div></div>
+      <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text">오른쪽 위 <b>"추가"</b> 탭</div></div>
+    `;
+    mainBtn.textContent = '확인했어요!';
+    mainBtn.onclick = closeInstallPopup;
+  } else if(isIOS && !isSafari) {
+    // iOS 크롬 등
+    stepsEl.innerHTML = `
+      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text"><b>Safari</b>로 이 페이지 열기</div></div>
+      <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text">하단 <b>공유 버튼(□↑)</b> 탭</div></div>
+      <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 선택</div></div>
+    `;
+    mainBtn.textContent = '확인했어요!';
+    mainBtn.onclick = closeInstallPopup;
+  } else if(_deferredInstall) {
+    // 안드로이드 — 네이티브 설치
+    stepsEl.innerHTML = `
+      <div class="install-step"><div class="install-step-num">✓</div><div class="install-step-text">아래 버튼 하나만 누르면 끝!</div></div>
+    `;
+    mainBtn.textContent = '📲 홈화면에 추가하기';
+    mainBtn.onclick = doInstall;
+  } else {
+    // 기타 — 브라우저 메뉴 안내
+    stepsEl.innerHTML = `
+      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">브라우저 메뉴 <b>(⋮)</b> 탭</div></div>
+      <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 또는 <b>"앱 설치"</b> 선택</div></div>
+    `;
+    mainBtn.textContent = '확인했어요!';
+    mainBtn.onclick = closeInstallPopup;
+  }
+
+  document.getElementById('installPopup').style.display = 'flex';
+}
+
+window.doInstall = async function() {
+  if(_deferredInstall) {
+    _deferredInstall.prompt();
+    const { outcome } = await _deferredInstall.userChoice;
+    if(outcome === 'accepted') showToast('✅ 홈화면에 추가됐어요!');
+    _deferredInstall = null;
+  }
+  closeInstallPopup();
+};
+
+window.closeInstallPopup = function() {
+  document.getElementById('installPopup').style.display = 'none';
+  localStorage.setItem('installSkipped', '1');
+};
+
+// ===== 디카 → 카드북 파라미터 처리 =====
+let _dicaCardData = null;
+
+function checkDicaParams() {
+  const p = new URLSearchParams(window.location.search);
+  if(!p.get('name')) return; // 파라미터 없으면 무시
+
+  _dicaCardData = {
+    name:    p.get('name')    || '',
+    nameEn:  p.get('nameEn')  || '',
+    title:   p.get('title')   || '',
+    company: p.get('company') || '',
+    phone:   p.get('phone')   || '',
+    email:   p.get('email')   || '',
+    chapter: p.get('chapter') || '기타',
+    bni:     p.get('bni')     || '',
+    from:    p.get('from')    || '',
+  };
+
+  // 팝업 채우기
+  const d = _dicaCardData;
+  document.getElementById('dicaAvatar').textContent  = d.name.charAt(0) || '?';
+  document.getElementById('dicaName').textContent    = d.name;
+  document.getElementById('dicaSub').textContent     = [d.title, d.bni].filter(Boolean).join(' · ');
+  document.getElementById('dicaCompany').textContent = d.company;
+  document.getElementById('dicaPopup').style.display = 'flex';
+
+  // URL 파라미터 제거 (뒤로가기 시 재표시 방지)
+  window.history.replaceState({}, '', window.location.pathname);
+}
+
+window.confirmDicaSave = async function() {
+  if(!currentUser) { showToast('❌ 로그인 후 저장 가능해요'); return; }
+  if(!_dicaCardData) return;
+
+  const d = _dicaCardData;
+  try {
+    await db.collection('users').doc(currentUser.uid)
+      .collection('cards').doc('dica-' + Date.now()).set({
+        name:    d.name,
+        nameEn:  d.nameEn,
+        title:   d.title,
+        company: d.company,
+        phone:   d.phone,
+        email:   d.email,
+        chapter: d.chapter,
+        bni:     d.bni,
+        avatar:  d.name.charAt(0),
+        referrer: 'DiCA 명함',
+        savedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    document.getElementById('dicaPopup').style.display = 'none';
+    showToast('✅ ' + d.name + '님 명함 저장됐어요!');
+    await loadCards();
+    setTimeout(showInstallPopup, 800); // 저장 후 홈화면 추가 안내
+  } catch(e) {
+    showToast('❌ 저장 실패: ' + e.message);
+  }
+};
+
 // ===== 홈화면 추가 =====
 let _deferredInstall = null;
 
@@ -663,6 +792,7 @@ auth.onAuthStateChanged(async user => {
     renderApp();
     await loadUserProfile(user.uid);
     await loadCards();
+    checkDicaParams(); // 디카에서 넘어온 파라미터 확인
     // 홈화면 추가 배너 — 닫은 적 없으면 항상 표시
     if(!localStorage.getItem("addHomeDismissed")) {
       const b = document.getElementById("addHomeBanner");
@@ -737,6 +867,33 @@ function toggleQR() {
   }
 }
 </script>
+
+
+
+<!-- ===== 홈화면 추가 안내 팝업 ===== -->
+<div id="installPopup" class="install-popup" style="display:none">
+  <div class="install-sheet">
+    <div class="install-icon">📱</div>
+    <div class="install-title">명함첩을 홈화면에 추가하세요!</div>
+    <div class="install-desc">다음부턴 아이콘 하나로 바로 열려요<br>앱처럼 사용할 수 있어요</div>
+    <div id="installSteps"></div>
+    <button class="install-main-btn" id="installMainBtn" onclick="doInstall()">홈화면에 추가하기</button>
+    <button class="install-skip-btn" onclick="closeInstallPopup()">나중에 할게요</button>
+  </div>
+</div>
+
+<!-- ===== 디카 → 카드북 저장 팝업 ===== -->
+<div id="dicaPopup" class="dica-popup" style="display:none">
+  <div class="dica-sheet">
+    <div class="dica-avatar" id="dicaAvatar">?</div>
+    <div class="dica-name" id="dicaName"></div>
+    <div class="dica-sub" id="dicaSub"></div>
+    <div class="dica-company" id="dicaCompany"></div>
+    <p style="font-size:12px;color:#5a7a68;text-align:center;margin-bottom:20px;line-height:1.6">이 명함을 명함첩에 저장할까요?</p>
+    <button class="dica-save-btn" onclick="confirmDicaSave()">💾 저장하기</button>
+    <button class="dica-cancel-btn" onclick="document.getElementById('dicaPopup').style.display='none'">취소</button>
+  </div>
+</div>
 
 <!-- ===== OCR 스캔 모달 ===== -->
 <div id="scanModal" class="scan-modal" style="display:none" onclick="closeScanModal(event)">
