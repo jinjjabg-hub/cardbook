@@ -136,6 +136,23 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .nav-btn:hover,.nav-btn.active{color:var(--gold);}
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:rgba(20,18,9,0.97);border:1px solid var(--border);border-radius:10px;padding:10px 18px;font-size:12px;color:var(--cream);z-index:500;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;}
 .toast.show{opacity:1;}
+
+/* SCAN MODAL */
+.scan-modal{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:400;display:flex;align-items:flex-end;justify-content:center;}
+.scan-sheet{background:#f0faf4;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:24px 20px 40px;max-height:90vh;overflow-y:auto;}
+.scan-btn-row{display:flex;gap:10px;margin-bottom:20px;}
+.scan-action-btn{flex:1;padding:18px 10px;border-radius:16px;border:none;font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;}
+.scan-action-btn.cam{background:#1a3a2a;color:#f0faf4;}
+.scan-action-btn.gal{background:#e4f4ea;color:#1a3a2a;border:1.5px solid rgba(30,100,60,0.2);}
+.scan-action-btn .bi{font-size:28px;}
+.ocr-loading{display:flex;flex-direction:column;align-items:center;gap:12px;padding:40px 0;}
+.ocr-spinner{width:36px;height:36px;border:3px solid rgba(160,120,32,0.2);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;}
+.ocr-preview{width:100%;border-radius:12px;margin-bottom:14px;max-height:160px;object-fit:cover;}
+.ocr-field{margin-bottom:10px;}
+.ocr-label{font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:.05em;}
+.ocr-input{width:100%;background:rgba(255,255,255,0.9);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;color:#1a3a2a;font-family:'Noto Sans KR',sans-serif;outline:none;}
+.ocr-input:focus{border-color:var(--gold);}
+.ocr-save-btn{width:100%;padding:14px;border-radius:14px;border:none;background:#1a3a2a;color:#f0faf4;font-family:'Noto Sans KR',sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;}
 .ai-loading{display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:12px;color:var(--gold);}
 .ai-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);animation:bounce .8s infinite;}
 .ai-dot:nth-child(2){animation-delay:.15s;}
