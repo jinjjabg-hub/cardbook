@@ -901,6 +901,179 @@ function toggleQR() {
     canvas.style.display = 'none';
   }
 }
+
+// ===== 스캔 모달 =====
+window.openScanModal = function() {
+  document.getElementById('scanModal').style.display = 'flex';
+  switchScanTab('scan');
+};
+
+window.closeScanModal = function(e) {
+  if(e && e.target !== document.getElementById('scanModal')) return;
+  document.getElementById('scanModal').style.display = 'none';
+};
+
+window.switchScanTab = function(tab) {
+  const isScan = tab === 'scan';
+  document.getElementById('paneScan').style.display   = isScan ? 'block' : 'none';
+  document.getElementById('paneContact').style.display = isScan ? 'none'  : 'block';
+  document.getElementById('tabScan').style.background    = isScan ? '#1a3a2a' : '#fff';
+  document.getElementById('tabScan').style.color         = isScan ? '#f0faf4' : '#1a3a2a';
+  document.getElementById('tabScan').style.border        = isScan ? 'none' : '1.5px solid rgba(30,100,60,0.2)';
+  document.getElementById('tabContact').style.background = isScan ? '#fff' : '#1a3a2a';
+  document.getElementById('tabContact').style.color      = isScan ? '#1a3a2a' : '#f0faf4';
+  document.getElementById('tabContact').style.border     = isScan ? '1.5px solid rgba(30,100,60,0.2)' : 'none';
+};
+
+window.triggerCamera = function() {
+  document.getElementById('ocrCamInput').click();
+};
+
+window.triggerGallery = function() {
+  document.getElementById('ocrFileInput').click();
+};
+
+window.handleOcrFile = async function(e) {
+  const file = e.target.files[0];
+  if(!file) return;
+
+  // 단계2 표시
+  document.getElementById('scanStep1').style.display = 'none';
+  document.getElementById('scanStep2').style.display = 'block';
+  document.getElementById('scanStep3').style.display = 'none';
+
+  try {
+    // base64 변환
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+    // Google Vision API 호출
+    const VISION_KEY = 'AIzaSyBiZvDPaZAts3C6iiXkUw3TsiUBiqjWA3g';
+    const vRes = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [{ image: { content: base64 }, features: [{ type: 'TEXT_DETECTION' }] }]
+      })
+    });
+    const vData = await vRes.json();
+    const rawText = vData.responses?.[0]?.fullTextAnnotation?.text || '';
+
+    // Claude로 파싱
+    let parsed = { name:'', nameEn:'', title:'', company:'', phone:'', email:'' };
+    if(rawText) {
+      try {
+        const cRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 300,
+            system: '명함 OCR 텍스트에서 정보를 추출해 JSON만 반환. {"name":"","nameEn":"","title":"","company":"","phone":"","email":""}',
+            messages: [{ role: 'user', content: rawText }]
+          })
+        });
+        const cData = await cRes.json();
+        const txt = cData.content?.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
+        parsed = { ...parsed, ...JSON.parse(txt) };
+      } catch(err) {}
+    }
+
+    // 미리보기 & 단계3
+    document.getElementById('ocrPreview').src = URL.createObjectURL(file);
+    document.getElementById('ocrName').value    = parsed.name;
+    document.getElementById('ocrNameEn').value  = parsed.nameEn;
+    document.getElementById('ocrTitle').value   = parsed.title;
+    document.getElementById('ocrCompany').value = parsed.company;
+    document.getElementById('ocrPhone').value   = parsed.phone;
+    document.getElementById('ocrEmail').value   = parsed.email;
+
+    document.getElementById('scanStep2').style.display = 'none';
+    document.getElementById('scanStep3').style.display = 'block';
+  } catch(err) {
+    document.getElementById('scanStep1').style.display = 'block';
+    document.getElementById('scanStep2').style.display = 'none';
+    showToast('❌ 인식 실패: ' + err.message);
+  }
+  // input 초기화 (같은 파일 재선택 가능)
+  e.target.value = '';
+};
+
+window.saveOcrCard = async function() {
+  if(!currentUser) { showToast('❌ 로그인 필요'); return; }
+  const card = {
+    name:    document.getElementById('ocrName').value.trim(),
+    nameEn:  document.getElementById('ocrNameEn').value.trim(),
+    title:   document.getElementById('ocrTitle').value.trim(),
+    company: document.getElementById('ocrCompany').value.trim(),
+    phone:   document.getElementById('ocrPhone').value.trim(),
+    email:   document.getElementById('ocrEmail').value.trim(),
+    chapter: document.getElementById('ocrChapter').value,
+    referrer:'명함 스캔',
+    savedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  if(!card.name) { showToast('❌ 이름을 입력해주세요'); return; }
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc('scan-' + Date.now()).set(card);
+    document.getElementById('scanModal').style.display = 'none';
+    showToast('✅ ' + card.name + '님 명함 저장됐어요!');
+    await loadCards();
+    // 단계 리셋
+    document.getElementById('scanStep1').style.display = 'block';
+    document.getElementById('scanStep2').style.display = 'none';
+    document.getElementById('scanStep3').style.display = 'none';
+  } catch(e) { showToast('❌ ' + e.message); }
+};
+
+// ===== 연락처 가져오기 =====
+window.importContacts = async function() {
+  if(!('contacts' in navigator && 'ContactsManager' in window)) {
+    showToast('❌ 이 기능은 안드로이드 크롬에서만 지원돼요');
+    return;
+  }
+  try {
+    const contacts = await navigator.contacts.select(['name','tel','email','organization'], { multiple: false });
+    if(!contacts || contacts.length === 0) return;
+    const c = contacts[0];
+    document.getElementById('ctName').value    = c.name?.[0] || '';
+    document.getElementById('ctPhone').value   = c.tel?.[0]  || '';
+    document.getElementById('ctEmail').value   = c.email?.[0]|| '';
+    document.getElementById('ctCompany').value = c.organization?.[0] || '';
+    document.getElementById('ctTitle').value   = '';
+    document.getElementById('contactStep1').style.display = 'none';
+    document.getElementById('contactStep2').style.display = 'block';
+  } catch(e) {
+    showToast('❌ 연락처 가져오기 실패: ' + e.message);
+  }
+};
+
+window.saveContactCard = async function() {
+  if(!currentUser) { showToast('❌ 로그인 필요'); return; }
+  const card = {
+    name:    document.getElementById('ctName').value.trim(),
+    title:   document.getElementById('ctTitle').value.trim(),
+    company: document.getElementById('ctCompany').value.trim(),
+    phone:   document.getElementById('ctPhone').value.trim(),
+    email:   document.getElementById('ctEmail').value.trim(),
+    chapter: document.getElementById('ctChapter').value,
+    referrer:'연락처 가져오기',
+    savedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  if(!card.name) { showToast('❌ 이름을 입력해주세요'); return; }
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc('ct-' + Date.now()).set(card);
+    document.getElementById('scanModal').style.display = 'none';
+    showToast('✅ ' + card.name + '님 저장됐어요!');
+    await loadCards();
+    // 단계 리셋
+    document.getElementById('contactStep1').style.display = 'block';
+    document.getElementById('contactStep2').style.display = 'none';
+  } catch(e) { showToast('❌ ' + e.message); }
+};
 </script>
 
 
