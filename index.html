@@ -607,6 +607,11 @@ function showInstallPopup() {
       <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text">스크롤해서 <b>"홈 화면에 추가"</b> 선택</div></div>
       <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text">오른쪽 위 <b>"추가"</b> 탭 — 완료!</div></div>
     `;
+    stepsEl.innerHTML += `
+      <div style="margin-top:14px;background:rgba(255,201,0,0.12);border:1px solid rgba(255,201,0,0.3);border-radius:10px;padding:11px 13px;">
+        <p style="font-size:11px;color:#1a3a2a;font-weight:700;margin-bottom:4px;">💬 카카오톡으로 보셨나요?</p>
+        <p style="font-size:11px;color:#2a4a38;line-height:1.7;">우측 하단 <b>···</b> → <b>다른 브라우저로 열기</b><br>→ 크롬 선택 후 위 방법으로 설치하세요</p>
+      </div>`;
     mainBtn.textContent = '✅ 확인했어요!';
     mainBtn.onclick = closeInstallPopup;
   } else if(isIOS && !isSafari) {
@@ -616,6 +621,11 @@ function showInstallPopup() {
       <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text">Safari에서 하단 <b>공유 버튼 □↑</b> 탭</div></div>
       <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 선택 — 완료!</div></div>
     `;
+    stepsEl.innerHTML += `
+      <div style="margin-top:14px;background:rgba(255,201,0,0.12);border:1px solid rgba(255,201,0,0.3);border-radius:10px;padding:11px 13px;">
+        <p style="font-size:11px;color:#1a3a2a;font-weight:700;margin-bottom:4px;">💬 카카오톡으로 보셨나요?</p>
+        <p style="font-size:11px;color:#2a4a38;line-height:1.7;">우측 하단 <b>···</b> → <b>다른 브라우저로 열기</b><br>→ 크롬 선택 후 위 방법으로 설치하세요</p>
+      </div>`;
     mainBtn.textContent = '✅ 확인했어요!';
     mainBtn.onclick = closeInstallPopup;
   } else if(_deferredInstall) {
@@ -631,6 +641,11 @@ function showInstallPopup() {
       <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">브라우저 우측 상단 메뉴 <b>⋮</b> 탭</div></div>
       <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 또는 <b>"앱 설치"</b> 선택</div></div>
     `;
+    stepsEl.innerHTML += `
+      <div style="margin-top:14px;background:rgba(255,201,0,0.12);border:1px solid rgba(255,201,0,0.3);border-radius:10px;padding:11px 13px;">
+        <p style="font-size:11px;color:#1a3a2a;font-weight:700;margin-bottom:4px;">💬 카카오톡으로 보셨나요?</p>
+        <p style="font-size:11px;color:#2a4a38;line-height:1.7;">우측 하단 <b>···</b> → <b>다른 브라우저로 열기</b><br>→ 크롬 선택 후 위 방법으로 설치하세요</p>
+      </div>`;
     mainBtn.textContent = '✅ 확인했어요!';
     mainBtn.onclick = closeInstallPopup;
   }
