@@ -593,9 +593,6 @@ async function loadCards() {
 function showInstallPopup() {
   // 이미 설치됐으면 스킵
   if(window.matchMedia('(display-mode: standalone)').matches) return;
-  // 한 번 닫은 적 있으면 스킵
-  if(localStorage.getItem('installSkipped')) return;
-
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|chrome/i.test(navigator.userAgent);
   const isAndroid = /android/i.test(navigator.userAgent);
@@ -606,35 +603,35 @@ function showInstallPopup() {
   if(isIOS && isSafari) {
     // iOS Safari — 수동 안내
     stepsEl.innerHTML = `
-      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">하단 <b>공유 버튼(□↑)</b> 탭</div></div>
-      <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 선택</div></div>
-      <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text">오른쪽 위 <b>"추가"</b> 탭</div></div>
+      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">화면 아래 <b>공유 버튼 □↑</b> 을 탭하세요</div></div>
+      <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text">스크롤해서 <b>"홈 화면에 추가"</b> 선택</div></div>
+      <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text">오른쪽 위 <b>"추가"</b> 탭 — 완료!</div></div>
     `;
-    mainBtn.textContent = '확인했어요!';
+    mainBtn.textContent = '✅ 확인했어요!';
     mainBtn.onclick = closeInstallPopup;
   } else if(isIOS && !isSafari) {
     // iOS 크롬 등
     stepsEl.innerHTML = `
-      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text"><b>Safari</b>로 이 페이지 열기</div></div>
-      <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text">하단 <b>공유 버튼(□↑)</b> 탭</div></div>
-      <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 선택</div></div>
+      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">아이폰은 <b>Safari</b>로 열어야 설치돼요</div></div>
+      <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text">Safari에서 하단 <b>공유 버튼 □↑</b> 탭</div></div>
+      <div class="install-step"><div class="install-step-num">3</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 선택 — 완료!</div></div>
     `;
-    mainBtn.textContent = '확인했어요!';
+    mainBtn.textContent = '✅ 확인했어요!';
     mainBtn.onclick = closeInstallPopup;
   } else if(_deferredInstall) {
     // 안드로이드 — 네이티브 설치
     stepsEl.innerHTML = `
-      <div class="install-step"><div class="install-step-num">✓</div><div class="install-step-text">아래 버튼 하나만 누르면 끝!</div></div>
+      <div class="install-step"><div class="install-step-num">✓</div><div class="install-step-text">버튼 하나로 바로 설치돼요!</div></div>
     `;
-    mainBtn.textContent = '📲 홈화면에 추가하기';
+    mainBtn.textContent = '📲 지금 바로 설치하기';
     mainBtn.onclick = doInstall;
   } else {
     // 기타 — 브라우저 메뉴 안내
     stepsEl.innerHTML = `
-      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">브라우저 메뉴 <b>(⋮)</b> 탭</div></div>
+      <div class="install-step"><div class="install-step-num">1</div><div class="install-step-text">브라우저 우측 상단 메뉴 <b>⋮</b> 탭</div></div>
       <div class="install-step"><div class="install-step-num">2</div><div class="install-step-text"><b>"홈 화면에 추가"</b> 또는 <b>"앱 설치"</b> 선택</div></div>
     `;
-    mainBtn.textContent = '확인했어요!';
+    mainBtn.textContent = '✅ 확인했어요!';
     mainBtn.onclick = closeInstallPopup;
   }
 
@@ -653,7 +650,6 @@ window.doInstall = async function() {
 
 window.closeInstallPopup = function() {
   document.getElementById('installPopup').style.display = 'none';
-  localStorage.setItem('installSkipped', '1');
 };
 
 // ===== 디카 → 카드북 파라미터 처리 =====
@@ -873,9 +869,9 @@ function toggleQR() {
 <!-- ===== 홈화면 추가 안내 팝업 ===== -->
 <div id="installPopup" class="install-popup" style="display:none">
   <div class="install-sheet">
-    <div class="install-icon">📱</div>
-    <div class="install-title">명함첩을 홈화면에 추가하세요!</div>
-    <div class="install-desc">다음부턴 아이콘 하나로 바로 열려요<br>앱처럼 사용할 수 있어요</div>
+    <div class="install-icon">📲</div>
+    <div class="install-title">앱으로 설치하면 더 편해요!</div>
+    <div class="install-desc">홈화면에 추가하면 다음부턴<br>아이콘 하나로 바로 열려요<br><b style="color:#1a3a2a">앱처럼 빠르게 명함첩을 불러올 수 있어요</b></div>
     <div id="installSteps"></div>
     <button class="install-main-btn" id="installMainBtn" onclick="doInstall()">홈화면에 추가하기</button>
     <button class="install-skip-btn" onclick="closeInstallPopup()">나중에 할게요</button>
