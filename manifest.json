@@ -1,6 +1,6 @@
 {
-  "name": "BNI 명함첩",
-  "short_name": "명함첩",
+  "name": "CardBook",
+  "short_name": "CardBook",
   "description": "BNI 디지털 명함첩",
   "start_url": "./",
   "display": "standalone",
@@ -9,14 +9,16 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://jinjjabg-hub.github.io/BNI-PIONEER-cards/fonts/icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "https://jinjjabg-hub.github.io/BNI-PIONEER-cards/fonts/icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

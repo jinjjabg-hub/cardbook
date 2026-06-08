@@ -64,22 +64,22 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .biz-card{background:#c8e6d0;border:1px solid rgba(30,100,60,0.25);border-radius:16px;overflow:hidden;transition:all .3s;}
 .biz-card:hover{background:#b8dcc4;border-color:rgba(160,120,32,0.4);}
 .card-main{padding:16px 16px 10px;display:flex;gap:12px;align-items:flex-start;}
-.card-avatar{width:48px;height:48px;border-radius:12px;flex-shrink:0;background:rgba(160,120,32,0.12);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);overflow:hidden;}
+.card-avatar{width:48px;height:48px;border-radius:12px;flex-shrink:0;background:#1a3a2a;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:20px;color:#f0faf4;overflow:hidden;}
 .card-avatar img{width:100%;height:100%;object-fit:cover;}
 .card-info{flex:1;min-width:0;}
 .card-name{font-family:'Nanum Gothic',sans-serif;font-size:16px;font-weight:800;color:#0d2218;margin-bottom:2px;}
 .card-name-en{font-family:'Playfair Display',serif;font-size:11px;color:var(--gold);font-style:italic;margin-bottom:4px;}
-.card-company{font-size:12px;color:rgba(240,232,216,0.65);margin-bottom:2px;}
+.card-company{font-size:12px;color:#2a4a38;margin-bottom:2px;font-weight:500;}
 .card-chapter{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:#1a3a2a;background:rgba(255,255,255,0.4);border-radius:6px;padding:2px 7px;}
-.bni-badge{display:inline-flex;align-items:center;gap:4px;background:var(--red-dim);border:1px solid rgba(200,16,46,0.2);border-radius:8px;padding:2px 8px;font-size:10px;color:rgba(240,100,100,0.85);margin-top:5px;}
+.bni-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(200,16,46,0.1);border:1px solid rgba(200,16,46,0.3);border-radius:8px;padding:2px 8px;font-size:10px;color:#C8102E;font-weight:600;margin-top:5px;}
 .bni-dot{width:4px;height:4px;background:var(--red);border-radius:50%;flex-shrink:0;}
 
 /* ACTIONS */
 .card-actions{padding:0 12px 12px;display:flex;gap:7px;}
 .act-btn{flex:1;padding:9px 6px;border-radius:10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;border:none;min-height:36px;transition:all .2s;}
 .act-call{background:var(--gold-dim);border:1px solid rgba(201,168,76,0.3);color:var(--gold);}
-.act-view{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(240,232,216,0.7);}
-.act-del{background:var(--red-dim);border:1px solid rgba(200,16,46,0.2);color:rgba(200,16,46,0.7);flex:0 0 36px;padding:9px;}
+.act-view{background:rgba(255,255,255,0.5);border:1px solid rgba(30,100,60,0.2);color:#1a3a2a;}
+.act-del{background:rgba(200,16,46,0.12);border:1px solid rgba(200,16,46,0.3);color:#C8102E;flex:0 0 36px;padding:9px;}
 .act-btn:hover{opacity:.75;transform:scale(0.97);}
 
 /* CRM */
@@ -130,7 +130,7 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .empty-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:6px;}
 .empty-desc{font-size:12px;color:var(--muted);line-height:1.75;}
 .ai-result{margin:0 12px 8px;padding:10px 14px;background:rgba(201,168,76,0.06);border:1px solid rgba(201,168,76,0.2);border-radius:10px;font-size:12px;color:rgba(240,232,216,0.7);line-height:1.6;}
-.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:430px;background:rgba(240,250,244,0.97);backdrop-filter:blur(16px);border-top:1px solid rgba(30,100,60,0.15);z-index:200;display:flex;}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;max-width:430px;margin:0 auto;background:rgba(240,250,244,0.97);backdrop-filter:blur(16px);border-top:1px solid rgba(30,100,60,0.15);z-index:200;display:flex;}
 .nav-btn{flex:1;padding:13px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--muted);text-decoration:none;background:none;border:none;cursor:pointer;transition:all .3s;font-family:'Noto Sans KR',sans-serif;}
 .nav-btn .icon{font-size:20px;line-height:1;}
 .nav-btn:hover,.nav-btn.active{color:var(--gold);}
@@ -148,6 +148,30 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
   <meta name="apple-mobile-web-app-title" content="명함첩">
   <meta name="theme-color" content="#f0faf4">
   <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="https://jinjjabg-hub.github.io/cardbook/icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="https://jinjjabg-hub.github.io/cardbook/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="https://jinjjabg-hub.github.io/cardbook/icon-512.png">
+
+  <script>
+  // manifest.json 없을 때 대비 인라인 등록
+  if('serviceWorker' in navigator) {
+    const manifestData = {
+      name: 'CardBook',
+      short_name: 'CardBook',
+      start_url: './',
+      display: 'standalone',
+      background_color: '#f0faf4',
+      theme_color: '#f0faf4',
+      icons: [
+        { src: 'https://jinjjabg-hub.github.io/cardbook/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: 'https://jinjjabg-hub.github.io/cardbook/icon-512.png', sizes: '512x512', type: 'image/png' }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifestData)], {type:'application/json'});
+    const manifestURL = URL.createObjectURL(blob);
+    document.querySelector('link[rel="manifest"]').href = manifestURL;
+  }
+  </script>
 </head>
 <body>
 <div id="appRoot">
@@ -227,7 +251,7 @@ function renderLogin() {
     <div class="bottom-nav">
       <a href="https://jinjjabg-hub.github.io/BNI-PIONEER-cards/송승훈/" class="nav-btn"><span class="icon">📇</span><span>내 명함</span></a>
       <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
-      <button class="nav-btn" onclick="shareApp()"><span class="icon">📤</span><span>공유</span></button>
+      <button class="nav-btn" onclick="openScanModal()"><span class="icon">📷</span><span>명함스캔</span></button>
     </div>
   `;
   // 엔터키 지원
@@ -971,7 +995,7 @@ function toggleQR() {
         <div style="text-align:center;padding:16px 0 20px;">
           <div style="font-size:48px;margin-bottom:12px;">📋</div>
           <div style="font-size:14px;font-weight:700;color:#1a3a2a;margin-bottom:8px;">핸드폰 연락처 가져오기</div>
-          <div style="font-size:12px;color:#5a7a68;line-height:1.7;margin-bottom:24px;">연락처에서 선택한 사람만<br>카드북에 추가할 수 있어요</div>
+          <div style="font-size:12px;color:#5a7a68;line-height:1.7;margin-bottom:24px;">핸드폰 연락처에서 바로 가져와요<br>선택한 사람만 카드북에 추가돼요<br><b style="color:#C8102E">※ 안드로이드 크롬만 지원</b></div>
           <button onclick="importContacts()"
             style="width:100%;padding:15px;border-radius:14px;border:none;background:#1a3a2a;color:#f0faf4;font-family:'Noto Sans KR',sans-serif;font-size:15px;font-weight:700;cursor:pointer;">
             📋 연락처 불러오기
