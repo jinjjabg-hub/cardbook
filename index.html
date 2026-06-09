@@ -394,9 +394,58 @@ function renderApp() {
   `;
   renderCards(allCards);
 }
-
+// ===== 연락처 가져오기 =====
+window.importContacts = async function() {
+  if('contacts' in navigator && 'ContactsManager' in window) {
+    try {
+      const contacts = await navigator.contacts.select(['name','tel','email'], {multiple: true});
+      if(!contacts.length) return;
+      let count = 0;
+      for(const c of contacts) {
+        const name = c.name?.[0] || '이름없음';
+        const tel = c.tel?.[0] || '';
+        const email = c.email?.[0] || '';
+        await db.collection('cards').add({
+          uid: currentUser.uid,
+          name, tel, email,
+          company: '', job: '', chapter: '기타',
+          memo: '', createdAt: new Date().toISOString()
+        });
+        count++;
+      }
+      showToast(`✅ ${count}명 연락처 저장 완료`);
+      loadCards();
+    } catch(e) { showToast('연락처 가져오기 취소'); }
+  } else {
+    // iOS - vCard 업로드
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.vcf';
+    input.onchange = async function(e) {
+      const text = await e.target.files[0].text();
+      const vcards = text.split('END:VCARD').filter(v => v.includes('BEGIN:VCARD'));
+      let count = 0;
+      for(const v of vcards) {
+        const name = (v.match(/FN:(.+)/)?.[1] || '').trim();
+        const tel = (v.match(/TEL[^:]*:(.+)/)?.[1] || '').trim();
+        const email = (v.match(/EMAIL[^:]*:(.+)/)?.[1] || '').trim();
+        if(!name) continue;
+        await db.collection('cards').add({
+          uid: currentUser.uid,
+          name, tel, email,
+          company: '', job: '', chapter: '기타',
+          memo: '', createdAt: new Date().toISOString()
+        });
+        count++;
+      }
+      showToast(`✅ ${count}명 연락처 저장 완료`);
+      loadCards();
+    };
+    input.click();
+  }
+}
 // ===== 카드 렌더링 =====
-function renderCards(cards) {
+function (cards) {
   const countEl = document.getElementById('countNum');
   const list = document.getElementById('cardList');
   if(!list) return;
