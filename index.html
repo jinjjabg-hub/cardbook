@@ -379,11 +379,12 @@ function renderApp() {
           다음부턴 아이콘으로 바로 열 수 있어요
         </div>
         <button class="add-home-btn" onclick="doAddToHome()">추가</button>
+        <button class="add-home-btn" onclick="importContacts()">📱 연락처 가져오기</button>
         <button class="add-home-dismiss" onclick="dismissBanner()">✕</button>
       </div>
-    </div>
-    <div class="chapter-tabs">
-      ${CHAPTERS.map(c=>`<button class="tab${c==='전체'?' active':''}" onclick="filterChapter('${c}')">${c}</button>`).join('')}
+   <div class="chapter-tabs">
+  ${CHAPTERS.map(...)}
+</div>
     </div>
     <div id="aiResult"></div>
     <div class="count-bar"><span class="count-label">CARDS</span><span class="count-num" id="countNum">0</span></div>
