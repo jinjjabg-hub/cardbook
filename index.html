@@ -320,10 +320,9 @@ if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
   showToast('카카오 SDK 로드 실패. 새로고침 후 시도해주세요.'); return;
 }
   try {
-    // 1. 카카오 로그인
-    await new Promise((resolve, reject) => {
-      Kakao.Auth.login({ success: resolve, fail: reject });
-    });
+// 1. 카카오 로그인
+Kakao.Auth.authorize({ redirectUri: 'https://jinjjabg-hub.github.io/cardbook/' });
+});
     // 2. 사용자 정보
     const profile = await new Promise((resolve, reject) => {
       Kakao.API.request({ url: '/v2/user/me', success: resolve, fail: reject });
