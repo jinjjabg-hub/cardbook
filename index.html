@@ -321,12 +321,20 @@ if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
 }
   try {
 // 1. 카카오 로그인
-Kakao.Auth.authorize({ redirectUri: 'https://jinjjabg-hub.github.io/cardbook/' });
-});
+
     // 2. 사용자 정보
     const profile = await new Promise((resolve, reject) => {
-      Kakao.API.request({ url: '/v2/user/me', success: resolve, fail: reject });
+ Kakao.Auth.login({
+  success: function(authObj) {
+    Kakao.API.request({
+      url: '/v2/user/me',
+      success: function(res) { resolve(res); },
+      fail: function(err) { reject(err); }
     });
+  },
+  fail: function(err) { reject(err); }
+});
+});
     const kakaoId = String(profile.id);
     const email = profile.kakao_account?.email || `kakao_${kakaoId}@cardbook.bni`;
     const name = profile.properties?.nickname || '카카오사용자';
