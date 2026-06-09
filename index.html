@@ -209,11 +209,11 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-
-// ===== 카카오 초기화 =====
-if(typeof Kakao !== 'undefined' && !Kakao.isInitialized()) {
-  Kakao.init('7a736ceca6b6865251e078261ed9596f');
-}
+window.addEventListener('load', function() {
+  if(typeof Kakao !== 'undefined' && !Kakao.isInitialized()) {
+    Kakao.init('7a736ceca6b6865251e078261ed9596f');
+  }
+});
 
 let currentUser = null;
 let allCards = [];
