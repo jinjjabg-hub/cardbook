@@ -77,7 +77,15 @@ function showLoginModal(cardData) {
     font-family:'Noto Sans KR',sans-serif;
   `;
 
-  const googleBtn = isKakaoTalk ? '' : `
+  const googleBtn = isKakaoTalk ? `
+    <div style="background:rgba(254,229,0,0.1);border:1px solid rgba(254,229,0,0.3);border-radius:12px;padding:14px;margin-bottom:16px;text-align:center;">
+      <div style="font-size:13px;font-weight:700;color:#FEE500;margin-bottom:6px;">📌 카카오톡 브라우저 안내</div>
+      <div style="font-size:12px;color:rgba(240,232,216,0.7);line-height:1.7;margin-bottom:12px;">Google 로그인은 크롬에서만 가능해요.<br>아래 버튼으로 주소를 복사한 뒤<br>크롬에서 열어주세요.</div>
+      <button id="_cb_copy_url" style="width:100%;padding:11px;border-radius:10px;border:none;background:#FEE500;color:#3c1e1e;font-weight:700;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">📋 주소 복사하기</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:0 0 14px;color:rgba(240,232,216,0.3);font-size:11px;">
+      <div style="flex:1;height:1px;background:rgba(201,168,76,0.15)"></div>또는 이메일로 로그인<div style="flex:1;height:1px;background:rgba(201,168,76,0.15)"></div>
+    </div>` : `
     <button id="_cb_google" style="
       width:100%;padding:14px;border-radius:12px;border:none;
       background:#fff;color:#1a1a1a;font-size:14px;font-weight:600;
@@ -133,6 +141,25 @@ function showLoginModal(cardData) {
   `;
 
   document.body.appendChild(modal);
+
+  // 카카오톡 — 주소 복사 버튼
+  if(isKakaoTalk) {
+    document.getElementById('_cb_copy_url').onclick = async () => {
+      const url = window.location.href;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch(e) {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      document.getElementById('_cb_copy_url').textContent = '✅ 복사됐어요! 크롬에 붙여넣기 하세요';
+      document.getElementById('_cb_copy_url').style.background = '#a0c878';
+    };
+  }
 
   window._cbSwitchTab = (tab) => {
     const isLogin = tab === 'login';
