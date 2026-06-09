@@ -346,34 +346,7 @@ window.doKakaoLogin = function() {
     fail: function(err) { showToast('카카오 로그인 실패: ' + JSON.stringify(err)); }
   });
 }
-    const kakaoId = String(profile.id);
-    const email = profile.kakao_account?.email || `kakao_${kakaoId}@cardbook.bni`;
-    const name = profile.properties?.nickname || '카카오사용자';
-    const photo = profile.properties?.profile_image || null;
-
-    // 3. 고정 비밀번호 (kakaoId 기반 — 매번 동일)
-    const fixedPw = `kb_${kakaoId}_fixed`;
-
-    try {
-      await auth.signInWithEmailAndPassword(email, fixedPw);
-      showToast('✅ 카카오 로그인 성공');
-    } catch(e) {
-      if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-        // 신규 사용자 — 계정 생성
-        await auth.createUserWithEmailAndPassword(email, fixedPw);
-        await auth.currentUser.updateProfile({ displayName: name, photoURL: photo });
-        showToast('✅ 카카오로 가입 완료!');
-      } else if(e.code === 'auth/wrong-password') {
-        // 같은 이메일로 다른 방식으로 가입된 경우
-        showToast('이미 다른 방식으로 가입된 이메일입니다.');
-      } else throw e;
-    }
-  } catch(e) {
-    if(e.error === 'access_denied') showToast('카카오 로그인 취소');
-    else { console.error(e); showToast('카카오 로그인 실패: ' + (e.message || '오류')); }
-  }
-};
-
+  
 // ===== 로그아웃 =====
 window.doLogout = async function() {
   // 카카오 로그아웃도 같이
