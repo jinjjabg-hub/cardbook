@@ -314,27 +314,38 @@ window.doGoogleLogin = async function() {
 
 // ===== 카카오 로그인 (안정화 버전) =====
 // 핵심: kakaoId 기반 고정 비밀번호 사용 (getTime 제거)
-window.doKakaoLogin = async function() {
-initKakao();
-if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
-  showToast('카카오 SDK 로드 실패. 새로고침 후 시도해주세요.'); return;
+window.doKakaoLogin = function() {
+  initKakao();
+  if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
+    showToast('카카오 SDK 로드 실패. 새로고침 후 시도해주세요.'); return;
+  }
+  Kakao.Auth.login({
+    success: function(authObj) {
+      Kakao.API.request({
+        url: '/v2/user/me',
+        success: async function(profile) {
+          const kakaoId = String(profile.id);
+          const email = profile.kakao_account?.email || `kakao_${kakaoId}@cardbook.bni`;
+          const name = profile.properties?.nickname || '카카오사용자';
+          const photo = profile.properties?.profile_image || null;
+          const fixedPw = `kb_${kakaoId}_fixed`;
+          try {
+            await auth.signInWithEmailAndPassword(email, fixedPw);
+            showToast('✅ 카카오 로그인 성공');
+          } catch(e) {
+            if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+              await auth.createUserWithEmailAndPassword(email, fixedPw);
+              await auth.currentUser.updateProfile({ displayName: name, photoURL: photo });
+              showToast('✅ 카카오 가입 완료!');
+            }
+          }
+        },
+        fail: function(err) { showToast('카카오 정보 오류: ' + JSON.stringify(err)); }
+      });
+    },
+    fail: function(err) { showToast('카카오 로그인 실패: ' + JSON.stringify(err)); }
+  });
 }
-  try {
-// 1. 카카오 로그인
-
-    // 2. 사용자 정보
-    const profile = await new Promise((resolve, reject) => {
- Kakao.Auth.login({
-  success: function(authObj) {
-    Kakao.API.request({
-      url: '/v2/user/me',
-      success: function(res) { resolve(res); },
-      fail: function(err) { reject(err); }
-    });
-  },
-  fail: function(err) { reject(err); }
-});
-});
     const kakaoId = String(profile.id);
     const email = profile.kakao_account?.email || `kakao_${kakaoId}@cardbook.bni`;
     const name = profile.properties?.nickname || '카카오사용자';
