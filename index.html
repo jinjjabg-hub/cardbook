@@ -315,9 +315,12 @@ window.doGoogleLogin = async function() {
 // ===== 카카오 로그인 (안정화 버전) =====
 // 핵심: kakaoId 기반 고정 비밀번호 사용 (getTime 제거)
 window.doKakaoLogin = async function() {
-  if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
-    showToast('카카오 SDK 초기화 중... 잠시 후 다시 시도해주세요.'); return;
-  }
+ if(typeof Kakao === 'undefined') {
+  showToast('카카오 SDK 초기화 중... 잠시 후 다시 시도해주세요.'); return;
+}
+if(!Kakao.isInitialized()) {
+  Kakao.init('7a736ceca6b6865251e078261ed9596f');
+}
   try {
     // 1. 카카오 로그인
     await new Promise((resolve, reject) => {
