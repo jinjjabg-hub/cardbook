@@ -781,20 +781,34 @@ window.confirmDicaSave = async function() {
 
   const d = _dicaCardData;
   try {
-    await db.collection('users').doc(currentUser.uid)
-      .collection('cards').doc('dica-' + Date.now()).set({
-        name:    d.name,
-        nameEn:  d.nameEn,
-        title:   d.title,
-        company: d.company,
-        phone:   d.phone,
-        email:   d.email,
-        chapter: d.chapter,
-        bni:     d.bni,
-        avatar:  d.name.charAt(0),
-        referrer: 'DiCA 명함',
-        savedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+    // 전화번호로 기존 카드 찾기
+    let existingDocId = null;
+    if(d.phone) {
+      const snap = await db.collection('users').doc(currentUser.uid).collection('cards')
+        .where('phone', '==', d.phone).limit(1).get();
+      if(!snap.empty) existingDocId = snap.docs[0].id;
+    }
+
+    const cardData = {
+      name:    d.name,
+      nameEn:  d.nameEn,
+      title:   d.title,
+      company: d.company,
+      phone:   d.phone,
+      email:   d.email,
+      chapter: d.chapter,
+      bni:     d.bni,
+      avatar:  d.name.charAt(0),
+      referrer: 'DiCA 명함',
+      savedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    if(existingDocId) {
+      // 기존 카드 업데이트 (DiCA 우선)
+      await db.collection('users').doc(currentUser.uid).collection('cards').doc(existingDocId).set(cardData);
+    } else {
+      await db.collection('users').doc(currentUser.uid).collection('cards').doc('dica-' + Date.now()).set(cardData);
+    }
     document.getElementById('dicaPopup').style.display = 'none';
     showToast('✅ ' + d.name + '님 명함 저장됐어요!');
     await loadCards();
