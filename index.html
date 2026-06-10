@@ -152,7 +152,14 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .ocr-label{font-size:11px;color:var(--muted);margin-bottom:4px;letter-spacing:.05em;}
 .ocr-input{width:100%;background:rgba(255,255,255,0.9);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px;color:#1a3a2a;font-family:'Noto Sans KR',sans-serif;outline:none;}
 .ocr-input:focus{border-color:var(--gold);}
-.ocr-save-btn{width:100%;padding:14px;border-radius:14px;border:none;background:#1a3a2a;color:#f0faf4;font-family:'Noto Sans KR',sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;}
+.card-wrap{display:flex;position:relative;}
+.alpha-index{position:fixed;right:4px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px;z-index:100;background:rgba(240,250,244,0.9);border-radius:12px;padding:6px 4px;}
+.alpha-btn{font-size:11px;font-weight:700;color:#1a3a2a;cursor:pointer;padding:2px 4px;border-radius:4px;text-align:center;line-height:1.4;text-decoration:none;}
+.alpha-btn.active:hover{background:var(--gold);color:#fff;}
+.alpha-btn.disabled{color:#ccc;cursor:default;}
+.alpha-divider{padding:6px 12px 2px;font-size:12px;font-weight:800;color:var(--gold);border-bottom:1px solid rgba(160,120,32,0.2);margin-bottom:4px;}
+.card-list{flex:1;padding-right:24px;}
+
 .ai-loading{display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:12px;color:var(--gold);}
 .ai-dot{width:5px;height:5px;border-radius:50%;background:var(--gold);animation:bounce .8s infinite;}
 .ai-dot:nth-child(2){animation-delay:.15s;}
@@ -385,7 +392,10 @@ function renderApp() {
       </div>
     <div id="aiResult"></div>
     <div class="count-bar"><span class="count-label">CARDS</span><span class="count-num" id="countNum">0</span></div>
-    <div class="card-list" id="cardList"></div>
+    <div class="card-wrap">
+      <div id="alphaIndex" class="alpha-index"></div>
+      <div class="card-list" id="cardList"></div>
+    </div>
     <div class="bottom-nav">
       <a href="https://jinjjabg-hub.github.io/BNI-PIONEER-cards/송승훈/" class="nav-btn"><span class="icon">📇</span><span>내 명함</span></a>
       <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
@@ -456,7 +466,24 @@ function renderCards(cards) {
     return;
   }
 
-  list.innerHTML = cards.map((card, i) => {
+  const CHOSUNG = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  const getChosung = (str) => {
+    if(!str) return '';
+    const c = str.charCodeAt(0);
+    if(c < 0xAC00 || c > 0xD7A3) return str[0].toUpperCase();
+    return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
+  };
+
+  let lastCh = '';
+  let html = '';
+
+  cards.forEach((card, i) => {
+    const ch = getChosung(card.name);
+    if(ch !== lastCh) {
+      html += `<div class="alpha-divider" id="alpha-${ch}">${ch}</div>`;
+      lastCh = ch;
+    }
+
     const avatarHtml = card.avatar
       ? `<img src="${card.avatar}" alt="${card.name}" onerror="this.style.display='none'">`
       : initial(card.name);
@@ -477,7 +504,7 @@ function renderCards(cards) {
     const lastContactStr = lastContact ? `<div class="crm-item"><span class="crm-item-text">⏱️ 마지막 연락 · ${fmtDate(lastContact)}</span></div>` : '';
     const crmCount = meetings.length + referrals.length;
 
-    return `
+    html += `
     <div class="biz-card">
       <div class="card-main">
         <div class="card-avatar">${avatarHtml}</div>
@@ -518,7 +545,9 @@ function renderCards(cards) {
       </div>
       <div class="card-saved">저장일: ${fmtDate(card.savedAt)}</div>
     </div>`;
-  }).join('');
+  });
+
+  list.innerHTML = html;
 
   // 오늘 날짜 기본값
   document.querySelectorAll('.meet-date,.ref-date').forEach(el => {
@@ -526,7 +555,31 @@ function renderCards(cards) {
   });
 }
 
-// ===== CRM 토글 =====
+// ===== 가나다 인덱스 =====
+function renderAlphaIndex(cards) {
+  const idx = document.getElementById('alphaIndex');
+  if(!idx) return;
+  const CHOSUNG = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  const getChosung = (str) => {
+    if(!str) return '';
+    const c = str.charCodeAt(0);
+    if(c < 0xAC00 || c > 0xD7A3) return str[0].toUpperCase();
+    return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
+  };
+  const existing = new Set(cards.map(c => getChosung(c.name)));
+  idx.innerHTML = CHOSUNG.map(ch => 
+    existing.has(ch)
+      ? `<a class="alpha-btn active" onclick="scrollToAlpha('${ch}')">${ch}</a>`
+      : `<span class="alpha-btn disabled">${ch}</span>`
+  ).join('');
+}
+
+window.scrollToAlpha = function(ch) {
+  const el = document.getElementById('alpha-' + ch);
+  if(el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+
 window.toggleCRM = function(btn) {
   const crm = btn.nextElementSibling;
   const arrow = btn.querySelector('.crm-arrow');
@@ -587,7 +640,10 @@ function applyFilter() {
   if(currentChapter !== '전체') {
     cards = cards.filter(c => (c.chapter||'기타') === currentChapter);
   }
+  // 가나다순 정렬
+  cards.sort((a, b) => (a.name||'').localeCompare(b.name||'', 'ko'));
   renderCards(cards);
+  renderAlphaIndex(cards);
 }
 
 // ===== 검색 =====
