@@ -1089,13 +1089,13 @@ window.importContacts = async function() {
     return;
   }
   try {
-    const contacts = await navigator.contacts.select(['name','tel','email','organization'], { multiple: false });
+    navigator.contacts.select(['name','tel','email'], { multiple: false });
     if(!contacts || contacts.length === 0) return;
     const c = contacts[0];
     document.getElementById('ctName').value    = c.name?.[0] || '';
     document.getElementById('ctPhone').value   = c.tel?.[0]  || '';
     document.getElementById('ctEmail').value   = c.email?.[0]|| '';
-    document.getElementById('ctCompany').value = c.organization?.[0] || '';
+    document.getElementById('ctCompany').value = '';
     document.getElementById('ctTitle').value   = '';
     document.getElementById('contactStep1').style.display = 'none';
     document.getElementById('contactStep2').style.display = 'block';
