@@ -379,7 +379,7 @@ function renderApp() {
           다음부턴 아이콘으로 바로 열 수 있어요
         </div>
         <button class="add-home-btn" onclick="doAddToHome()">추가</button>
-        <button class="add-home-btn" onclick="importContacts()">📱 연락처 가져오기</button>
+
         <button class="add-home-dismiss" onclick="dismissBanner()">✕</button>
       </div>
       </div>
@@ -1089,16 +1089,41 @@ window.importContacts = async function() {
     return;
   }
   try {
-    navigator.contacts.select(['name','tel','email'], { multiple: false });
+    const contacts = await navigator.contacts.select(['name','tel','email'], { multiple: true });
     if(!contacts || contacts.length === 0) return;
-    const c = contacts[0];
-    document.getElementById('ctName').value    = c.name?.[0] || '';
-    document.getElementById('ctPhone').value   = c.tel?.[0]  || '';
-    document.getElementById('ctEmail').value   = c.email?.[0]|| '';
-    document.getElementById('ctCompany').value = '';
-    document.getElementById('ctTitle').value   = '';
-    document.getElementById('contactStep1').style.display = 'none';
-    document.getElementById('contactStep2').style.display = 'block';
+
+    if(contacts.length === 1) {
+      // 1명 선택 → 기존 확인 화면
+      const c = contacts[0];
+      document.getElementById('ctName').value    = c.name?.[0] || '';
+      document.getElementById('ctPhone').value   = c.tel?.[0]  || '';
+      document.getElementById('ctEmail').value   = c.email?.[0]|| '';
+      document.getElementById('ctCompany').value = '';
+      document.getElementById('ctTitle').value   = '';
+      document.getElementById('contactStep1').style.display = 'none';
+      document.getElementById('contactStep2').style.display = 'block';
+    } else {
+      // 여러 명 선택 → 바로 전체 저장
+      let count = 0;
+      for(const c of contacts) {
+        const name = c.name?.[0] || '';
+        if(!name) continue;
+        await db.collection('users').doc(currentUser.uid).collection('cards').doc('ct-' + Date.now() + '-' + count).set({
+          name,
+          phone:   c.tel?.[0]  || '',
+          email:   c.email?.[0]|| '',
+          title:   '',
+          company: '',
+          chapter: '기타',
+          referrer: '연락처 가져오기',
+          savedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        count++;
+      }
+      document.getElementById('scanModal').style.display = 'none';
+      showToast('✅ ' + count + '명 연락처 저장 완료!');
+      await loadCards();
+    }
   } catch(e) {
     showToast('❌ 연락처 가져오기 실패: ' + e.message);
   }
