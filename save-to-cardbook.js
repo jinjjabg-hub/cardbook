@@ -50,20 +50,125 @@ function initFirebase() {
   } catch(e) { console.error('Firebase 초기화 실패', e); }
 }
 
+const CARDBOOK_BASE = 'https://jinjjabg-hub.github.io/cardbook/';
+
 async function saveToCardbook(cardData) {
-  if(!_cbAuth || !_cbDb) {
-    setTimeout(() => saveToCardbook(cardData), 1000);
+  if(!cardData) cardData = collectCardData();
+
+  // 1. 카카오톡 브라우저 → 크롬 열기 안내
+  if(isKakaoTalk) {
+    _showKakaoGuide();
     return;
   }
-  if(!cardData) cardData = collectCardData();
-  const user = _cbAuth.currentUser;
-  if(user) {
-    await _saveCard(user.uid, cardData);
+
+  // 2. 카드북 URL 생성 (카드 데이터를 params로 전달)
+  const params = new URLSearchParams();
+  ['name','nameEn','title','company','phone','email','chapter','bni'].forEach(k => {
+    if(cardData[k]) params.set(k, cardData[k]);
+  });
+  params.set('from', window.location.href);
+  const cardbookUrl = CARDBOOK_BASE + '?' + params.toString();
+
+  // 3. PWA 설치 여부 확인
+  let pwaInstalled = false;
+  try {
+    if(navigator.getInstalledRelatedApps) {
+      const apps = await navigator.getInstalledRelatedApps();
+      pwaInstalled = apps.length > 0;
+    }
+  } catch(e) {}
+
+  if(pwaInstalled) {
+    // 설치됨 → 카드북 앱으로 바로 이동
+    window.location.href = cardbookUrl;
   } else {
-    showLoginModal(cardData);
+    // 미설치 → 설치 안내 팝업
+    _showInstallGuide(cardbookUrl, cardData);
   }
 }
 
+// ===== 카카오톡 안내 팝업 =====
+function _showKakaoGuide() {
+  const url = window.location.href;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;font-family:'Noto Sans KR',sans-serif;";
+  overlay.innerHTML = `
+    <div style="background:#141209;border-radius:24px 24px 0 0;padding:28px 24px 44px;width:100%;max-width:430px;border-top:1px solid rgba(254,229,0,0.3);">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+        <div style="font-size:16px;font-weight:800;color:#FEE500;margin-bottom:6px;">카카오톡에서는 저장이 안돼요</div>
+        <div style="font-size:13px;color:rgba(240,232,216,0.6);line-height:1.7;">크롬에서 열어야 명함을 저장할 수 있어요</div>
+      </div>
+      <div style="background:rgba(254,229,0,0.08);border:1px solid rgba(254,229,0,0.2);border-radius:14px;padding:16px;margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;color:#FEE500;margin-bottom:10px;">📌 방법</div>
+        <div style="font-size:13px;color:rgba(240,232,216,0.85);line-height:2.1;">
+          1️⃣ 화면 우측 하단 <b style="color:#fff">···</b> 탭<br>
+          2️⃣ <b style="color:#fff">다른 브라우저로 열기</b> 선택<br>
+          3️⃣ <b style="color:#fff">Chrome</b> 선택 → 명함 저장
+        </div>
+      </div>
+      <button id="_cb_kk_copy" style="width:100%;padding:14px;border-radius:12px;border:none;background:#FEE500;color:#3c1e1e;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">📋 이 페이지 주소 복사하기</button>
+      <button onclick="this.closest('[style]').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:rgba(240,232,216,0.3);font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById('_cb_kk_copy').onclick = async () => {
+    try { await navigator.clipboard.writeText(url); }
+    catch(e) {
+      const ta = document.createElement('textarea');
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    const btn = document.getElementById('_cb_kk_copy');
+    if(btn) { btn.textContent = '✅ 복사됐어요! 크롬에 붙여넣기 하세요'; btn.style.background = '#a0c878'; }
+  };
+}
+
+// ===== 미설치 → 설치 안내 팝업 =====
+function _showInstallGuide(cardbookUrl, cardData) {
+  const name = cardData.name || '';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;font-family:'Noto Sans KR',sans-serif;";
+  overlay.innerHTML = `
+    <div style="background:#f0faf4;border-radius:24px 24px 0 0;padding:28px 24px 44px;width:100%;max-width:430px;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:40px;margin-bottom:10px;">📲</div>
+        <div style="font-size:17px;font-weight:800;color:#1a3a2a;margin-bottom:6px;">카드북에 저장하기</div>
+        ${name ? `<div style="font-size:13px;color:#5a7a68;">${name}님의 명함을 저장합니다</div>` : ''}
+      </div>
+      <div style="background:#1a3a2a;border-radius:16px;padding:18px;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:700;color:#a07820;margin-bottom:8px;">📱 카드북 앱으로 저장 (추천)</div>
+        <div style="font-size:12px;color:rgba(240,250,244,0.65);line-height:1.7;margin-bottom:14px;">
+          앱으로 설치하면 다음부터 아이콘 하나로<br>빠르게 명함을 저장할 수 있어요
+        </div>
+        <button id="_cb_ig_open" style="width:100%;padding:13px;border-radius:10px;border:none;background:#a07820;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🚀 카드북 열기 → 설치 후 저장</button>
+      </div>
+      <div style="background:rgba(30,100,60,0.07);border:1px solid rgba(30,100,60,0.15);border-radius:16px;padding:16px;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:#2a4a38;margin-bottom:6px;">💡 앱 없이 바로 저장</div>
+        <div style="font-size:12px;color:#5a7a68;line-height:1.6;margin-bottom:12px;">Google 계정으로 로그인하면 설치 없이도 저장할 수 있어요</div>
+        <button id="_cb_ig_google" style="width:100%;padding:12px;border-radius:10px;border:none;background:#fff;color:#1a1a1a;font-weight:600;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 6px rgba(0,0,0,0.12);">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Google로 로그인하여 저장
+        </button>
+      </div>
+      <button onclick="this.closest('[style]').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#8a9a90;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  document.getElementById('_cb_ig_open').onclick = () => {
+    window.open(cardbookUrl, '_blank');
+    overlay.remove();
+  };
+
+  document.getElementById('_cb_ig_google').onclick = () => {
+    overlay.remove();
+    const doLogin = () => showLoginModal(cardData);
+    _cbAuth ? doLogin() : setTimeout(doLogin, 1000);
+  };
+}
+
+// ===== 로그인 모달 (앱 없이 바로 저장) =====
 function showLoginModal(cardData) {
   const existing = document.getElementById('_cb_modal');
   if(existing) existing.remove();
