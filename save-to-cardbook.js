@@ -1,6 +1,7 @@
 // ===== BNI 명함첩 저장 공통 스크립트 =====
 
 const isKakaoTalk = /KAKAOTALK/i.test(navigator.userAgent);
+const isAndroid = /Android/i.test(navigator.userAgent);
 
 (function loadFirebase() {
   const scripts = [
@@ -55,9 +56,20 @@ const CARDBOOK_BASE = 'https://jinjjabg-hub.github.io/cardbook/';
 async function saveToCardbook(cardData) {
   if(!cardData) cardData = collectCardData();
 
-  // 1. 카카오톡 브라우저 → 크롬 열기 안내
+  // 1. 카카오톡 브라우저 처리
   if(isKakaoTalk) {
-    _showKakaoGuide();
+    if(isAndroid) {
+      // 안드로이드: 딥링크로 크롬 자동 실행
+      const intentUrl = 'intent://' + window.location.href.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+      window.location.href = intentUrl;
+      // 딥링크 실패 대비 1.5초 후 안내 팝업
+      setTimeout(() => {
+        if(document.hasFocus()) _showKakaoGuide();
+      }, 1500);
+    } else {
+      // iOS: 안내 팝업 (iOS는 딥링크 막혀있음)
+      _showKakaoGuide();
+    }
     return;
   }
 
