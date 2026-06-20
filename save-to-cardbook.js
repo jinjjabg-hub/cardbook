@@ -1,5 +1,10 @@
 // ===== BNI 명함첩 저장 공통 스크립트 =====
 
+// 카카오톡 안드로이드 → 크롬으로 즉시 이동
+if(/KAKAOTALK/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent)) {
+  location.href = 'intent://' + location.href.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+}
+
 const isKakaoTalk = /KAKAOTALK/i.test(navigator.userAgent);
 const isAndroid = /Android/i.test(navigator.userAgent);
 
