@@ -81,6 +81,7 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .act-view{background:rgba(255,255,255,0.5);border:1px solid rgba(30,100,60,0.2);color:#1a3a2a;}
 .act-del{background:rgba(200,16,46,0.12);border:1px solid rgba(200,16,46,0.3);color:#C8102E;flex:0 0 36px;padding:9px;}
 .act-btn:hover{opacity:.75;transform:scale(0.97);}
+.act-share{background:rgba(30,100,60,0.1);border:1px solid rgba(30,100,60,0.25);color:#1a3a2a;flex:0 0 36px;padding:9px;}
 
 /* CRM */
 .card-crm{border-top:1px solid var(--border);padding:10px 14px;display:none;}
@@ -538,6 +539,7 @@ function renderCards(cards) {
       <div class="card-actions">
         ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 ${card.phone}</a>`:'<span></span>'}
         ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 명함 보기</a>`:''}
+        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}')">📤</button>
         <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️</button>
       </div>
       <button class="crm-toggle" onclick="toggleCRM(this)">
@@ -992,6 +994,21 @@ function showInstallGuide() {
   document.body.appendChild(overlay);
 }
 
+
+window.shareCard = function(url, name) {
+  const shareUrl = url || window.location.href;
+  if(navigator.share) {
+    navigator.share({ title: name + ' 명함', text: name + '님의 디지털 명함', url: shareUrl });
+  } else {
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      const toast = document.createElement('div');
+      toast.textContent = '링크가 복사되었어요!';
+      toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a3a2a;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:9999;font-family:Noto Sans KR,sans-serif;';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
+    });
+  }
+};
 window.shareApp = function() {
   if(navigator.share) navigator.share({ title:'BNI 명함첩', url: window.location.href });
   else { navigator.clipboard?.writeText(window.location.href); showToast('📋 링크 복사됨'); }
