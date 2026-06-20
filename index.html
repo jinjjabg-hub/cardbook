@@ -245,8 +245,16 @@ function initial(n) { return n ? n.charAt(0) : '?'; }
 
 // ===== 로그인 화면 =====
 function renderLogin() {
+  const pendingName = new URLSearchParams(window.location.search).get('name');
+  const cardBanner = pendingName ? `
+    <div style="background:#1a3a2a;border-radius:14px;padding:16px 18px;margin-bottom:20px;text-align:center;">
+      <div style="font-size:22px;margin-bottom:6px;">💾</div>
+      <div style="font-size:15px;font-weight:700;color:#f0faf4;margin-bottom:4px;">${pendingName}님의 명함을 저장할게요</div>
+      <div style="font-size:12px;color:rgba(240,250,244,0.6);">Google 로그인 후 바로 저장됩니다</div>
+    </div>` : '';
   document.getElementById('appRoot').innerHTML = `
     <div class="login-screen">
+      ${cardBanner}
       <div class="login-icon">🗂️</div>
       <div class="login-title">BNI 명함첩</div>
       <div class="login-desc">전문가 명함을 스마트하게 관리하세요</div>
@@ -814,9 +822,40 @@ window.closeInstallPopup = function() {
 // ===== 디카 → 카드북 파라미터 처리 =====
 let _dicaCardData = null;
 
+function _showKakaoInChrome() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:flex-end;justify-content:center;font-family:'Noto Sans KR',sans-serif;";
+  overlay.innerHTML = `
+    <div style="background:#141209;border-radius:24px 24px 0 0;padding:28px 24px 44px;width:100%;max-width:430px;border-top:1px solid rgba(254,229,0,0.3);">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+        <div style="font-size:16px;font-weight:800;color:#FEE500;margin-bottom:6px;">카카오톡에서는 저장이 안돼요</div>
+        <div style="font-size:13px;color:rgba(240,232,216,0.6);line-height:1.7;">크롬 브라우저에서 열어주세요</div>
+      </div>
+      <div style="background:rgba(254,229,0,0.08);border:1px solid rgba(254,229,0,0.2);border-radius:14px;padding:16px;margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:700;color:#FEE500;margin-bottom:10px;">📌 방법</div>
+        <div style="font-size:13px;color:rgba(240,232,216,0.85);line-height:2.1;">
+          1️⃣ 우측 하단 <b style="color:#fff">···</b> 탭<br>
+          2️⃣ <b style="color:#fff">다른 브라우저로 열기</b> 선택<br>
+          3️⃣ <b style="color:#fff">Chrome</b> 선택 → 명함 저장
+        </div>
+      </div>
+      <button onclick="this.closest('[style]').remove()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#FEE500;color:#3c1e1e;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">확인</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
 function checkDicaParams() {
   const p = new URLSearchParams(window.location.search);
   if(!p.get('name')) return; // 파라미터 없으면 무시
+
+  // 카카오톡 브라우저 → 크롬 안내
+  if(/KAKAOTALK/i.test(navigator.userAgent)) {
+    _showKakaoInChrome();
+    window.history.replaceState({}, '', window.location.pathname);
+    return;
+  }
 
   _dicaCardData = {
     name:    p.get('name')    || '',
@@ -879,7 +918,11 @@ window.confirmDicaSave = async function() {
     document.getElementById('dicaPopup').style.display = 'none';
     showToast('✅ ' + d.name + '님 명함 저장됐어요!');
     await loadCards();
-    setTimeout(showInstallPopup, 800); // 저장 후 홈화면 추가 안내
+    // 이미 PWA 앱으로 실행 중이면 설치 팝업 스킵
+    const isStandalone = window.matchMedia('(display-mode:standalone)').matches || !!navigator.standalone;
+    if(!isStandalone) {
+      setTimeout(showInstallPopup, 800);
+    }
   } catch(e) {
     showToast('❌ 저장 실패: ' + e.message);
   }
