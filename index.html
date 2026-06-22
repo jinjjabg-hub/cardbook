@@ -228,6 +228,7 @@ let allCards = [];
 let currentChapter = '전체';
 let searchTimer = null;
 let authMode = 'login';
+let myDicaUrl = null; // 내 DiCA 링크 (Firestore에서 로드)
 const CHAPTERS = ['전체','파이오니어','자이언츠','기타'];
 
 // ===== 유틸 =====
@@ -279,7 +280,7 @@ function renderLogin() {
       </div>
     </div>
     <div class="bottom-nav">
-      <a href="https://jinjjabg-hub.github.io/BNI-PIONEER-cards/송승훈/" class="nav-btn"><span class="icon">📇</span><span>내 명함</span></a>
+      <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
       <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
       <button class="nav-btn" onclick="openScanModal()"><span class="icon">📷</span><span>명함스캔</span></button>
     </div>
@@ -406,7 +407,7 @@ function renderApp() {
       <div class="card-list" id="cardList"></div>
     </div>
     <div class="bottom-nav">
-      <a href="https://jinjjabg-hub.github.io/BNI-PIONEER-cards/송승훈/" class="nav-btn"><span class="icon">📇</span><span>내 명함</span></a>
+      <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
       <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
       <button class="nav-btn" onclick="openScanModal()"><span class="icon">📷</span><span>명함스캔</span></button>
     </div>
@@ -1040,12 +1041,15 @@ async function loadUserProfile(uid) {
     const doc = await db.collection('users').doc(uid).get();
     let name = currentUser.displayName || currentUser.email || '사용자';
     let title = '', company = '';
+    let isNew = false;
     if(doc.exists) {
       const d = doc.data();
       name    = d.name    || name;
       title   = d.title   || '';
       company = d.company || '';
+      myDicaUrl = d.dicaUrl || null;
     } else {
+      isNew = true;
       await db.collection('users').doc(uid).set({
         name, title: '', company: '', uid,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1056,45 +1060,113 @@ async function loadUserProfile(uid) {
       const display = [name, title, company].filter(Boolean).join(' · ');
       el.textContent = display;
     }
-    generateMyQR(uid);
+    // dicaUrl 없으면 등록 모달 표시 (신규 or 기존인데 등록 안 한 경우)
+    if(!myDicaUrl) {
+      showDicaRegisterModal();
+    } else {
+      generateMyQR();
+    }
   } catch(e) {
     console.error('프로필 로드 실패', e);
   }
 }
 
+// ===== 내 DiCA 등록 모달 =====
+function showDicaRegisterModal() {
+  // 이미 모달 있으면 중복 방지
+  if(document.getElementById('dicaRegisterModal')) return;
+  const modal = document.createElement('div');
+  modal.id = 'dicaRegisterModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:500;display:flex;align-items:flex-end;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:#f0faf4;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:28px 24px 44px;">
+      <div style="text-align:center;margin-bottom:20px;">
+        <div style="font-size:40px;margin-bottom:10px;">📇</div>
+        <div style="font-family:'Nanum Gothic',sans-serif;font-size:18px;font-weight:800;color:#1a3a2a;margin-bottom:8px;">내 디지털 명함 등록</div>
+        <div style="font-size:13px;color:#5a8a6a;line-height:1.7;">내 DiCA 링크를 등록하면<br>QR과 명함 공유가 바로 활성화돼요.</div>
+      </div>
+      <input id="dicaUrlInput" type="url" placeholder="https://jinjjabg-hub.github.io/..." 
+        style="width:100%;background:#fff;border:1.5px solid rgba(30,100,60,0.25);border-radius:12px;padding:13px 14px;font-size:13px;color:#1a3a2a;font-family:'Noto Sans KR',sans-serif;outline:none;margin-bottom:12px;"
+        onfocus="this.style.borderColor='#a07820'" onblur="this.style.borderColor='rgba(30,100,60,0.25)'">
+      <button onclick="saveDicaUrl()" style="width:100%;background:#1a3a2a;color:#f0faf4;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">등록하기</button>
+      <button onclick="skipDicaRegister()" style="width:100%;background:none;border:none;color:#a0a0a0;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;padding:8px;">나중에 하기</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+window.saveDicaUrl = async function() {
+  const input = document.getElementById('dicaUrlInput');
+  const url = input?.value.trim();
+  if(!url || !url.startsWith('http')) {
+    input.style.borderColor = '#C8102E';
+    showToast('❌ 올바른 URL을 입력해주세요');
+    return;
+  }
+  try {
+    await db.collection('users').doc(currentUser.uid).set({ dicaUrl: url }, { merge: true });
+    myDicaUrl = url;
+    document.getElementById('dicaRegisterModal')?.remove();
+    showToast('✅ 내 명함이 등록됐어요!');
+    generateMyQR();
+  } catch(e) {
+    showToast('저장 실패. 다시 시도해주세요.');
+  }
+};
+
+window.skipDicaRegister = function() {
+  document.getElementById('dicaRegisterModal')?.remove();
+  showToast('💡 내 명함은 나중에 설정에서 등록할 수 있어요');
+};
+
 // ===== QR 자동 생성 =====
-function generateMyQR(uid) {
+function generateMyQR() {
+  if(!myDicaUrl) return; // DiCA 없으면 QR 안 그림
   const canvas = document.getElementById('myQRCanvas');
   if(!canvas) return;
+  const uid = currentUser?.uid || '';
+  const url = myDicaUrl + (myDicaUrl.includes('?') ? '&' : '?') + 'ref=' + uid;
   if(typeof QRCode === 'undefined') {
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js';
-    s.onload = () => _drawQR(canvas, uid);
+    s.onload = () => _drawQR(canvas, url);
     document.head.appendChild(s);
   } else {
-    _drawQR(canvas, uid);
+    _drawQR(canvas, url);
   }
 }
-function _drawQR(canvas, uid) {
-  const url = 'https://jinjjabg-hub.github.io/BNI-PIONEER-cards/\uC1A1\uC2B9\uD6C8/?ref=' + uid;
+function _drawQR(canvas, url) {
   QRCode.toCanvas(canvas, url, {
     width: 80, margin: 1,
     color: { dark: '#1a3a2a', light: '#f0faf4' }
-  }, err => { if(err) console.error('QR \uC624\uB958', err); });
+  }, err => { if(err) console.error('QR 오류', err); });
 }
 
 // ===== QR 팝업 토글 =====
 function toggleQR() {
+  if(!myDicaUrl) {
+    showDicaRegisterModal();
+    return;
+  }
   const canvas = document.getElementById('myQRCanvas');
   if(!canvas) return;
   if(canvas.style.display === 'none' || canvas.style.display === '') {
     canvas.style.display = 'block';
-    if(currentUser) generateMyQR(currentUser.uid);
+    generateMyQR();
     showToast('📱 내 명함 QR — 스캔하면 명함 열려요');
   } else {
     canvas.style.display = 'none';
   }
 }
+
+// ===== 내 명함 이동 =====
+window.goMyCard = function() {
+  if(myDicaUrl) {
+    window.open(myDicaUrl, '_blank');
+  } else {
+    showDicaRegisterModal();
+  }
+};
 
 // ===== 스캔 모달 =====
 window.openScanModal = function() {
