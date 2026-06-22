@@ -893,6 +893,29 @@ function checkDicaParams() {
   window.history.replaceState({}, '', window.location.pathname);
 }
 
+// ===== 중복 명함 확인 팝업 =====
+function _showDuplicateConfirm(name) {
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:500;display:flex;align-items:center;justify-content:center;padding:24px;';
+    modal.innerHTML = `
+      <div style="background:#f0faf4;border-radius:20px;padding:28px 24px;width:100%;max-width:360px;text-align:center;">
+        <div style="font-size:36px;margin-bottom:12px;">📇</div>
+        <div style="font-size:16px;font-weight:800;color:#1a3a2a;margin-bottom:8px;">이미 저장된 명함이에요</div>
+        <div style="font-size:13px;color:#5a8a6a;margin-bottom:24px;line-height:1.7;">${name}님 명함이 카드북에 있어요.<br>최신 정보로 업데이트할까요?</div>
+        <div style="display:flex;gap:10px;">
+          <button onclick="this.closest('[style]').remove(); window._dupResolve(false);" 
+            style="flex:1;padding:13px;border-radius:12px;border:1.5px solid rgba(30,100,60,0.25);background:transparent;color:#5a8a6a;font-size:14px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">취소</button>
+          <button onclick="this.closest('[style]').remove(); window._dupResolve(true);"
+            style="flex:1;padding:13px;border-radius:12px;border:none;background:#1a3a2a;color:#f0faf4;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">업데이트</button>
+        </div>
+      </div>
+    `;
+    window._dupResolve = resolve;
+    document.body.appendChild(modal);
+  });
+}
+
 window.confirmDicaSave = async function() {
   if(!currentUser) { showToast('❌ 로그인 후 저장 가능해요'); return; }
   if(!_dicaCardData) return;
@@ -922,13 +945,17 @@ window.confirmDicaSave = async function() {
     };
 
     if(existingDocId) {
-      // 기존 카드 업데이트 (DiCA 우선)
+      // 이미 저장된 명함 → 업데이트 확인
+      document.getElementById('dicaPopup').style.display = 'none';
+      const confirmed = await _showDuplicateConfirm(d.name);
+      if(!confirmed) return;
       await db.collection('users').doc(currentUser.uid).collection('cards').doc(existingDocId).set(cardData);
+      showToast('✅ ' + d.name + '님 명함 업데이트됐어요!');
     } else {
       await db.collection('users').doc(currentUser.uid).collection('cards').doc('dica-' + Date.now()).set(cardData);
+      document.getElementById('dicaPopup').style.display = 'none';
+      showToast('✅ ' + d.name + '님 명함 저장됐어요!');
     }
-    document.getElementById('dicaPopup').style.display = 'none';
-    showToast('✅ ' + d.name + '님 명함 저장됐어요!');
     await loadCards();
     // 이미 PWA 앱으로 실행 중이면 설치 팝업 스킵
     const isStandalone = window.matchMedia('(display-mode:standalone)').matches || !!navigator.standalone;
