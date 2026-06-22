@@ -205,6 +205,11 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 <div class="toast" id="toast"></div>
 
 <script>
+// ===== 카카오톡 안드로이드 → 크롬 딥링크 =====
+if(/KAKAOTALK/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent)) {
+  location.href = 'intent://' + location.href.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+}
+
 // ===== Firebase 초기화 =====
 const firebaseConfig = {
   apiKey: "AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0",
@@ -302,6 +307,7 @@ window.handleEmailAuth = async function() {
   if(!email || !pw) { errEl.innerText='이메일과 비밀번호를 입력해주세요.'; return; }
   errEl.innerText = '';
   try {
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     if(authMode === 'login') {
       await auth.signInWithEmailAndPassword(email, pw);
     } else {
@@ -322,7 +328,10 @@ window.handleEmailAuth = async function() {
 
 // ===== Google 로그인 =====
 window.doGoogleLogin = async function() {
-  try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+  try {
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  }
   catch(e) { if(e.code !== 'auth/popup-closed-by-user') showToast('Google 로그인 실패'); }
 };
 
