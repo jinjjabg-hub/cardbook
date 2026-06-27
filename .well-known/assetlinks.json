@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.tmlink.cardbook",
+    "sha256_cert_fingerprints": ["FE:6E:66:88:DC:5A:0D:38:58:8B:E1:5E:F1:F8:E2:E3:61:3C:F9:E5:19:42:E9:D1:5F:01:96:E8:37:90:EE:B0"]
+  }
+}]
