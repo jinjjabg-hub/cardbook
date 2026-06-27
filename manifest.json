@@ -1,12 +1,15 @@
 {
+  "id": "com.tmlink.cardbook",
   "name": "CardBook",
   "short_name": "CardBook",
-  "description": "BNI 디지털 명함첩",
+  "description": "BNI 디지털 명함첩 - 디지털 명함을 저장하고 관리하세요",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f0faf4",
   "theme_color": "#f0faf4",
   "orientation": "portrait",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "icon-192.png",
@@ -19,6 +22,15 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshot-mobile.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "CardBook 명함첩"
     }
   ]
 }
