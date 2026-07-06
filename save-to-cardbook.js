@@ -78,30 +78,29 @@ async function saveToCardbook(cardData) {
     return;
   }
 
-  // 2. 카드북 URL 생성 (카드 데이터를 params로 전달)
-  const params = new URLSearchParams();
-  ['name','nameEn','title','company','phone','email','chapter','bni'].forEach(k => {
-    if(cardData[k]) params.set(k, cardData[k]);
-  });
-  params.set('from', window.location.href);
-  const cardbookUrl = CARDBOOK_BASE + '?' + params.toString();
-
-  // 3. PWA 설치 여부 확인
-  let pwaInstalled = false;
-  try {
-    if(navigator.getInstalledRelatedApps) {
-      const apps = await navigator.getInstalledRelatedApps();
-      pwaInstalled = apps.length > 0;
-    }
-  } catch(e) {}
-
-  if(pwaInstalled) {
-    // 설치됨 → 카드북 앱으로 바로 이동
-    window.location.href = cardbookUrl;
+  // 2. 로그인 상태 확인 → 이미 로그인이면 원터치 즉시 저장
+  const user = await _cbWaitAuth();
+  if(user) {
+    await _saveCard(user.uid, cardData);
   } else {
-    // 미설치 → 설치 안내 팝업
-    _showInstallGuide(cardbookUrl, cardData);
+    // 첫 사용자만 로그인 (한 번만)
+    showLoginModal(cardData);
   }
+}
+
+// ===== Firebase Auth 준비 대기 =====
+function _cbWaitAuth() {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = u => { if(!done) { done = true; resolve(u); } };
+    const check = () => {
+      if(_cbAuth) {
+        const unsub = _cbAuth.onAuthStateChanged(u => { unsub(); finish(u); });
+      } else setTimeout(check, 200);
+    };
+    check();
+    setTimeout(() => finish(_cbAuth ? _cbAuth.currentUser : null), 4000);
+  });
 }
 
 // ===== 카카오톡 안내 팝업 =====
@@ -138,50 +137,6 @@ function _showKakaoGuide() {
     }
     const btn = document.getElementById('_cb_kk_copy');
     if(btn) { btn.textContent = '✅ 복사됐어요! 크롬에 붙여넣기 하세요'; btn.style.background = '#a0c878'; }
-  };
-}
-
-// ===== 미설치 → 설치 안내 팝업 =====
-function _showInstallGuide(cardbookUrl, cardData) {
-  const name = cardData.name || '';
-  const overlay = document.createElement('div');
-  overlay.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;font-family:'Noto Sans KR',sans-serif;";
-  overlay.innerHTML = `
-    <div style="background:#f0faf4;border-radius:24px 24px 0 0;padding:28px 24px 44px;width:100%;max-width:430px;">
-      <div style="text-align:center;margin-bottom:20px;">
-        <div style="font-size:40px;margin-bottom:10px;">📲</div>
-        <div style="font-size:17px;font-weight:800;color:#1a3a2a;margin-bottom:6px;">카드북에 저장하기</div>
-        ${name ? `<div style="font-size:13px;color:#5a7a68;">${name}님의 명함을 저장합니다</div>` : ''}
-      </div>
-      <div style="background:#1a3a2a;border-radius:16px;padding:18px;margin-bottom:12px;">
-        <div style="font-size:13px;font-weight:700;color:#a07820;margin-bottom:8px;">📱 카드북 앱으로 저장 (추천)</div>
-        <div style="font-size:12px;color:rgba(240,250,244,0.65);line-height:1.7;margin-bottom:14px;">
-          앱으로 설치하면 다음부터 아이콘 하나로<br>빠르게 명함을 저장할 수 있어요
-        </div>
-        <button id="_cb_ig_open" style="width:100%;padding:13px;border-radius:10px;border:none;background:#a07820;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">🚀 카드북 열기 → 설치 후 저장</button>
-      </div>
-      <div style="background:rgba(30,100,60,0.07);border:1px solid rgba(30,100,60,0.15);border-radius:16px;padding:16px;margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:700;color:#2a4a38;margin-bottom:6px;">💡 앱 없이 바로 저장</div>
-        <div style="font-size:12px;color:#5a7a68;line-height:1.6;margin-bottom:12px;">Google 계정으로 로그인하면 설치 없이도 저장할 수 있어요</div>
-        <button id="_cb_ig_google" style="width:100%;padding:12px;border-radius:10px;border:none;background:#fff;color:#1a1a1a;font-weight:600;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 1px 6px rgba(0,0,0,0.12);">
-          <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          Google로 로그인하여 저장
-        </button>
-      </div>
-      <button onclick="this.closest('[style]').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#8a9a90;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  document.getElementById('_cb_ig_open').onclick = () => {
-    window.open(cardbookUrl, '_blank');
-    overlay.remove();
-  };
-
-  document.getElementById('_cb_ig_google').onclick = () => {
-    overlay.remove();
-    const doLogin = () => showLoginModal(cardData);
-    _cbAuth ? doLogin() : setTimeout(doLogin, 1000);
   };
 }
 
@@ -228,10 +183,20 @@ function showLoginModal(cardData) {
 
   modal.innerHTML = `
     <div style="background:#141209;border-radius:24px 24px 0 0;padding:28px 24px 40px;width:100%;max-width:430px;border-top:1px solid rgba(201,168,76,0.3);">
-      <div style="text-align:center;margin-bottom:20px;">
+      <div style="text-align:center;margin-bottom:16px;">
         <div style="font-size:28px;margin-bottom:8px;">🗂️</div>
         <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px;">명함첩에 저장하기</div>
+        <div style="font-size:11px;color:rgba(240,232,216,0.45);">처음 한 번만 로그인하면 다음부터는 원터치로 저장돼요</div>
       </div>
+
+      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:10px 12px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;margin-bottom:6px;">
+        <input type="checkbox" id="_cb_consent" style="margin-top:2px;width:15px;height:15px;flex-shrink:0;accent-color:#c9a84c;cursor:pointer;">
+        <span style="font-size:11px;color:rgba(240,232,216,0.75);line-height:1.6;">
+          <b style="color:#c9a84c;">[필수]</b> 개인정보 수집·이용에 동의합니다.
+          <a href="https://jinjjabg-hub.github.io/cardbook/privacy.html" target="_blank" style="color:#c9a84c;text-decoration:underline;">방침 보기</a>
+        </span>
+      </label>
+      <div id="_cb_consent_err" style="font-size:11px;color:#ff9e8f;min-height:14px;margin-bottom:6px;padding-left:4px;"></div>
 
       ${googleBtn}
 
@@ -263,6 +228,17 @@ function showLoginModal(cardData) {
   `;
 
   document.body.appendChild(modal);
+
+  const _consentOk = () => {
+    const cb = document.getElementById('_cb_consent');
+    const err = document.getElementById('_cb_consent_err');
+    if(cb && !cb.checked) {
+      if(err) err.textContent = '⚠️ 개인정보 동의에 체크해주세요.';
+      return false;
+    }
+    if(err) err.textContent = '';
+    return true;
+  };
 
   // 카카오톡 — 주소 복사 버튼
   if(isKakaoTalk) {
@@ -299,9 +275,11 @@ function showLoginModal(cardData) {
   // Google 로그인
   if(!isKakaoTalk) {
     document.getElementById('_cb_google').onclick = async () => {
+      if(!_consentOk()) return;
       try {
         await _cbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
         modal.remove();
+        await _saveConsent(_cbAuth.currentUser.uid);
         await _saveCard(_cbAuth.currentUser.uid, cardData);
       } catch(e) {
         if(e.code !== 'auth/popup-closed-by-user') alert('Google 로그인 실패: ' + e.message);
@@ -314,10 +292,12 @@ function showLoginModal(cardData) {
     const email = document.getElementById('_cb_li_email').value.trim();
     const pw = document.getElementById('_cb_li_pw').value.trim();
     const err = document.getElementById('_cb_li_err');
+    if(!_consentOk()) return;
     if(!email || !pw) { err.textContent = '이메일과 비밀번호를 입력해주세요.'; return; }
     try {
       await _cbAuth.signInWithEmailAndPassword(email, pw);
       modal.remove();
+      await _saveConsent(_cbAuth.currentUser.uid);
       await _saveCard(_cbAuth.currentUser.uid, cardData);
     } catch(e) {
       const msgs = {
@@ -336,12 +316,14 @@ function showLoginModal(cardData) {
     const pw = document.getElementById('_cb_su_pw').value.trim();
     const pw2 = document.getElementById('_cb_su_pw2').value.trim();
     const err = document.getElementById('_cb_su_err');
+    if(!_consentOk()) return;
     if(!email || !pw || !pw2) { err.textContent = '모든 항목을 입력해주세요.'; return; }
     if(pw !== pw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
     if(pw.length < 6) { err.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
     try {
       await _cbAuth.createUserWithEmailAndPassword(email, pw);
       modal.remove();
+      await _saveConsent(_cbAuth.currentUser.uid);
       await _saveCard(_cbAuth.currentUser.uid, cardData);
     } catch(e) {
       const msgs = {
@@ -354,6 +336,19 @@ function showLoginModal(cardData) {
   };
 }
 
+// ===== 동의 기록 저장 =====
+async function _saveConsent(uid) {
+  try {
+    await _cbDb.collection('consents').doc(uid).set({
+      uid,
+      agreedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      agreedAtISO: new Date().toISOString(),
+      version: '2026-06-04',
+      method: 'dica-save-modal'
+    }, { merge: true });
+  } catch(e) { console.error('동의 기록 실패', e); }
+}
+
 async function _saveCard(uid, cardData) {
   try {
     const docId = cardData.id || cardData.name.replace(/\s/g, '_');
@@ -364,11 +359,30 @@ async function _saveCard(uid, cardData) {
       savedAt: new Date().toISOString()
     };
     await _cbDb.collection('users').doc(uid).collection('cards').doc(docId).set(data);
-    const go = confirm('✅ 명함첩에 저장되었습니다!\n명함첩 바로 보기?');
-    if(go) window.location.href = 'https://jinjjabg-hub.github.io/cardbook/';
+    _showSaveSuccess(cardData);
   } catch(err) {
     alert('❌ 저장 실패: ' + err.message);
   }
+}
+
+// ===== 저장 성공 바텀시트 =====
+function _showSaveSuccess(cardData) {
+  const old = document.getElementById('_cb_success');
+  if(old) old.remove();
+  const sheet = document.createElement('div');
+  sheet.id = '_cb_success';
+  sheet.style.cssText = "position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:99999;width:calc(100% - 32px);max-width:400px;background:#1a3a2a;border-radius:16px;padding:16px 18px;box-shadow:0 8px 30px rgba(0,0,0,0.4);display:flex;align-items:center;gap:12px;font-family:'Noto Sans KR',sans-serif;animation:_cbSlideUp 0.3s ease;";
+  sheet.innerHTML = `
+    <style>@keyframes _cbSlideUp{from{transform:translate(-50%,20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}</style>
+    <div style="font-size:24px;">✅</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:13px;font-weight:700;color:#fff;">${cardData.name || ''}님 명함이 저장됐어요</div>
+      <div style="font-size:11px;color:rgba(240,250,244,0.55);margin-top:2px;">내 명함첩에서 언제든 확인할 수 있어요</div>
+    </div>
+    <button onclick="window.location.href='https://jinjjabg-hub.github.io/cardbook/'" style="flex-shrink:0;padding:9px 14px;border-radius:10px;border:none;background:#a07820;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">명함첩 보기</button>
+  `;
+  document.body.appendChild(sheet);
+  setTimeout(() => { if(sheet.parentNode) sheet.remove(); }, 6000);
 }
 
 function collectCardData() {
