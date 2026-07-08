@@ -1184,6 +1184,7 @@ auth.onAuthStateChanged(async user => {
     await loadUserProfile(user.uid);
     await loadCards();
     checkDicaParams(); // 디카에서 넘어온 파라미터 확인
+    checkSharedContent(); // 공유받은 명함 링크 확인
     // 홈화면 추가 배너 — 닫은 적 없으면 항상 표시
     if(!localStorage.getItem("addHomeDismissed")) {
       const b = document.getElementById("addHomeBanner");
@@ -1341,15 +1342,108 @@ window.closeScanModal = function(e) {
 };
 
 window.switchScanTab = function(tab) {
-  const isScan = tab === 'scan';
-  document.getElementById('paneScan').style.display   = isScan ? 'block' : 'none';
-  document.getElementById('paneContact').style.display = isScan ? 'none'  : 'block';
-  document.getElementById('tabScan').style.background    = isScan ? '#1a3a2a' : '#fff';
-  document.getElementById('tabScan').style.color         = isScan ? '#f0faf4' : '#1a3a2a';
-  document.getElementById('tabScan').style.border        = isScan ? 'none' : '1.5px solid rgba(30,100,60,0.2)';
-  document.getElementById('tabContact').style.background = isScan ? '#fff' : '#1a3a2a';
-  document.getElementById('tabContact').style.color      = isScan ? '#1a3a2a' : '#f0faf4';
-  document.getElementById('tabContact').style.border     = isScan ? '1.5px solid rgba(30,100,60,0.2)' : 'none';
+  const map = { scan: ['paneScan','tabScan'], contact: ['paneContact','tabContact'], link: ['paneLink','tabLink'] };
+  Object.keys(map).forEach(key => {
+    const [paneId, tabId] = map[key];
+    const pane = document.getElementById(paneId);
+    const btn = document.getElementById(tabId);
+    if(!pane || !btn) return;
+    const active = key === tab;
+    pane.style.display = active ? 'block' : 'none';
+    btn.style.background = active ? '#1a3a2a' : '#fff';
+    btn.style.color = active ? '#f0faf4' : '#1a3a2a';
+    btn.style.border = active ? 'none' : '1.5px solid rgba(30,100,60,0.2)';
+  });
+};
+
+// ===== 링크 명함: 텍스트에서 정보 자동 추출 =====
+window.parseLinkCard = function() {
+  const url = document.getElementById('lkUrl').value.trim();
+  const text = document.getElementById('lkText').value;
+  if(!url && !text.trim()) { showToast('❌ 링크 또는 내용을 입력해주세요'); return; }
+
+  // 전화번호 (휴대폰 우선, 없으면 일반전화)
+  let phone = (text.match(/01[016789][-\s.]?\d{3,4}[-\s.]?\d{4}/) || [])[0] || '';
+  if(!phone) phone = (text.match(/0\d{1,2}[-\s.]?\d{3,4}[-\s.]?\d{4}/) || [])[0] || '';
+  phone = phone.replace(/[\s.]/g, '-');
+
+  // 이메일
+  const email = (text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/) || [])[0] || '';
+
+  // 이름 추측: 2~4자 한글 단독 줄 중 첫번째
+  let name = '';
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  for(const line of lines.slice(0, 12)) {
+    if(/^[가-힣]{2,4}$/.test(line)) { name = line; break; }
+  }
+
+  // 직함 추측
+  let title = '';
+  const titleWords = ['대표','이사','부장','과장','팀장','실장','소장','원장','지사장','본부장','회장','사장','전무','상무','매니저','센터장'];
+  for(const line of lines.slice(0, 15)) {
+    if(titleWords.some(w => line.includes(w)) && line.length <= 15) { title = line; break; }
+  }
+
+  document.getElementById('lkName').value = name;
+  document.getElementById('lkTitle').value = title;
+  document.getElementById('lkPhone').value = phone;
+  document.getElementById('lkEmail').value = email;
+  window._lkPendingUrl = url;
+  window._lkPendingText = text;
+
+  document.getElementById('linkStep1').style.display = 'none';
+  document.getElementById('linkStep2').style.display = 'block';
+  if(name || phone || email) showToast('✨ 정보를 추출했어요! 확인 후 저장하세요');
+  else showToast('직접 입력 후 저장해주세요');
+};
+
+// ===== 링크 명함 저장 =====
+window.saveLinkCard = async function() {
+  if(!currentUser) { showToast('❌ 로그인 필요'); return; }
+  const card = {
+    name:    document.getElementById('lkName').value.trim(),
+    title:   document.getElementById('lkTitle').value.trim(),
+    company: document.getElementById('lkCompany').value.trim(),
+    phone:   document.getElementById('lkPhone').value.trim(),
+    email:   document.getElementById('lkEmail').value.trim(),
+    chapter: document.getElementById('lkChapter').value,
+    url:     window._lkPendingUrl || '',
+    fullText:(window._lkPendingText || '').slice(0, 3000),
+    referrer:'링크로 추가',
+    savedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  if(!card.name) { showToast('❌ 이름을 입력해주세요'); return; }
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc('lk-' + Date.now()).set(card);
+    document.getElementById('scanModal').style.display = 'none';
+    showToast('✅ ' + card.name + '님 저장됐어요!');
+    await loadCards();
+    document.getElementById('lkUrl').value = '';
+    document.getElementById('lkText').value = '';
+    document.getElementById('linkStep1').style.display = 'block';
+    document.getElementById('linkStep2').style.display = 'none';
+  } catch(e) { showToast('❌ ' + e.message); }
+};
+
+// ===== 공유받기 (Web Share Target) 처리 =====
+window.checkSharedContent = function() {
+  const p = new URLSearchParams(window.location.search);
+  if(p.get('name')) return; // 디카 파라미터가 우선
+  const sharedUrl = p.get('url') || '';
+  const sharedText = p.get('text') || '';
+  const sharedTitle = p.get('title') || '';
+  if(!sharedUrl && !sharedText) return;
+
+  // 스캔 모달 열고 링크 탭으로
+  document.getElementById('scanModal').style.display = 'flex';
+  switchScanTab('link');
+  // text 안에 URL이 섞여오는 경우 분리
+  const urlInText = (sharedText.match(/https?:\/\/[^\s]+/) || [])[0] || '';
+  document.getElementById('lkUrl').value = sharedUrl || urlInText;
+  document.getElementById('lkText').value = [sharedTitle, sharedText].filter(Boolean).join('\n');
+  if(sharedText.trim().length > 10) parseLinkCard();
+  // URL 파라미터 정리
+  window.history.replaceState({}, '', window.location.pathname);
 };
 
 window.triggerCamera = function() {
@@ -1560,11 +1654,13 @@ window.saveContactCard = async function() {
   <div class="scan-sheet" id="scanSheet">
 
     <!-- 탭 선택 -->
-    <div style="display:flex;gap:8px;margin-bottom:20px;">
+    <div style="display:flex;gap:6px;margin-bottom:20px;">
       <button id="tabScan" onclick="switchScanTab('scan')"
-        style="flex:1;padding:10px;border-radius:10px;border:none;font-family:'Noto Sans KR',sans-serif;font-size:13px;font-weight:700;cursor:pointer;background:#1a3a2a;color:#f0faf4;">📷 명함 스캔</button>
+        style="flex:1;padding:10px 4px;border-radius:10px;border:none;font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:#1a3a2a;color:#f0faf4;">📷 스캔</button>
       <button id="tabContact" onclick="switchScanTab('contact')"
-        style="flex:1;padding:10px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.2);font-family:'Noto Sans KR',sans-serif;font-size:13px;font-weight:700;cursor:pointer;background:#fff;color:#1a3a2a;">📋 연락처 가져오기</button>
+        style="flex:1;padding:10px 4px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.2);font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#1a3a2a;">📋 연락처</button>
+      <button id="tabLink" onclick="switchScanTab('link')"
+        style="flex:1;padding:10px 4px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.2);font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#1a3a2a;">🔗 링크</button>
     </div>
 
     <!-- ===== 명함 스캔 탭 ===== -->
@@ -1649,6 +1745,45 @@ window.saveContactCard = async function() {
         <button class="ocr-save-btn" onclick="saveContactCard()">💾 저장하기</button>
         <button onclick="document.getElementById('contactStep1').style.display='block';document.getElementById('contactStep2').style.display='none';"
           style="width:100%;padding:12px;border-radius:14px;border:none;background:transparent;color:#5a7a68;font-family:'Noto Sans KR',sans-serif;font-size:13px;cursor:pointer;margin-top:8px;">← 다시 선택</button>
+      </div>
+    </div>
+
+    <!-- ===== 링크로 추가 탭 ===== -->
+    <div id="paneLink" style="display:none">
+      <!-- 단계1: 링크+내용 입력 -->
+      <div id="linkStep1">
+        <div style="text-align:center;padding:6px 0 14px;">
+          <div style="font-size:40px;margin-bottom:8px;">🔗</div>
+          <div style="font-size:14px;font-weight:700;color:#1a3a2a;margin-bottom:6px;">디지털 명함 링크로 추가</div>
+          <div style="font-size:12px;color:#5a7a68;line-height:1.7;">받은 디지털 명함의 주소를 붙여넣고<br>명함 페이지 내용을 복사해서 붙여넣으면<br>정보를 자동으로 추출해요</div>
+        </div>
+        <div class="ocr-field"><div class="ocr-label">명함 링크 (선택)</div><input class="ocr-input" id="lkUrl" placeholder="https://..." type="url"/></div>
+        <div class="ocr-field">
+          <div class="ocr-label">명함 내용 붙여넣기</div>
+          <textarea id="lkText" placeholder="명함 페이지에서 전체선택 → 복사 → 여기에 붙여넣기" style="width:100%;min-height:110px;box-sizing:border-box;padding:12px;border-radius:12px;border:1.5px solid rgba(30,100,60,0.2);font-family:'Noto Sans KR',sans-serif;font-size:13px;resize:vertical;outline:none;background:#fff;color:#1a3a2a;"></textarea>
+        </div>
+        <button class="ocr-save-btn" onclick="parseLinkCard()">✨ 정보 자동 추출</button>
+        <p style="font-size:11px;color:#5a7a68;margin-top:10px;line-height:1.6;text-align:center;">💡 링크만 있어도 저장돼요. 내용을 붙여넣으면<br>이름·전화번호를 자동으로 채워줘요</p>
+      </div>
+      <!-- 단계2: 추출 결과 확인 -->
+      <div id="linkStep2" style="display:none">
+        <div style="font-size:12px;color:#5a7a68;margin-bottom:14px;">✏️ 추출된 정보를 확인·수정 후 저장하세요</div>
+        <div class="ocr-field"><div class="ocr-label">이름</div><input class="ocr-input" id="lkName" placeholder="이름"/></div>
+        <div class="ocr-field"><div class="ocr-label">직함</div><input class="ocr-input" id="lkTitle" placeholder="직함"/></div>
+        <div class="ocr-field"><div class="ocr-label">회사</div><input class="ocr-input" id="lkCompany" placeholder="회사명"/></div>
+        <div class="ocr-field"><div class="ocr-label">전화번호</div><input class="ocr-input" id="lkPhone" placeholder="010-0000-0000" type="tel"/></div>
+        <div class="ocr-field"><div class="ocr-label">이메일</div><input class="ocr-input" id="lkEmail" placeholder="email@example.com" type="email"/></div>
+        <div class="ocr-field">
+          <div class="ocr-label">챕터</div>
+          <select class="ocr-input" id="lkChapter">
+            <option value="파이오니어">파이오니어</option>
+            <option value="자이언츠">자이언츠</option>
+            <option value="기타" selected>기타</option>
+          </select>
+        </div>
+        <button class="ocr-save-btn" onclick="saveLinkCard()">💾 명함 저장</button>
+        <button onclick="document.getElementById('linkStep1').style.display='block';document.getElementById('linkStep2').style.display='none';"
+          style="width:100%;padding:12px;border-radius:14px;border:none;background:transparent;color:#5a7a68;font-family:'Noto Sans KR',sans-serif;font-size:13px;cursor:pointer;margin-top:8px;">← 다시 입력</button>
       </div>
     </div>
 
