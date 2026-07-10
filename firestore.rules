@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 관리자 이메일 (여기에만 쓰기 권한)
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'jinjjabg@gmail.com';
+    }
+
+    // BNI 멤버 명부: 로그인한 사람은 누구나 읽기 / 등록·수정은 관리자만
+    match /bni_members/{memberId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // 내 명함첩: 본인 것만 읽고 쓰기
+    match /users/{userId}/cards/{cardId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
+    // 사용자 문서: 본인만
+    match /users/{userId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
+    // 동의 기록: 본인만 쓰기
+    match /consents/{userId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+    }
+  }
+}

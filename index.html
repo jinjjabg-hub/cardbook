@@ -363,15 +363,44 @@ async function saveConsentRecord(uid) {
 }
 
 // ===== Google 로그인 =====
+// 설치된 앱(standalone)에서는 팝업이 결과를 못 돌려받는 경우가 있어 redirect 사용
 window.doGoogleLogin = async function() {
   if(!checkPrivacyAgree()) return;
+  const provider = new firebase.auth.GoogleAuthProvider();
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
   try {
     await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-    const result = await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+    if(isStandalone) {
+      sessionStorage.setItem('pendingConsent', '1');
+      await auth.signInWithRedirect(provider);
+      return; // 페이지 이동됨
+    }
+    const result = await auth.signInWithPopup(provider);
     await saveConsentRecord(result.user.uid);
   }
-  catch(e) { if(e.code !== 'auth/popup-closed-by-user') showToast('Google 로그인 실패'); }
+  catch(e) {
+    if(e.code === 'auth/popup-closed-by-user') return;
+    // 팝업이 막히거나 환경이 지원 안 하면 redirect로 재시도
+    if(e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment' || e.code === 'auth/cancelled-popup-request') {
+      try {
+        sessionStorage.setItem('pendingConsent', '1');
+        await auth.signInWithRedirect(provider);
+        return;
+      } catch(e2) { showToast('Google 로그인 실패: ' + e2.code); return; }
+    }
+    showToast('Google 로그인 실패');
+  }
 };
+
+// ===== redirect 방식 로그인 결과 처리 (앱 재진입 시) =====
+auth.getRedirectResult().then(async result => {
+  if(result && result.user && sessionStorage.getItem('pendingConsent')) {
+    sessionStorage.removeItem('pendingConsent');
+    await saveConsentRecord(result.user.uid);
+  }
+}).catch(e => {
+  if(e.code && e.code !== 'auth/no-auth-event') console.error('redirect 로그인 오류', e);
+});
 
 // ===== 카카오 로그인 (안정화 버전) =====
 // 핵심: kakaoId 기반 고정 비밀번호 사용 (getTime 제거)
@@ -543,11 +572,160 @@ function renderApp() {
     <div class="bottom-nav">
       <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
       <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
+      <button class="nav-btn" onclick="openMembersModal()"><span class="icon">🤝</span><span>BNI멤버</span></button>
       <button class="nav-btn" onclick="openScanModal()"><span class="icon">📷</span><span>명함스캔</span></button>
     </div>
   `;
   renderCards(allCards);
 }
+
+// ===== 관리자 판별 =====
+const CB_ADMIN_EMAILS = ['jinjjabg@gmail.com'];
+function isAdmin() {
+  return currentUser && CB_ADMIN_EMAILS.includes(currentUser.email);
+}
+
+// ===== BNI 멤버 명부 모달 =====
+window.openMembersModal = async function() {
+  let modal = document.getElementById('membersModal');
+  if(modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'membersModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:#f0faf4;z-index:500;display:flex;flex-direction:column;font-family:"Noto Sans KR",sans-serif;';
+  modal.innerHTML = `
+    <div style="padding:18px 20px 14px;border-bottom:1px solid rgba(30,100,60,0.12);display:flex;align-items:center;gap:12px;">
+      <button onclick="document.getElementById('membersModal').remove()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#1a3a2a;">←</button>
+      <div style="flex:1;">
+        <div style="font-size:16px;font-weight:800;color:#1a3a2a;">🤝 BNI 멤버 추가하기</div>
+        <div style="font-size:11px;color:#5a7a68;margin-top:2px;">원하는 멤버를 골라 내 명함첩에 담으세요</div>
+      </div>
+      ${isAdmin() ? '<button onclick="openMemberAdmin()" style="border:none;background:#1a3a2a;color:#fff;font-size:12px;font-weight:700;padding:8px 12px;border-radius:9px;cursor:pointer;">+ 등록</button>' : ''}
+    </div>
+    <div style="padding:12px 16px;">
+      <input id="memberSearch" oninput="filterMembers(this.value)" placeholder="이름·회사·업종 검색" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:11px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;outline:none;font-family:'Noto Sans KR',sans-serif;">
+    </div>
+    <div id="memberList" style="flex:1;overflow-y:auto;padding:0 16px 24px;">
+      <div style="text-align:center;padding:40px 0;color:#5a7a68;font-size:13px;">불러오는 중...</div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  await loadMembers();
+};
+
+let _cbMembers = [];
+async function loadMembers() {
+  try {
+    const snap = await db.collection('bni_members').orderBy('name').get();
+    _cbMembers = snap.docs.map(d => ({ ...d.data(), docId: d.id }));
+    renderMembers(_cbMembers);
+  } catch(e) {
+    document.getElementById('memberList').innerHTML = '<div style="text-align:center;padding:40px 0;color:#c8102e;font-size:13px;">명부를 불러오지 못했어요<br><span style="font-size:11px;color:#5a7a68;">' + e.message + '</span></div>';
+  }
+}
+
+function renderMembers(list) {
+  const el = document.getElementById('memberList');
+  if(!el) return;
+  if(!list.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px 0;color:#5a7a68;font-size:13px;">아직 등록된 멤버가 없어요' + (isAdmin() ? '<br><span style="font-size:11px;">우측 상단 + 등록으로 추가하세요</span>' : '') + '</div>';
+    return;
+  }
+  const savedIds = new Set(allCards.map(c => c.docId));
+  el.innerHTML = list.map(m => {
+    const saved = savedIds.has('bni-' + m.docId);
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid rgba(30,100,60,0.08);">
+        <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#1a3a2a,#2d5a3d);color:#c9a84c;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0;">${(m.name||'?').charAt(0)}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:700;color:#1a3a2a;">${m.name||''} <span style="font-size:11px;color:#5a7a68;font-weight:500;">${m.title||''}</span></div>
+          <div style="font-size:12px;color:#5a7a68;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.company||''} ${m.chapter?('· '+m.chapter):''}</div>
+        </div>
+        <button onclick="saveMemberToMyCards('${m.docId}')" ${saved?'disabled':''}
+          style="flex-shrink:0;padding:8px 13px;border-radius:9px;border:none;font-size:12px;font-weight:700;cursor:${saved?'default':'pointer'};font-family:'Noto Sans KR',sans-serif;background:${saved?'rgba(30,100,60,0.1)':'#a07820'};color:${saved?'#5a7a68':'#fff'};">
+          ${saved?'✓ 저장됨':'+ 담기'}
+        </button>
+      </div>
+    `;
+  }).join('');
+}
+
+window.filterMembers = function(q) {
+  q = (q||'').toLowerCase().trim();
+  if(!q) { renderMembers(_cbMembers); return; }
+  renderMembers(_cbMembers.filter(m =>
+    [m.name,m.company,m.title,m.chapter,m.industry].filter(Boolean).join(' ').toLowerCase().includes(q)
+  ));
+};
+
+window.saveMemberToMyCards = async function(memberId) {
+  const m = _cbMembers.find(x => x.docId === memberId);
+  if(!m || !currentUser) return;
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc('bni-' + memberId).set({
+      name: m.name||'', title: m.title||'', company: m.company||'',
+      phone: m.phone||'', email: m.email||'', chapter: m.chapter||'',
+      url: m.url||'', industry: m.industry||'', referrer: 'BNI 멤버 명부',
+      savedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast('✅ ' + m.name + '님을 명함첩에 담았어요');
+    await loadCards();
+    renderMembers(_cbMembers);
+  } catch(e) { showToast('❌ ' + e.message); }
+};
+
+// ===== 관리자: 멤버 등록 화면 =====
+window.openMemberAdmin = function() {
+  let modal = document.getElementById('memberAdminModal');
+  if(modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'memberAdminModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;font-family:"Noto Sans KR",sans-serif;';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:20px;padding:24px;width:100%;max-width:380px;max-height:88vh;overflow-y:auto;">
+      <div style="font-size:16px;font-weight:800;color:#1a3a2a;margin-bottom:4px;">멤버 등록</div>
+      <div style="font-size:11px;color:#5a7a68;margin-bottom:18px;">디카를 만든 멤버를 명부에 추가합니다</div>
+      <input id="maName" placeholder="이름 *" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <input id="maTitle" placeholder="직함 (예: 대표)" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <input id="maCompany" placeholder="회사명" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <input id="maIndustry" placeholder="업종 (예: 뷰티, 보험)" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <input id="maPhone" placeholder="전화번호" type="tel" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <input id="maEmail" placeholder="이메일" type="email" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <input id="maUrl" placeholder="디카 링크 (https://...)" type="url" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <select id="maChapter" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(30,100,60,0.18);font-size:13px;margin-bottom:16px;outline:none;background:#fff;">
+        <option value="파이오니어">파이오니어</option>
+        <option value="자이언츠">자이언츠</option>
+        <option value="그래비티">그래비티</option>
+        <option value="기타">기타</option>
+      </select>
+      <button onclick="saveMemberToRoster()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#1a3a2a;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">명부에 등록</button>
+      <button onclick="document.getElementById('memberAdminModal').remove()" style="width:100%;padding:11px;border-radius:12px;border:none;background:transparent;color:#5a7a68;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+};
+
+window.saveMemberToRoster = async function() {
+  if(!isAdmin()) { showToast('❌ 권한 없음'); return; }
+  const name = document.getElementById('maName').value.trim();
+  if(!name) { showToast('❌ 이름은 필수예요'); return; }
+  const data = {
+    name,
+    title: document.getElementById('maTitle').value.trim(),
+    company: document.getElementById('maCompany').value.trim(),
+    industry: document.getElementById('maIndustry').value.trim(),
+    phone: document.getElementById('maPhone').value.trim(),
+    email: document.getElementById('maEmail').value.trim(),
+    url: document.getElementById('maUrl').value.trim(),
+    chapter: document.getElementById('maChapter').value,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  try {
+    await db.collection('bni_members').add(data);
+    showToast('✅ ' + name + '님 명부 등록 완료');
+    document.getElementById('memberAdminModal').remove();
+    await loadMembers();
+  } catch(e) { showToast('❌ ' + e.message); }
+};
 // ===== 연락처 가져오기 =====
 window.importContacts = async function() {
   if('contacts' in navigator && 'ContactsManager' in window) {
