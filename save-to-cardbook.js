@@ -39,8 +39,19 @@ const isAndroid = /Android/i.test(navigator.userAgent);
 
 let _cbAuth, _cbDb;
 
-function initFirebase() {
-  if(typeof firebase === 'undefined') return;
+function initFirebase(tries) {
+  tries = tries || 0;
+  // SDK 3종(app/auth/firestore)이 모두 준비될 때까지 재시도
+  const ready = typeof firebase !== 'undefined'
+    && typeof firebase.initializeApp === 'function'
+    && typeof firebase.auth === 'function'
+    && typeof firebase.firestore === 'function';
+  if(!ready) {
+    if(tries < 50) setTimeout(() => initFirebase(tries + 1), 100);
+    else console.error('Firebase SDK 로드 실패');
+    return;
+  }
+  if(_cbAuth && _cbDb) return; // 이미 초기화됨
   try {
     const config = {
       apiKey: "AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0",
@@ -50,10 +61,24 @@ function initFirebase() {
       messagingSenderId: "196338490174",
       appId: "1:196338490174:web:78dc77e684945aca362a6f"
     };
-    try { firebase.initializeApp(config); } catch(e) {}
+    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(config);
     _cbAuth = firebase.auth();
     _cbDb = firebase.firestore();
-  } catch(e) { console.error('Firebase 초기화 실패', e); }
+    // redirect 로그인으로 돌아온 경우 처리
+    _cbAuth.getRedirectResult().then(async res => {
+      if(res && res.user) {
+        const pending = sessionStorage.getItem('_cbPendingCard');
+        if(pending) {
+          sessionStorage.removeItem('_cbPendingCard');
+          await _saveConsent(res.user.uid);
+          await _saveCard(res.user.uid, JSON.parse(pending));
+        }
+      }
+    }).catch(() => {});
+  } catch(e) {
+    console.error('Firebase 초기화 실패', e);
+    if(tries < 50) setTimeout(() => initFirebase(tries + 1), 100);
+  }
 }
 
 const CARDBOOK_BASE = 'https://jinjjabg-hub.github.io/cardbook/';
@@ -78,7 +103,10 @@ async function saveToCardbook(cardData) {
     return;
   }
 
-  // 2. 로그인 상태 확인 → 이미 로그인이면 원터치 즉시 저장
+  // 2. Firebase 준비 확인 (아직이면 즉시 초기화 시도)
+  if(!_cbAuth) initFirebase();
+
+  // 3. 로그인 상태 확인 → 이미 로그인이면 원터치 즉시 저장
   const user = await _cbWaitAuth();
   if(user) {
     await _saveCard(user.uid, cardData);
@@ -96,10 +124,13 @@ function _cbWaitAuth() {
     const check = () => {
       if(_cbAuth) {
         const unsub = _cbAuth.onAuthStateChanged(u => { unsub(); finish(u); });
-      } else setTimeout(check, 200);
+      } else {
+        initFirebase();
+        setTimeout(check, 150);
+      }
     };
     check();
-    setTimeout(() => finish(_cbAuth ? _cbAuth.currentUser : null), 4000);
+    setTimeout(() => finish(_cbAuth ? _cbAuth.currentUser : null), 6000);
   });
 }
 
@@ -185,7 +216,7 @@ function showLoginModal(cardData) {
     <div style="background:#141209;border-radius:24px 24px 0 0;padding:28px 24px 40px;width:100%;max-width:430px;border-top:1px solid rgba(201,168,76,0.3);">
       <div style="text-align:center;margin-bottom:16px;">
         <div style="font-size:28px;margin-bottom:8px;">🗂️</div>
-        <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px;">명함첩에 저장하기</div>
+        <div style="font-size:16px;font-weight:800;color:#fff;margin-bottom:4px;">명함 저장하기</div>
         <div style="font-size:11px;color:rgba(240,232,216,0.45);">처음 한 번만 로그인하면 다음부터는 원터치로 저장돼요</div>
       </div>
 
@@ -276,8 +307,17 @@ function showLoginModal(cardData) {
   if(!isKakaoTalk) {
     document.getElementById('_cb_google').onclick = async () => {
       if(!_consentOk()) return;
+      if(!_cbAuth) { initFirebase(); await new Promise(r => setTimeout(r, 800)); }
+      if(!_cbAuth) { alert('로그인 준비 중입니다. 잠시 후 다시 눌러주세요.'); return; }
       try {
-        await _cbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+        const provider = new firebase.auth.GoogleAuthProvider();
+        const standalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+        if(standalone) {
+          sessionStorage.setItem('_cbPendingCard', JSON.stringify(cardData));
+          await _cbAuth.signInWithRedirect(provider);
+          return;
+        }
+        await _cbAuth.signInWithPopup(provider);
         modal.remove();
         await _saveConsent(_cbAuth.currentUser.uid);
         await _saveCard(_cbAuth.currentUser.uid, cardData);
@@ -294,6 +334,8 @@ function showLoginModal(cardData) {
     const err = document.getElementById('_cb_li_err');
     if(!_consentOk()) return;
     if(!email || !pw) { err.textContent = '이메일과 비밀번호를 입력해주세요.'; return; }
+    if(!_cbAuth) { initFirebase(); await new Promise(r => setTimeout(r, 800)); }
+    if(!_cbAuth) { err.textContent = '로그인 준비 중입니다. 잠시 후 다시 시도해주세요.'; return; }
     try {
       await _cbAuth.signInWithEmailAndPassword(email, pw);
       modal.remove();
@@ -318,6 +360,8 @@ function showLoginModal(cardData) {
     const err = document.getElementById('_cb_su_err');
     if(!_consentOk()) return;
     if(!email || !pw || !pw2) { err.textContent = '모든 항목을 입력해주세요.'; return; }
+    if(!_cbAuth) { initFirebase(); await new Promise(r => setTimeout(r, 800)); }
+    if(!_cbAuth) { err.textContent = '로그인 준비 중입니다. 잠시 후 다시 시도해주세요.'; return; }
     if(pw !== pw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
     if(pw.length < 6) { err.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
     try {
