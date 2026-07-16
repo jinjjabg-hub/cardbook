@@ -393,16 +393,37 @@ async function _saveConsent(uid) {
   } catch(e) { console.error('동의 기록 실패', e); }
 }
 
+// URL 정규화: 프로토콜·쿼리·해시·index.html·끝 슬래시 제거 + 퍼센트 인코딩 통일
+function _cbNormUrl(url) {
+  if(!url) return '';
+  let u = String(url).trim();
+  try { u = decodeURIComponent(u); } catch(e) {}
+  u = u.toLowerCase();
+  u = u.replace(/^https?:\/\//, '').replace(/#.*$/, '').replace(/\?.*$/, '');
+  u = u.replace(/index\.html$/, '').replace(/\/+$/, '');
+  return u;
+}
+
 async function _saveCard(uid, cardData) {
   try {
-    const docId = cardData.id || cardData.name.replace(/\s/g, '_');
     const data = {
       ...cardData,
       fullText: document.body.innerText,
       url: cardData.url || window.location.href,
       savedAt: new Date().toISOString()
     };
-    await _cbDb.collection('users').doc(uid).collection('cards').doc(docId).set(data);
+    let docId = cardData.id || cardData.name.replace(/\s/g, '_');
+    // 중복 방지: 같은 이름의 기존 카드 중 URL이 같은(또는 URL 없는) 카드가 있으면 그 문서에 덮어쓰기
+    try {
+      const snap = await _cbDb.collection('users').doc(uid).collection('cards')
+        .where('name', '==', data.name).get();
+      const nu = _cbNormUrl(data.url);
+      snap.docs.forEach(d => {
+        const ex = d.data();
+        if(!ex.url || _cbNormUrl(ex.url) === nu) docId = d.id;
+      });
+    } catch(e) {}
+    await _cbDb.collection('users').doc(uid).collection('cards').doc(docId).set(data, { merge: true });
     _showSaveSuccess(cardData);
   } catch(err) {
     alert('❌ 저장 실패: ' + err.message);
