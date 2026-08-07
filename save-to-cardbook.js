@@ -7,6 +7,8 @@ if(/KAKAOTALK/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent
 
 const isKakaoTalk = /KAKAOTALK/i.test(navigator.userAgent);
 const isAndroid = /Android/i.test(navigator.userAgent);
+// 모바일 브라우저는 팝업 로그인이 불안정해서(COOP/타이밍 이슈) redirect를 기본값으로 씀
+const _cbIsMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 (function loadFirebase() {
   const scripts = [
@@ -130,7 +132,8 @@ function _cbWaitAuth() {
       }
     };
     check();
-    setTimeout(() => finish(_cbAuth ? _cbAuth.currentUser : null), 6000);
+    // 느린 네트워크에서 세션 복원이 늦게 끝나는 경우를 대비해 9초까지 대기
+    setTimeout(() => finish(_cbAuth ? _cbAuth.currentUser : null), 9000);
   });
 }
 
@@ -311,8 +314,10 @@ function showLoginModal(cardData) {
       if(!_cbAuth) { alert('로그인 준비 중입니다. 잠시 후 다시 눌러주세요.'); return; }
       try {
         const provider = new firebase.auth.GoogleAuthProvider();
+        await _cbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
         const standalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
-        if(standalone) {
+        // 모바일 브라우저는 팝업이 COOP/타이밍 문제로 종종 실패하므로 redirect를 기본값으로 사용
+        if(standalone || _cbIsMobile) {
           sessionStorage.setItem('_cbPendingCard', JSON.stringify(cardData));
           await _cbAuth.signInWithRedirect(provider);
           return;
@@ -322,7 +327,16 @@ function showLoginModal(cardData) {
         await _saveConsent(_cbAuth.currentUser.uid);
         await _saveCard(_cbAuth.currentUser.uid, cardData);
       } catch(e) {
-        if(e.code !== 'auth/popup-closed-by-user') alert('Google 로그인 실패: ' + e.message);
+        if(e.code === 'auth/popup-closed-by-user') return;
+        // 팝업이 막히면 마지막 수단으로 redirect 재시도
+        if(e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
+          try {
+            sessionStorage.setItem('_cbPendingCard', JSON.stringify(cardData));
+            await _cbAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+            return;
+          } catch(e2) { alert('Google 로그인 실패: ' + e2.message); return; }
+        }
+        alert('Google 로그인 실패: ' + e.message);
       }
     };
   }
@@ -337,6 +351,7 @@ function showLoginModal(cardData) {
     if(!_cbAuth) { initFirebase(); await new Promise(r => setTimeout(r, 800)); }
     if(!_cbAuth) { err.textContent = '로그인 준비 중입니다. 잠시 후 다시 시도해주세요.'; return; }
     try {
+      await _cbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
       await _cbAuth.signInWithEmailAndPassword(email, pw);
       modal.remove();
       await _saveConsent(_cbAuth.currentUser.uid);
@@ -365,6 +380,7 @@ function showLoginModal(cardData) {
     if(pw !== pw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
     if(pw.length < 6) { err.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
     try {
+      await _cbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
       await _cbAuth.createUserWithEmailAndPassword(email, pw);
       modal.remove();
       await _saveConsent(_cbAuth.currentUser.uid);
