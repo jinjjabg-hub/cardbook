@@ -76,7 +76,22 @@ function initFirebase(tries) {
           await _saveCard(res.user.uid, JSON.parse(pending));
         }
       }
-    }).catch(() => {});
+    }).catch(err => {
+      // ===== 수정: 에러를 침묵시키지 않고 노출 =====
+      console.error('리다이렉트 로그인 처리 실패:', err);
+      const pending = sessionStorage.getItem('_cbPendingCard');
+      if(pending) {
+        sessionStorage.removeItem('_cbPendingCard');
+        const msgs = {
+          'auth/unauthorized-domain': '이 사이트 도메인이 Firebase에 등록되지 않았습니다. 관리자에게 문의해주세요.',
+          'auth/network-request-failed': '네트워크 연결을 확인해주세요.',
+          'auth/redirect-cancelled-by-user': '로그인이 취소되었습니다.',
+          'auth/web-storage-unsupported': '브라우저의 쿠키/저장소 설정을 확인해주세요. (시크릿 모드는 지원되지 않을 수 있어요)'
+        };
+        const friendly = msgs[err.code] || ('로그인 처리 중 오류가 발생했습니다: ' + (err.message || err.code || '알 수 없는 오류'));
+        alert('❌ ' + friendly + '\n다시 시도해주세요.');
+      }
+    });
   } catch(e) {
     console.error('Firebase 초기화 실패', e);
     if(tries < 50) setTimeout(() => initFirebase(tries + 1), 100);
@@ -319,7 +334,14 @@ function showLoginModal(cardData) {
         // 모바일 브라우저는 팝업이 COOP/타이밍 문제로 종종 실패하므로 redirect를 기본값으로 사용
         if(standalone || _cbIsMobile) {
           sessionStorage.setItem('_cbPendingCard', JSON.stringify(cardData));
-          await _cbAuth.signInWithRedirect(provider);
+          // ===== 수정: 리다이렉트 시작 자체가 실패하는 경우 대비 =====
+          try {
+            await _cbAuth.signInWithRedirect(provider);
+          } catch(redirectErr) {
+            sessionStorage.removeItem('_cbPendingCard');
+            console.error('signInWithRedirect 시작 실패:', redirectErr);
+            alert('❌ 로그인 시작에 실패했습니다: ' + (redirectErr.message || redirectErr.code) + '\n다시 시도해주세요.');
+          }
           return;
         }
         await _cbAuth.signInWithPopup(provider);
@@ -442,7 +464,8 @@ async function _saveCard(uid, cardData) {
     await _cbDb.collection('users').doc(uid).collection('cards').doc(docId).set(data, { merge: true });
     _showSaveSuccess(cardData);
   } catch(err) {
-    alert('❌ 저장 실패: ' + err.message);
+    console.error('_saveCard 실패:', err);
+    alert('❌ 저장 실패: ' + (err.message || err.code || '알 수 없는 오류'));
   }
 }
 
