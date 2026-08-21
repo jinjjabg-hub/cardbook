@@ -252,6 +252,10 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+
+// ⚠️ Cloudflare Worker 배포 후 아래 주소를 실제 발급받은 주소로 교체하세요
+// 예: https://cardbook-ai.jinjjabg.workers.dev
+const CB_WORKER_URL = 'https://cardbook-ai.jinjjabg.workers.dev';
 function initKakao() {
   if(typeof Kakao !== 'undefined' && !Kakao.isInitialized()) {
     Kakao.init('7a736ceca6b6865251e078261ed9596f');
@@ -1135,19 +1139,12 @@ async function aiSearch(query) {
   ).join('\n');
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(CB_WORKER_URL + '/ai-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        system: '당신은 BNI 명함첩 AI 검색 도우미입니다. JSON만 반환하세요: {"matched":[인덱스배열],"summary":"한줄요약"}',
-        messages: [{ role: 'user', content: `검색어: "${query}"\n\n명함 목록:\n${summaries}\n\n검색어와 관련된 명함 인덱스를 찾아주세요. 업종, 전문분야, 리퍼럴 대상, 이름 등을 의미적으로 매칭하세요.` }]
-      })
+      body: JSON.stringify({ query, summaries })
     });
-    const data = await res.json();
-    const text = data.content?.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
-    const result = JSON.parse(text);
+    const result = await res.json();
     const matched = result.matched || [];
     if(matched.length > 0) {
       aiEl.innerHTML = `<div class="ai-result">✨ ${result.summary||''}</div>`;
@@ -1156,7 +1153,7 @@ async function aiSearch(query) {
       aiEl.innerHTML = `<div class="ai-result">검색 결과가 없어요.</div>`;
       renderCards([]);
     }
-  } catch(e) { aiEl.innerHTML = ''; }
+  } catch(e) { console.error('AI 검색 실패', e); aiEl.innerHTML = ''; }
 }
 
 // ===== 카드 삭제 =====
@@ -1876,24 +1873,18 @@ window.handleOcrFile = async function(e) {
     const vData = await vRes.json();
     const rawText = vData.responses?.[0]?.fullTextAnnotation?.text || '';
 
-    // Claude로 파싱
+    // Claude로 파싱 (Cloudflare Worker 프록시 경유 - API 키는 서버에만 보관)
     let parsed = { name:'', nameEn:'', title:'', company:'', phone:'', email:'' };
     if(rawText) {
       try {
-        const cRes = await fetch('https://api.anthropic.com/v1/messages', {
+        const cRes = await fetch(CB_WORKER_URL + '/ocr-parse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 300,
-            system: '명함 OCR 텍스트에서 정보를 추출해 JSON만 반환. {"name":"","nameEn":"","title":"","company":"","phone":"","email":""}',
-            messages: [{ role: 'user', content: rawText }]
-          })
+          body: JSON.stringify({ rawText })
         });
         const cData = await cRes.json();
-        const txt = cData.content?.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
-        parsed = { ...parsed, ...JSON.parse(txt) };
-      } catch(err) {}
+        parsed = { ...parsed, ...cData };
+      } catch(err) { console.error('OCR 파싱 실패', err); }
     }
 
     // 미리보기 & 단계3
