@@ -238,7 +238,7 @@ function showLoginModal(cardData) {
         <div style="font-size:11px;color:rgba(240,232,216,0.45);">처음 한 번만 로그인하면 다음부터는 원터치로 저장돼요</div>
       </div>
 
-      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:10px 12px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;margin-bottom:6px;">
+      <label id="_cb_consent_label" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;padding:10px 12px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.25);border-radius:10px;margin-bottom:6px;transition:all 0.2s;">
         <input type="checkbox" id="_cb_consent" style="margin-top:2px;width:15px;height:15px;flex-shrink:0;accent-color:#c9a84c;cursor:pointer;">
         <span style="font-size:11px;color:rgba(240,232,216,0.75);line-height:1.6;">
           <b style="color:#c9a84c;">[필수]</b> 개인정보 수집·이용에 동의합니다.
@@ -278,14 +278,36 @@ function showLoginModal(cardData) {
 
   document.body.appendChild(modal);
 
+  // 체크하는 순간 바로 경고 해제
+  document.getElementById('_cb_consent')?.addEventListener('change', function() {
+    if(this.checked) {
+      const err = document.getElementById('_cb_consent_err');
+      const label = document.getElementById('_cb_consent_label');
+      if(err) err.textContent = '';
+      if(label) { label.style.border = '1px solid rgba(201,168,76,0.25)'; label.style.background = 'rgba(201,168,76,0.08)'; }
+    }
+  });
+
   const _consentOk = () => {
     const cb = document.getElementById('_cb_consent');
     const err = document.getElementById('_cb_consent_err');
+    const label = document.getElementById('_cb_consent_label');
     if(cb && !cb.checked) {
       if(err) err.textContent = '⚠️ 개인정보 동의에 체크해주세요.';
+      if(label) {
+        label.style.border = '1.5px solid #ff9e8f';
+        label.style.background = 'rgba(255,158,143,0.12)';
+        label.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        label.animate(
+          [{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' },
+           { transform: 'translateX(6px)' }, { transform: 'translateX(0)' }],
+          { duration: 300 }
+        );
+      }
       return false;
     }
     if(err) err.textContent = '';
+    if(label) { label.style.border = '1px solid rgba(201,168,76,0.25)'; label.style.background = 'rgba(201,168,76,0.08)'; }
     return true;
   };
 

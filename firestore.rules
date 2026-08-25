@@ -26,6 +26,16 @@ service cloud.firestore {
         && request.auth.uid == userId;
     }
 
+    // 만두 ID 인덱스 (slug → uid 매핑, DiCA 카드의 "만두 연결하기" 버튼이 씀)
+    // 읽기: 로그인한 사람 누구나 (게스트가 명함 주인과 DM 열 때 조회 필요)
+    // 쓰기: 로그인한 본인이 "자기 uid"로만 등록 가능 — 남의 슬러그를 가로채서
+    //       엉뚱한 uid로 덮어쓰는 것 방지
+    match /manduid_index/{slug} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.data.uid == request.auth.uid;
+    }
+
     // 동의 기록: 본인만 쓰기
     match /consents/{userId} {
       allow read, write: if request.auth != null
