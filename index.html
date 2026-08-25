@@ -396,17 +396,41 @@ async function saveConsentRecord(uid) {
   } catch(e) { console.error('동의 기록 저장 실패', e); }
 }
 
+// ===== 로그인 대기 데이터 보관 =====
+// redirect 로그인은 구글 도메인을 왕복하므로 sessionStorage가 유실될 수 있음.
+// localStorage 우선 + sessionStorage 폴백으로 이중 보관한다.
+function _cbSet(k, v){
+  try { localStorage.setItem(k, v); } catch(e) {}
+  try { sessionStorage.setItem(k, v); } catch(e) {}
+}
+function _cbGet(k){
+  try { const v = localStorage.getItem(k); if(v) return v; } catch(e) {}
+  try { return sessionStorage.getItem(k); } catch(e) {}
+  return null;
+}
+function _cbDel(k){
+  try { localStorage.removeItem(k); } catch(e) {}
+  try { sessionStorage.removeItem(k); } catch(e) {}
+}
+
+// 모바일 브라우저는 팝업 로그인이 불안정(COOP/타이밍)해서 redirect를 기본값으로 사용
+const _cbIsMobileUA = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 // ===== Google 로그인 =====
-// 설치된 앱(standalone)에서는 팝업이 결과를 못 돌려받는 경우가 있어 redirect 사용
 window.doGoogleLogin = async function() {
   if(!checkPrivacyAgree()) return;
   const provider = new firebase.auth.GoogleAuthProvider();
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
   try {
     await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-    if(isStandalone) {
-      sessionStorage.setItem('pendingConsent', '1');
-      await auth.signInWithRedirect(provider);
+    if(isStandalone || _cbIsMobileUA) {
+      _cbSet('pendingConsent', '1');
+      try {
+        await auth.signInWithRedirect(provider);
+      } catch(rErr) {
+        _cbDel('pendingConsent');
+        showToast('로그인 시작 실패: ' + (rErr.code || rErr.message));
+      }
       return; // 페이지 이동됨
     }
     const result = await auth.signInWithPopup(provider);
@@ -417,23 +441,44 @@ window.doGoogleLogin = async function() {
     // 팝업이 막히거나 환경이 지원 안 하면 redirect로 재시도
     if(e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment' || e.code === 'auth/cancelled-popup-request') {
       try {
-        sessionStorage.setItem('pendingConsent', '1');
+        _cbSet('pendingConsent', '1');
         await auth.signInWithRedirect(provider);
         return;
       } catch(e2) { showToast('Google 로그인 실패: ' + e2.code); return; }
     }
-    showToast('Google 로그인 실패');
+    showToast('Google 로그인 실패: ' + (e.code || e.message));
   }
 };
 
 // ===== redirect 방식 로그인 결과 처리 (앱 재진입 시) =====
 auth.getRedirectResult().then(async result => {
-  if(result && result.user && sessionStorage.getItem('pendingConsent')) {
-    sessionStorage.removeItem('pendingConsent');
-    await saveConsentRecord(result.user.uid);
+  if(result && result.user) {
+    if(_cbGet('pendingConsent')) {
+      _cbDel('pendingConsent');
+      await saveConsentRecord(result.user.uid);
+    }
+    return;
   }
+  // 결과가 비어 있어도(이미 로그인 상태로 복귀 등) 대기 중이면 인증 상태를 기다렸다 처리
+  if(!_cbGet('pendingConsent')) return;
+  const unsub = auth.onAuthStateChanged(async u => {
+    unsub();
+    if(!u) return;
+    if(!_cbGet('pendingConsent')) return;
+    _cbDel('pendingConsent');
+    await saveConsentRecord(u.uid);
+  });
 }).catch(e => {
-  if(e.code && e.code !== 'auth/no-auth-event') console.error('redirect 로그인 오류', e);
+  _cbDel('pendingConsent');
+  if(e.code && e.code !== 'auth/no-auth-event') {
+    console.error('redirect 로그인 오류', e);
+    const msgs = {
+      'auth/unauthorized-domain': '이 도메인이 Firebase에 등록되지 않았습니다.',
+      'auth/network-request-failed': '네트워크 연결을 확인해주세요.',
+      'auth/web-storage-unsupported': '브라우저 저장소 설정을 확인해주세요.'
+    };
+    showToast('❌ ' + (msgs[e.code] || ('로그인 오류: ' + e.code)));
+  }
 });
 
 // ===== 카카오 로그인 (안정화 버전) =====
@@ -1479,19 +1524,22 @@ window.shareApp = function() {
 };
 
 // ===== Auth 상태 감지 =====
+// 개별 단계에서 오류가 나도 로그인 화면으로 되돌아가지 않도록 각각 방어한다.
 auth.onAuthStateChanged(async user => {
   if(user) {
     currentUser = user;
-    renderApp();
-    await loadUserProfile(user.uid);
-    await loadCards();
-    checkDicaParams(); // 디카에서 넘어온 파라미터 확인
-    checkSharedContent(); // 공유받은 명함 링크 확인
+    try { renderApp(); } catch(e) { console.error('renderApp 실패', e); }
+    try { await loadUserProfile(user.uid); } catch(e) { console.error('프로필 로드 실패', e); }
+    try { await loadCards(); } catch(e) { console.error('명함 로드 실패', e); showToast('명함을 불러오지 못했어요'); }
+    try { checkDicaParams(); } catch(e) { console.error('디카 파라미터 처리 실패', e); }
+    try { checkSharedContent(); } catch(e) { console.error('공유 처리 실패', e); }
     // 홈화면 추가 배너 — 닫은 적 없으면 항상 표시
-    if(!localStorage.getItem("addHomeDismissed")) {
-      const b = document.getElementById("addHomeBanner");
-      if(b) b.style.display = "block";
-    }
+    try {
+      if(!localStorage.getItem("addHomeDismissed")) {
+        const b = document.getElementById("addHomeBanner");
+        if(b) b.style.display = "block";
+      }
+    } catch(e) {}
   } else {
     currentUser = null;
     allCards = [];
