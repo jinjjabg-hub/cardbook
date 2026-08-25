@@ -10,6 +10,23 @@ const isAndroid = /Android/i.test(navigator.userAgent);
 // 모바일 브라우저는 팝업 로그인이 불안정해서(COOP/타이밍 이슈) redirect를 기본값으로 씀
 const _cbIsMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+// ===== 저장 대기 데이터 보관 =====
+// redirect 로그인은 구글 도메인을 왕복하므로 sessionStorage가 유실될 수 있음.
+// localStorage를 우선 사용하고, 차단된 환경(사파리 프라이빗 등)에서는 sessionStorage로 폴백.
+function _cbStoreSet(k, v){
+  try { localStorage.setItem(k, v); } catch(e) {}
+  try { sessionStorage.setItem(k, v); } catch(e) {}
+}
+function _cbStoreGet(k){
+  try { const v = localStorage.getItem(k); if(v) return v; } catch(e) {}
+  try { return sessionStorage.getItem(k); } catch(e) {}
+  return null;
+}
+function _cbStoreDel(k){
+  try { localStorage.removeItem(k); } catch(e) {}
+  try { sessionStorage.removeItem(k); } catch(e) {}
+}
+
 (function loadFirebase() {
   const scripts = [
     'https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js',
@@ -69,19 +86,33 @@ function initFirebase(tries) {
     // redirect 로그인으로 돌아온 경우 처리
     _cbAuth.getRedirectResult().then(async res => {
       if(res && res.user) {
-        const pending = sessionStorage.getItem('_cbPendingCard');
+        const pending = _cbStoreGet('_cbPendingCard');
         if(pending) {
-          sessionStorage.removeItem('_cbPendingCard');
+          _cbStoreDel('_cbPendingCard');
           await _saveConsent(res.user.uid);
           await _saveCard(res.user.uid, JSON.parse(pending));
         }
+        return;
       }
+      // getRedirectResult가 비어 있어도(이미 로그인된 상태로 복귀 등)
+      // 대기 중인 명함이 있으면 인증 상태를 기다렸다가 저장한다.
+      const pending = _cbStoreGet('_cbPendingCard');
+      if(!pending) return;
+      const unsub = _cbAuth.onAuthStateChanged(async u => {
+        unsub();
+        if(!u) return;
+        const still = _cbStoreGet('_cbPendingCard');
+        if(!still) return;
+        _cbStoreDel('_cbPendingCard');
+        await _saveConsent(u.uid);
+        await _saveCard(u.uid, JSON.parse(still));
+      });
     }).catch(err => {
       // ===== 수정: 에러를 침묵시키지 않고 노출 =====
       console.error('리다이렉트 로그인 처리 실패:', err);
-      const pending = sessionStorage.getItem('_cbPendingCard');
+      const pending = _cbStoreGet('_cbPendingCard');
       if(pending) {
-        sessionStorage.removeItem('_cbPendingCard');
+        _cbStoreDel('_cbPendingCard');
         const msgs = {
           'auth/unauthorized-domain': '이 사이트 도메인이 Firebase에 등록되지 않았습니다. 관리자에게 문의해주세요.',
           'auth/network-request-failed': '네트워크 연결을 확인해주세요.',
@@ -355,12 +386,12 @@ function showLoginModal(cardData) {
         const standalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
         // 모바일 브라우저는 팝업이 COOP/타이밍 문제로 종종 실패하므로 redirect를 기본값으로 사용
         if(standalone || _cbIsMobile) {
-          sessionStorage.setItem('_cbPendingCard', JSON.stringify(cardData));
+          _cbStoreSet('_cbPendingCard', JSON.stringify(cardData));
           // ===== 수정: 리다이렉트 시작 자체가 실패하는 경우 대비 =====
           try {
             await _cbAuth.signInWithRedirect(provider);
           } catch(redirectErr) {
-            sessionStorage.removeItem('_cbPendingCard');
+            _cbStoreDel('_cbPendingCard');
             console.error('signInWithRedirect 시작 실패:', redirectErr);
             alert('❌ 로그인 시작에 실패했습니다: ' + (redirectErr.message || redirectErr.code) + '\n다시 시도해주세요.');
           }
@@ -375,7 +406,7 @@ function showLoginModal(cardData) {
         // 팝업이 막히면 마지막 수단으로 redirect 재시도
         if(e.code === 'auth/popup-blocked' || e.code === 'auth/cancelled-popup-request') {
           try {
-            sessionStorage.setItem('_cbPendingCard', JSON.stringify(cardData));
+            _cbStoreSet('_cbPendingCard', JSON.stringify(cardData));
             await _cbAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
             return;
           } catch(e2) { alert('Google 로그인 실패: ' + e2.message); return; }
