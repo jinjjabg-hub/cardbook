@@ -419,24 +419,30 @@ const _cbIsMobileUA = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 // ===== Google 로그인 =====
 window.doGoogleLogin = async function() {
   if(!checkPrivacyAgree()) return;
+  alert('①클릭됨\nUA: ' + navigator.userAgent.slice(0,60));
   const provider = new firebase.auth.GoogleAuthProvider();
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+  alert('②standalone=' + isStandalone);
   try {
     await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    alert('③persistence 설정 완료, 팝업 시도');
     if(isStandalone) {
       _cbSet('pendingConsent', '1');
       try {
         await auth.signInWithRedirect(provider);
       } catch(rErr) {
         _cbDel('pendingConsent');
-        showToast('로그인 시작 실패: ' + (rErr.code || rErr.message));
+        alert('④redirect 시작 실패\n' + (rErr.code || '') + '\n' + rErr.message);
       }
       return; // 페이지 이동됨
     }
     const result = await auth.signInWithPopup(provider);
+    alert('⑤팝업 성공: ' + result.user.email);
     await saveConsentRecord(result.user.uid);
+    alert('⑥동의기록 저장 완료');
   }
   catch(e) {
+    alert('❌에러 발생\ncode: ' + (e.code||'없음') + '\nmessage: ' + (e.message||'없음'));
     if(e.code === 'auth/popup-closed-by-user') return;
     // 팝업이 막히거나 환경이 지원 안 하면 redirect로 재시도
     if(e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment' || e.code === 'auth/cancelled-popup-request') {
