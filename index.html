@@ -457,18 +457,23 @@ window.doGoogleLogin = async function() {
 };
 
 // ===== redirect 방식 로그인 결과 처리 (앱 재진입 시) =====
+if(_cbGet('pendingConsent')) alert('⑦구글에서 복귀함, pendingConsent=있음');
 auth.getRedirectResult().then(async result => {
+  alert('⑧getRedirectResult 응답\nresult=' + (result ? '있음' : 'null') + '\nuser=' + (result && result.user ? result.user.email : '없음'));
   if(result && result.user) {
     if(_cbGet('pendingConsent')) {
       _cbDel('pendingConsent');
       await saveConsentRecord(result.user.uid);
+      alert('⑨saveConsentRecord 완료');
     }
     return;
   }
   // 결과가 비어 있어도(이미 로그인 상태로 복귀 등) 대기 중이면 인증 상태를 기다렸다 처리
   if(!_cbGet('pendingConsent')) return;
+  alert('⑩결과가 비어있음, onAuthStateChanged 대기 시작');
   const unsub = auth.onAuthStateChanged(async u => {
     unsub();
+    alert('⑪onAuthStateChanged 발생\nuser=' + (u ? u.email : 'null'));
     if(!u) return;
     if(!_cbGet('pendingConsent')) return;
     _cbDel('pendingConsent');
@@ -476,6 +481,7 @@ auth.getRedirectResult().then(async result => {
   });
 }).catch(e => {
   _cbDel('pendingConsent');
+  alert('❌getRedirectResult 에러\ncode: ' + (e.code||'없음') + '\nmessage: ' + (e.message||'없음'));
   if(e.code && e.code !== 'auth/no-auth-event') {
     console.error('redirect 로그인 오류', e);
     const msgs = {
@@ -486,6 +492,9 @@ auth.getRedirectResult().then(async result => {
     showToast('❌ ' + (msgs[e.code] || ('로그인 오류: ' + e.code)));
   }
 });
+
+// 최초 인증 상태도 눈에 보이게
+let _cbFirstAuthCheck = true;
 
 // ===== 카카오 로그인 (안정화 버전) =====
 // 핵심: kakaoId 기반 고정 비밀번호 사용 (getTime 제거)
@@ -1532,6 +1541,7 @@ window.shareApp = function() {
 // ===== Auth 상태 감지 =====
 // 개별 단계에서 오류가 나도 로그인 화면으로 되돌아가지 않도록 각각 방어한다.
 auth.onAuthStateChanged(async user => {
+  alert('⑫메인 onAuthStateChanged\\nuser=' + (user ? user.email : 'null(로그아웃 상태)'));
   if(user) {
     currentUser = user;
     try { renderApp(); } catch(e) { console.error('renderApp 실패', e); }
