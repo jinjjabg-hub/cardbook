@@ -385,7 +385,7 @@ function showLoginModal(cardData) {
         await _cbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
         const standalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
         // 모바일 브라우저는 팝업이 COOP/타이밍 문제로 종종 실패하므로 redirect를 기본값으로 사용
-        if(standalone || _cbIsMobile) {
+        if(standalone) {
           _cbStoreSet('_cbPendingCard', JSON.stringify(cardData));
           // ===== 수정: 리다이렉트 시작 자체가 실패하는 경우 대비 =====
           try {

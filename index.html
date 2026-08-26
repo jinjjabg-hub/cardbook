@@ -423,7 +423,7 @@ window.doGoogleLogin = async function() {
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
   try {
     await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-    if(isStandalone || _cbIsMobileUA) {
+    if(isStandalone) {
       _cbSet('pendingConsent', '1');
       try {
         await auth.signInWithRedirect(provider);
