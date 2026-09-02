@@ -91,6 +91,7 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .crm-input{flex:1;background:rgba(255,255,255,0.8);border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-size:12px;color:var(--cream);font-family:'Noto Sans KR',sans-serif;outline:none;}
 .crm-input:focus{border-color:var(--gold);}
 .crm-save{background:var(--gold);color:#ffffff;border:none;border-radius:8px;padding:7px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;white-space:nowrap;}
+.memo-input{width:100%;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;font-family:'Noto Sans KR',sans-serif;resize:vertical;box-sizing:border-box;}
 .crm-log{margin-top:6px;}
 .crm-item{font-size:11px;color:var(--muted);padding:5px 0;border-bottom:1px solid rgba(37,99,235,0.08);display:flex;justify-content:space-between;align-items:center;}
 .crm-item:last-child{border-bottom:none;}
@@ -920,21 +921,7 @@ function renderCards(cards) {
       ? `<img src="${card.avatar}" alt="${card.name}" onerror="this.style.display='none'">`
       : initial(card.name);
     const bniHtml = card.bni ? `<div class="bni-badge"><div class="bni-dot"></div>${card.bni}</div>` : '';
-    const meetings = card.meetings || [];
-    const referrals = card.referrals || [];
-    const lastContact = card.lastContact || '';
-    const meetingLogs = meetings.map((m,mi) => `
-      <div class="crm-item">
-        <span class="crm-item-text">📅 121 · ${m.date}${m.memo?' · '+m.memo:''}</span>
-        <button class="crm-item-del" onclick="deleteCRM('${card.docId}','meetings',${mi})">✕</button>
-      </div>`).join('');
-    const referralLogs = referrals.map((r,ri) => `
-      <div class="crm-item">
-        <span class="crm-item-text">🤝 리퍼럴 · ${r.date}${r.memo?' · '+r.memo:''}</span>
-        <button class="crm-item-del" onclick="deleteCRM('${card.docId}','referrals',${ri})">✕</button>
-      </div>`).join('');
-    const lastContactStr = lastContact ? `<div class="crm-item"><span class="crm-item-text">⏱️ 마지막 연락 · ${fmtDate(lastContact)}</span></div>` : '';
-    const crmCount = meetings.length + referrals.length;
+    const memoText = card.memo || '';
 
     html += `
     <div class="biz-card">
@@ -959,26 +946,12 @@ function renderCards(cards) {
         <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️</button>
       </div>
       <button class="crm-toggle" onclick="toggleCRM(this)">
-        <span class="crm-arrow">▶</span> BNI 활동 기록
-        ${crmCount>0?`<span style="color:var(--gold);margin-left:4px;">(${crmCount}건)</span>`:''}
+        <span class="crm-arrow">▶</span> 메모
+        ${memoText?`<span style="color:var(--gold);margin-left:4px;">✓</span>`:''}
       </button>
       <div class="card-crm">
-        <div class="crm-title">121 미팅 기록</div>
-        <div class="crm-row">
-          <input class="crm-input meet-date" type="date">
-          <input class="crm-input meet-memo" placeholder="메모" style="flex:2">
-          <button class="crm-save" onclick="addCRM(this,'${card.docId}','meetings')">저장</button>
-        </div>
-        <div class="crm-title" style="margin-top:8px">리퍼럴 기록</div>
-        <div class="crm-row">
-          <input class="crm-input ref-date" type="date">
-          <input class="crm-input ref-memo" placeholder="메모" style="flex:2">
-          <button class="crm-save" onclick="addCRM(this,'${card.docId}','referrals')">저장</button>
-        </div>
-        <div class="crm-log">
-          ${lastContactStr}${meetingLogs}${referralLogs}
-          ${!lastContact&&crmCount===0?'<div class="crm-item"><span class="crm-item-text" style="opacity:.4">기록 없음</span></div>':''}
-        </div>
+        <textarea class="memo-input" data-doc="${card.docId}" placeholder="이 분에 대한 메모 (관심사, 특징, 소개 이력 등)" rows="3">${_cbEsc(memoText)}</textarea>
+        <button class="crm-save" style="width:100%;margin-top:6px;" onclick="saveMemo('${card.docId}')">저장</button>
       </div>
       <div class="card-saved">저장일: ${fmtDate(card.savedAt)}</div>
     </div>`;
@@ -1024,36 +997,16 @@ window.toggleCRM = function(btn) {
   arrow.textContent = crm.classList.contains('open') ? '▼' : '▶';
 };
 
-// ===== CRM 추가 =====
-window.addCRM = async function(btn, docId, type) {
-  const row = btn.closest('.crm-row');
-  const isM = type === 'meetings';
-  const dateEl = row.querySelector(isM ? '.meet-date' : '.ref-date');
-  const memoEl = row.querySelector(isM ? '.meet-memo' : '.ref-memo');
-  if(!dateEl.value) { showToast('날짜를 선택해주세요'); return; }
-  const entry = { date: dateEl.value, memo: memoEl.value };
+// ===== 메모 저장 =====
+window.saveMemo = async function(docId) {
+  const el = document.querySelector(`.memo-input[data-doc="${docId}"]`);
+  if(!el) return;
+  const memo = el.value.trim();
   try {
-    const ref = db.collection('users').doc(currentUser.uid).collection('cards').doc(docId);
-    const snap = await ref.get();
-    const arr = snap.data()[type] || [];
-    arr.unshift(entry);
-    await ref.update({ [type]: arr, lastContact: new Date().toISOString() });
-    memoEl.value = '';
-    await loadCards();
-    showToast('✅ 기록 저장됨');
-  } catch(e) { showToast('❌ ' + e.message); }
-};
-
-// ===== CRM 삭제 =====
-window.deleteCRM = async function(docId, type, idx) {
-  try {
-    const ref = db.collection('users').doc(currentUser.uid).collection('cards').doc(docId);
-    const snap = await ref.get();
-    const arr = snap.data()[type] || [];
-    arr.splice(idx, 1);
-    await ref.update({ [type]: arr });
-    await loadCards();
-    showToast('🗑️ 삭제됨');
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).update({ memo });
+    const card = allCards.find(c => c.docId === docId);
+    if(card) card.memo = memo;
+    showToast('✅ 메모 저장됨');
   } catch(e) { showToast('❌ ' + e.message); }
 };
 
@@ -1159,18 +1112,14 @@ window.onSearch = function(val) {
   clearTimeout(searchTimer);
   const q = val.trim();
   if(q) showView('cards');
-  const aiEl = document.getElementById('aiResult');
-  if(!q) { if(aiEl) aiEl.innerHTML=''; applyFilter(); return; }
+  if(!q) { applyFilter(); return; }
 
-  // 기본 검색 즉시
+  // 기본 검색 (정확한 단어 매칭 - fullText 전체 포함)
   const basic = allCards.filter(c => {
-    const text = [c.name,c.nameEn,c.company,c.title,c.bni,c.fullText,c.chapter].filter(Boolean).join(' ').toLowerCase();
+    const text = [c.name,c.nameEn,c.company,c.title,c.bni,c.fullText,c.chapter,c.memo].filter(Boolean).join(' ').toLowerCase();
     return text.includes(q.toLowerCase());
   });
   renderCards(basic);
-
-  // AI 검색 딜레이
-  searchTimer = setTimeout(() => aiSearch(q), 800);
 };
 
 async function aiSearch(query) {
