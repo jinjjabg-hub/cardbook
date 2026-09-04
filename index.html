@@ -684,7 +684,7 @@ window.openMembersModal = async function() {
         <div style="font-size:16px;font-weight:800;color:#16305e;">🤝 BNI 멤버 추가하기</div>
         <div style="font-size:11px;color:#64748b;margin-top:2px;">원하는 멤버를 골라 내 명함첩에 담으세요</div>
       </div>
-      ${isAdmin() ? '<button onclick="openMemberAdmin()" style="border:none;background:#16305e;color:#fff;font-size:12px;font-weight:700;padding:8px 12px;border-radius:9px;cursor:pointer;">+ 등록</button>' : ''}
+      ${isAdmin() ? '<button onclick="openMemberPicker()" style="border:none;background:#16305e;color:#fff;font-size:12px;font-weight:700;padding:8px 12px;border-radius:9px;cursor:pointer;">+ 등록</button>' : ''}
     </div>
     <div style="padding:12px 16px;">
       <input id="memberSearch" oninput="filterMembers(this.value)" placeholder="이름·회사·업종 검색" style="width:100%;box-sizing:border-box;padding:11px 14px;border-radius:11px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;outline:none;font-family:'Noto Sans KR',sans-serif;">
@@ -755,6 +755,59 @@ window.saveMemberToMyCards = async function(memberId) {
     showToast('✅ ' + m.name + '님을 명함첩에 담았어요');
     await loadCards();
     renderMembers(_cbMembers);
+  } catch(e) { showToast('❌ ' + e.message); }
+};
+
+// ===== 관리자: 명함첩에서 골라 명부 등록 =====
+window.openMemberPicker = function() {
+  let modal = document.getElementById('memberPickModal');
+  if(modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'memberPickModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;font-family:"Noto Sans KR",sans-serif;';
+  const registered = new Set(_cbMembers.map(m => (m.name||'') + '|' + (m.phone||'')));
+  const cards = allCards.filter(c => c.name && !registered.has(c.name + '|' + (c.phone||'')));
+  const items = cards.map(c => `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(37,99,235,0.1);font-size:13px;cursor:pointer;">
+      <input type="checkbox" class="mpCheck" value="${c.docId}">
+      <span><b>${c.name}</b> <span style="color:#64748b">${[c.company,c.title].filter(Boolean).join(' · ')}</span></span>
+    </label>`).join('');
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:20px;padding:24px;width:100%;max-width:380px;max-height:88vh;display:flex;flex-direction:column;">
+      <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">멤버 등록</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:12px;">명함첩에서 고르고 챕터만 지정하세요</div>
+      <select id="mpChapter" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:10px;outline:none;background:#fff;">
+        <option value="파이오니어">파이오니어</option>
+        <option value="자이언츠">자이언츠</option>
+        <option value="그래비티">그래비티</option>
+        <option value="기타">기타</option>
+      </select>
+      <div style="flex:1;overflow-y:auto;margin-bottom:12px;">${items || '<div style="text-align:center;color:#64748b;font-size:12px;padding:20px 0;">등록 가능한 명함이 없어요</div>'}</div>
+      <button onclick="saveCardsToRoster()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">선택한 명함 명부에 등록</button>
+      <button onclick="document.getElementById('memberPickModal').remove();openMemberAdmin()" style="width:100%;padding:10px;border-radius:12px;border:none;background:transparent;color:#64748b;font-size:12px;cursor:pointer;">명함첩에 없는 멤버 직접 입력</button>
+      <button onclick="document.getElementById('memberPickModal').remove()" style="width:100%;padding:10px;border-radius:12px;border:none;background:#eaf0f9;color:#16305e;font-size:13px;cursor:pointer;">닫기</button>
+    </div>`;
+  document.body.appendChild(modal);
+};
+
+window.saveCardsToRoster = async function() {
+  if(!isAdmin()) { showToast('❌ 권한 없음'); return; }
+  const ids = [...document.querySelectorAll('.mpCheck:checked')].map(x => x.value);
+  if(ids.length === 0) { showToast('❌ 명함을 선택해주세요'); return; }
+  const chapter = document.getElementById('mpChapter').value;
+  try {
+    for(const id of ids) {
+      const c = allCards.find(x => x.docId === id);
+      if(!c) continue;
+      await db.collection('bni_members').add({
+        name: c.name||'', title: c.title||'', company: c.company||'', industry: c.industry||'',
+        phone: c.phone||'', email: c.email||'', url: c.url||'', chapter,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    showToast('✅ ' + ids.length + '명 명부 등록 완료');
+    document.getElementById('memberPickModal').remove();
+    await loadMembers();
   } catch(e) { showToast('❌ ' + e.message); }
 };
 
@@ -1735,6 +1788,8 @@ window.sendCardUpdate = async function(){
 // ===== 스캔 모달 =====
 window.openScanModal = function() {
   document.getElementById('scanModal').style.display = 'flex';
+  document.getElementById('scanStep4').style.display = 'none';
+  document.getElementById('scanStep1').style.display = 'block';
   switchScanTab('scan');
 };
 
@@ -1856,16 +1911,8 @@ window.triggerGallery = function() {
   document.getElementById('ocrFileInput').click();
 };
 
-window.handleOcrFile = async function(e) {
-  const file = e.target.files[0];
-  if(!file) return;
-
-  // 단계2 표시
-  document.getElementById('scanStep1').style.display = 'none';
-  document.getElementById('scanStep2').style.display = 'block';
-  document.getElementById('scanStep3').style.display = 'none';
-
-  try {
+// 이미지 1장 → 축소 → Worker OCR → 구조화 결과
+async function ocrImageFile(file) {
     // base64 변환
     const base64 = await new Promise((res, rej) => {
       const r = new FileReader();
@@ -1890,6 +1937,23 @@ window.handleOcrFile = async function(e) {
     });
     const parsed = await cRes.json();
     if(parsed.error) throw new Error(parsed.error);
+    return parsed;
+
+}
+
+window.handleOcrFile = async function(e) {
+  const files = [...e.target.files];
+  if(files.length === 0) return;
+  if(files.length > 1) { handleOcrBatch(files); e.target.value = ''; return; }
+  const file = files[0];
+
+  // 단계2 표시
+  document.getElementById('scanStep1').style.display = 'none';
+  document.getElementById('scanStep2').style.display = 'block';
+  document.getElementById('scanStep3').style.display = 'none';
+
+  try {
+    const parsed = await ocrImageFile(file);
     window._ocrFullText = parsed.fullText || '';
 
     // 미리보기 & 단계3
@@ -1915,6 +1979,78 @@ window.handleOcrFile = async function(e) {
   }
   // input 초기화 (같은 파일 재선택 가능)
   e.target.value = '';
+};
+
+// ===== 여러 장 일괄 스캔 =====
+let _ocrBatch = [];
+window.handleOcrBatch = async function(files) {
+  document.getElementById('scanStep1').style.display = 'none';
+  document.getElementById('scanStep3').style.display = 'none';
+  const step2 = document.getElementById('scanStep2');
+  step2.style.display = 'block';
+  const msg = step2.querySelector('.ocr-loading div:nth-child(2)');
+  _ocrBatch = [];
+  for(let i = 0; i < files.length; i++) {
+    msg.textContent = `명함 인식 중... ${i+1} / ${files.length}`;
+    try {
+      const p = await ocrImageFile(files[i]);
+      _ocrBatch.push({ ...p, _ok: true });
+    } catch(err) {
+      _ocrBatch.push({ name: '', _ok: false, _file: files[i].name });
+    }
+  }
+  msg.textContent = '잠시만 기다려주세요';
+  step2.style.display = 'none';
+  renderOcrBatch();
+};
+
+function renderOcrBatch() {
+  const chapters = ['파이오니어','자이언츠','기타'];
+  const box = document.getElementById('scanStep4');
+  const rows = _ocrBatch.map((p, i) => p._ok ? `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px;background:rgba(255,255,255,0.9)">
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input class="ocr-input" data-i="${i}" data-k="name" value="${_cbEsc(p.name||'')}" placeholder="이름" style="flex:1">
+        <select class="ocr-input" data-i="${i}" data-k="chapter" style="flex:1">
+          ${chapters.map(c => `<option value="${c}" ${(p.bni||'').includes(c)?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <input class="ocr-input" data-i="${i}" data-k="company" value="${_cbEsc(p.company||'')}" placeholder="회사" style="margin-bottom:6px">
+      <input class="ocr-input" data-i="${i}" data-k="phone" value="${_cbEsc(p.phone||'')}" placeholder="전화번호" type="tel">
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${_cbEsc(p.industry||'')}</div>
+    </div>` : `
+    <div style="border:1px solid #fca5a5;border-radius:12px;padding:10px;margin-bottom:8px;font-size:12px;color:#b91c1c">❌ 인식 실패: ${_cbEsc(p._file||'')}</div>`).join('');
+  const okCount = _ocrBatch.filter(p => p._ok).length;
+  box.innerHTML = `
+    <div style="font-size:12px;color:#64748b;margin-bottom:12px">✏️ ${okCount}장 인식됐어요. 이름·전화만 확인하고 한 번에 저장하세요</div>
+    ${rows}
+    <button class="ocr-save-btn" onclick="saveOcrBatch()">💾 ${okCount}장 모두 저장</button>`;
+  box.style.display = 'block';
+  box.querySelectorAll('[data-k]').forEach(el => el.oninput = () => { _ocrBatch[el.dataset.i][el.dataset.k] = el.value; });
+  _ocrBatch.forEach(p => { if(p._ok && !p.chapter) p.chapter = chapters.find(c => (p.bni||'').includes(c)) || '기타'; });
+}
+
+window.saveOcrBatch = async function() {
+  if(!currentUser) { showToast('❌ 로그인 필요'); return; }
+  const list = _ocrBatch.filter(p => p._ok && (p.name||'').trim());
+  if(list.length === 0) { showToast('❌ 저장할 명함이 없어요'); return; }
+  try {
+    let n = 0;
+    for(const p of list) {
+      await db.collection('users').doc(currentUser.uid).collection('cards').doc('scan-' + Date.now() + '-' + n).set({
+        name: p.name.trim(), nameEn: p.nameEn||'', title: p.title||'', company: (p.company||'').trim(),
+        phone: (p.phone||'').trim(), email: p.email||'', industry: p.industry||'', address: p.address||'',
+        services: p.services||'', fullText: (p.fullText||'').slice(0, 3000), chapter: p.chapter||'기타',
+        referrer: '명함 스캔', savedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      n++;
+    }
+    document.getElementById('scanModal').style.display = 'none';
+    document.getElementById('scanStep4').style.display = 'none';
+    document.getElementById('scanStep1').style.display = 'block';
+    showToast('✅ 명함 ' + n + '장 저장됐어요!');
+    await loadCards();
+  } catch(e) { showToast('❌ ' + e.message); }
 };
 
 window.saveOcrCard = async function() {
@@ -2073,7 +2209,7 @@ window.saveContactCard = async function() {
           </button>
         </div>
         <p style="font-size:12px;color:#64748b;text-align:center;line-height:1.6">
-          명함을 평평하게 놓고 촬영하세요<br>이름·연락처·업종·서비스까지 자동 인식
+          갤러리에서 여러 장을 한 번에 선택할 수 있어요<br>이름·연락처·업종·서비스까지 자동 인식
         </p>
       </div>
       <!-- 단계2: OCR 처리 중 -->
@@ -2107,6 +2243,8 @@ window.saveContactCard = async function() {
         </div>
         <button class="ocr-save-btn" onclick="saveOcrCard()">💾 명함 저장</button>
       </div>
+      <!-- 단계4: 여러 장 결과 -->
+      <div id="scanStep4" style="display:none"></div>
     </div>
 
     <!-- ===== 연락처 가져오기 탭 ===== -->
@@ -2188,7 +2326,7 @@ window.saveContactCard = async function() {
     </div>
 
     <!-- 숨겨진 파일 input -->
-    <input type="file" id="ocrFileInput" accept="image/*" style="display:none" onchange="handleOcrFile(event)"/>
+    <input type="file" id="ocrFileInput" accept="image/*" multiple style="display:none" onchange="handleOcrFile(event)"/>
     <input type="file" id="ocrCamInput" accept="image/*" capture="environment" style="display:none" onchange="handleOcrFile(event)"/>
   </div>
 </div>
