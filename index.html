@@ -931,6 +931,7 @@ function renderCards(cards) {
           <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}</div>
           ${card.nameEn?`<div class="card-name-en">${card.nameEn}</div>`:''}
           ${card.company?`<div class="card-company">${card.company}</div>`:''}
+          ${card.industry?`<div class="card-company" style="opacity:.75">${card.industry}</div>`:''}
           ${card.chapter?`<div class="card-chapter">📍 ${card.chapter}</div>`:''}
           ${bniHtml}
         </div>
@@ -1116,7 +1117,7 @@ window.onSearch = function(val) {
 
   // 기본 검색 (정확한 단어 매칭 - fullText 전체 포함)
   const basic = allCards.filter(c => {
-    const text = [c.name,c.nameEn,c.company,c.title,c.bni,c.fullText,c.chapter,c.memo].filter(Boolean).join(' ').toLowerCase();
+    const text = [c.name,c.nameEn,c.company,c.title,c.bni,c.industry,c.services,c.fullText,c.chapter,c.memo].filter(Boolean).join(' ').toLowerCase();
     return text.includes(q.toLowerCase());
   });
   renderCards(basic);
@@ -1873,31 +1874,23 @@ window.handleOcrFile = async function(e) {
       r.readAsDataURL(file);
     });
 
-    // Google Vision API 호출
-    const VISION_KEY = 'AIzaSyBiZvDPaZAts3C6iiXkUw3TsiUBiqjWA3g';
-    const vRes = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`, {
+    // 이미지 축소 (최대 1600px) → 업로드 용량 절감
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'data:' + file.type + ';base64,' + base64; });
+    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    const jpeg = cv.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+    // Claude 비전으로 OCR + 구조화 (Cloudflare Worker 경유 - API 키는 서버에만 보관)
+    const cRes = await fetch(CB_WORKER_URL + '/ocr-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [{ image: { content: base64 }, features: [{ type: 'TEXT_DETECTION' }] }]
-      })
+      body: JSON.stringify({ image: jpeg, mediaType: 'image/jpeg' })
     });
-    const vData = await vRes.json();
-    const rawText = vData.responses?.[0]?.fullTextAnnotation?.text || '';
-
-    // Claude로 파싱 (Cloudflare Worker 프록시 경유 - API 키는 서버에만 보관)
-    let parsed = { name:'', nameEn:'', title:'', company:'', phone:'', email:'' };
-    if(rawText) {
-      try {
-        const cRes = await fetch(CB_WORKER_URL + '/ocr-parse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rawText })
-        });
-        const cData = await cRes.json();
-        parsed = { ...parsed, ...cData };
-      } catch(err) { console.error('OCR 파싱 실패', err); }
-    }
+    const parsed = await cRes.json();
+    if(parsed.error) throw new Error(parsed.error);
+    window._ocrFullText = parsed.fullText || '';
 
     // 미리보기 & 단계3
     document.getElementById('ocrPreview').src = URL.createObjectURL(file);
@@ -1906,7 +1899,12 @@ window.handleOcrFile = async function(e) {
     document.getElementById('ocrTitle').value   = parsed.title;
     document.getElementById('ocrCompany').value = parsed.company;
     document.getElementById('ocrPhone').value   = parsed.phone;
-    document.getElementById('ocrEmail').value   = parsed.email;
+    document.getElementById('ocrEmail').value   = parsed.email || '';
+    document.getElementById('ocrIndustry').value = parsed.industry || '';
+    document.getElementById('ocrAddress').value  = parsed.address || '';
+    document.getElementById('ocrServices').value = parsed.services || '';
+    const chapSel = document.getElementById('ocrChapter');
+    if(parsed.bni && [...chapSel.options].some(o => parsed.bni.includes(o.value))) chapSel.value = [...chapSel.options].find(o => parsed.bni.includes(o.value)).value;
 
     document.getElementById('scanStep2').style.display = 'none';
     document.getElementById('scanStep3').style.display = 'block';
@@ -1928,6 +1926,10 @@ window.saveOcrCard = async function() {
     company: document.getElementById('ocrCompany').value.trim(),
     phone:   document.getElementById('ocrPhone').value.trim(),
     email:   document.getElementById('ocrEmail').value.trim(),
+    industry:document.getElementById('ocrIndustry').value.trim(),
+    address: document.getElementById('ocrAddress').value.trim(),
+    services:document.getElementById('ocrServices').value.trim(),
+    fullText:(window._ocrFullText || '').slice(0, 3000),
     chapter: document.getElementById('ocrChapter').value,
     referrer:'명함 스캔',
     savedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -2071,7 +2073,7 @@ window.saveContactCard = async function() {
           </button>
         </div>
         <p style="font-size:12px;color:#64748b;text-align:center;line-height:1.6">
-          명함을 평평하게 놓고 촬영하세요<br>이름·직함·회사·전화번호 자동 인식
+          명함을 평평하게 놓고 촬영하세요<br>이름·연락처·업종·서비스까지 자동 인식
         </p>
       </div>
       <!-- 단계2: OCR 처리 중 -->
@@ -2092,6 +2094,9 @@ window.saveContactCard = async function() {
         <div class="ocr-field"><div class="ocr-label">회사</div><input class="ocr-input" id="ocrCompany" placeholder="회사명"/></div>
         <div class="ocr-field"><div class="ocr-label">전화번호</div><input class="ocr-input" id="ocrPhone" placeholder="010-0000-0000" type="tel"/></div>
         <div class="ocr-field"><div class="ocr-label">이메일</div><input class="ocr-input" id="ocrEmail" placeholder="email@example.com" type="email"/></div>
+        <div class="ocr-field"><div class="ocr-label">업종</div><input class="ocr-input" id="ocrIndustry" placeholder="업종 (검색에 사용)"/></div>
+        <div class="ocr-field"><div class="ocr-label">주소</div><input class="ocr-input" id="ocrAddress" placeholder="주소"/></div>
+        <div class="ocr-field"><div class="ocr-label">취급 서비스 · 대상고객</div><textarea class="ocr-input" id="ocrServices" rows="4" placeholder="명함에 적힌 서비스, 제품, 대상고객 (검색에 사용)"></textarea></div>
         <div class="ocr-field">
           <div class="ocr-label">챕터</div>
           <select class="ocr-input" id="ocrChapter">
