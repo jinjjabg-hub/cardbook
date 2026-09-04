@@ -2,7 +2,8 @@
 // 환경변수(Secret): ANTHROPIC_API_KEY
 // 라우트: /ocr-image (신규, 이미지→구조화+전문)  /ocr-parse (기존)  /ai-search (기존)
 
-const MODEL = 'claude-sonnet-4-6';
+// 첫 번째가 안 되면(모델명 없음 404) 다음 모델로 자동 재시도
+const MODELS = ['claude-sonnet-4-6', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,19 +15,29 @@ const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 
 async function callClaude(env, content, maxTokens) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'Claude API error');
-  const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
+  if (!env.ANTHROPIC_API_KEY) throw new Error('Worker에 ANTHROPIC_API_KEY Secret이 없습니다');
+  let lastErr = '';
+  for (const model of MODELS) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+      const m = text.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('응답에 JSON 없음: ' + text.slice(0, 80));
+      return JSON.parse(m[0]);
+    }
+    lastErr = `[${model}] ${data.error?.type || res.status}: ${data.error?.message || ''}`;
+    if (data.error?.type !== 'not_found_error') break; // 모델명 문제일 때만 다음 모델 시도
+  }
+  throw new Error(lastErr);
 }
 
 const OCR_SCHEMA = `{
