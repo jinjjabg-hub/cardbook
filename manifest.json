@@ -6,17 +6,29 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f0faf4",
-  "theme_color": "#f0faf4",
+  "background_color": "#f6f8fc",
+  "theme_color": "#f6f8fc",
   "orientation": "portrait",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "share_target": {
-    "action": "./",
-    "method": "GET",
+    "action": "./share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
     "params": {
       "title": "title",
       "text": "text",
-      "url": "url"
+      "url": "url",
+      "files": [
+        {
+          "name": "images",
+          "accept": [
+            "image/*"
+          ]
+        }
+      ]
     }
   },
   "icons": [
