@@ -1,9 +1,12 @@
 // CardBook AI Worker — cardbook-ai.jinjjabg.workers.dev
 // 환경변수(Secret): ANTHROPIC_API_KEY
+// KV 바인딩(선택): OCR_CACHE — 같은 이미지는 한 번만 읽고 결과 재사용. 바인딩이 없으면 캐시 없이 동작
 // 라우트: /ocr-image (신규, 이미지→구조화+전문)  /ocr-parse (기존)  /ai-search (기존)
 
 // 첫 번째가 안 되면(모델명 없음 404) 다음 모델로 자동 재시도
 const MODELS = ['claude-sonnet-4-6', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
+// 비용 실험: OCR만 Haiku로 돌려보려면 아래를 ['claude-haiku-4-5-20251001', ...MODELS] 로 바꾸고 Deploy
+const OCR_MODELS = MODELS;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -14,10 +17,10 @@ const CORS = {
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 
-async function callClaude(env, content, maxTokens) {
+async function callClaude(env, content, maxTokens, models = MODELS) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('Worker에 ANTHROPIC_API_KEY Secret이 없습니다');
   let lastErr = '';
-  for (const model of MODELS) {
+  for (const model of models) {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -64,12 +67,18 @@ export default {
     try {
       // ── 신규: 이미지 한 장으로 OCR + 구조화 ──
       if (url.pathname === '/ocr-image') {
-        const { image, mediaType } = await request.json();
+        const { image, mediaType, hash } = await request.json();
         if (!image) return json({ error: 'image required' }, 400);
+        // 공유 캐시: 같은 이미지 파일(해시 동일)은 Claude를 부르지 않고 저장된 결과 반환
+        if (hash && env.OCR_CACHE) {
+          const hit = await env.OCR_CACHE.get(hash, 'json');
+          if (hit) return json({ ...hit, cached: true });
+        }
         const result = await callClaude(env, [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
           { type: 'text', text: `이 명함(또는 명함 전단) 이미지를 읽고 아래 JSON 스키마로만 답해. 마크다운 없이 JSON만. 없는 항목은 빈 문자열.\n${OCR_SCHEMA}` },
-        ], 2000);
+        ], 2000, OCR_MODELS);
+        if (hash && env.OCR_CACHE) await env.OCR_CACHE.put(hash, JSON.stringify(result), { expirationTtl: 60 * 60 * 24 * 365 });
         return json(result);
       }
 

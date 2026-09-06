@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js" crossorigin="anonymous"></script>
 <style>
 :root{
@@ -272,6 +273,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// 오프라인 캐시: 명함을 폰에 저장해 두고 바뀐 것만 받아옴 (읽기 비용↓, 실행 속도↑, 오프라인 검색 가능)
+db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+const storage = firebase.storage();
 
 // ⚠️ Cloudflare Worker 배포 후 아래 주소를 실제 발급받은 주소로 교체하세요
 // 예: https://cardbook-ai.jinjjabg.workers.dev
@@ -1052,7 +1056,8 @@ function renderCards(cards) {
       <div class="card-actions">
         ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 ${card.phone}</a>`:'<span></span>'}
         ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 명함 보기</a>`:''}
-        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}')">📤</button>
+        ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️</a>`:''}
+        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">📤</button>
         <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️</button>
       </div>
       <button class="crm-toggle" onclick="toggleCRM(this)">
@@ -1313,7 +1318,9 @@ async function aiSearch(query) {
 window.deleteCard = async function(docId, name) {
   if(!confirm(`"${name}" 명함을 삭제할까요?`)) return;
   try {
+    const c = allCards.find(x => x.docId === docId);
     await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).delete();
+    if(c && c.image) storage.ref('users/' + currentUser.uid + '/cards/' + docId + '.jpg').delete().catch(()=>{});
     await loadCards();
     showToast('🗑️ 삭제되었습니다.');
   } catch(e) { showToast('❌ ' + e.message); }
@@ -1626,7 +1633,22 @@ function showInstallGuide() {
 }
 
 
-window.shareCard = function(url, name) {
+window.shareCard = async function(url, name, docId) {
+  const c = docId ? allCards.find(x => x.docId === docId) : null;
+  // 1) DiCA 링크 없음 + 이미지 있음 → 명함 이미지 파일 자체를 공유
+  if(!url && c && c.image && navigator.share) {
+    try {
+      const blob = await (await fetch(c.image)).blob();
+      const file = new File([blob], (c.name||'명함') + '.jpg', { type: 'image/jpeg' });
+      if(navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name + ' 명함' }); return; }
+    } catch(e) {}
+  }
+  // 2) 링크도 이미지도 없음 → 텍스트로
+  if(!url && c) {
+    const txt = [c.name + (c.title ? ' ' + c.title : ''), c.company, c.phone, c.email, c.address].filter(Boolean).join('\n');
+    if(navigator.share) { navigator.share({ title: name + ' 명함', text: txt }); } else { navigator.clipboard.writeText(txt).then(() => showToast('명함 정보가 복사됐어요')); }
+    return;
+  }
   const shareUrl = url || window.location.href;
   if(navigator.share) {
     navigator.share({ title: name + ' 명함', text: name + '님의 디지털 명함', url: shareUrl });
@@ -2044,6 +2066,37 @@ window.triggerGallery = function() {
   document.getElementById('ocrFileInput').click();
 };
 
+async function _sha256(b64) {
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+// 스캔 한도: 월 100장 (실제 인식 요청 기준, 캐시 적중은 안 셈). 결제 없이 악용만 막는 소프트 브레이크
+const SCAN_LIMIT = 100;
+function _monthKey() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+async function _checkScanQuota() {
+  const ref = db.collection('users').doc(currentUser.uid);
+  const snap = await ref.get(); const u = snap.exists ? snap.data() : {};
+  const n = u.scanMonth === _monthKey() ? (u.scanCount||0) : 0;
+  if(n >= SCAN_LIMIT) throw new Error('이번 달 무료 스캔 ' + SCAN_LIMIT + '장을 다 썼어요. 다음 달 1일에 다시 열려요. DiCA·링크 저장은 계속 무제한이에요');
+}
+async function _bumpScanCount() {
+  const ref = db.collection('users').doc(currentUser.uid);
+  const snap = await ref.get(); const u = snap.exists ? snap.data() : {};
+  const same = u.scanMonth === _monthKey();
+  await ref.set({ scanMonth: _monthKey(), scanCount: (same ? (u.scanCount||0) : 0) + 1, scanTotal: (u.scanTotal||0) + 1 }, { merge: true });
+}
+// 명함 이미지를 Storage에 저장 → 다운로드 URL (실패해도 명함 저장은 진행)
+async function _uploadCardImage(docId, jpegB64) {
+  if(!jpegB64) return '';
+  try {
+    const ref = storage.ref('users/' + currentUser.uid + '/cards/' + docId + '.jpg');
+    await ref.putString(jpegB64, 'base64', { contentType: 'image/jpeg' });
+    return await ref.getDownloadURL();
+  } catch(e) { console.warn('이미지 저장 실패', e); return ''; }
+}
+
 // 이미지 1장 → 축소 → Worker OCR → 구조화 결과
 async function ocrImageFile(file) {
     // base64 변환
@@ -2056,20 +2109,24 @@ async function ocrImageFile(file) {
 
     // 이미지 축소 (최대 1600px) → 업로드 용량 절감
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'data:' + file.type + ';base64,' + base64; });
-    const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const scale = Math.min(1, 1200 / Math.max(img.width, img.height));
     const cv = document.createElement('canvas');
     cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-    const jpeg = cv.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const jpeg = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
+    const hash = await _sha256(jpeg);
+    await _checkScanQuota();
 
     // Claude 비전으로 OCR + 구조화 (Cloudflare Worker 경유 - API 키는 서버에만 보관)
     const cRes = await fetch(CB_WORKER_URL + '/ocr-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: jpeg, mediaType: 'image/jpeg' })
+      body: JSON.stringify({ image: jpeg, mediaType: 'image/jpeg', hash })
     });
     const parsed = await cRes.json();
     if(parsed.error) throw new Error(parsed.error);
+    if(!parsed.cached) await _bumpScanCount();
+    parsed._jpeg = jpeg;
     return parsed;
 
 }
@@ -2088,6 +2145,7 @@ window.handleOcrFile = async function(e) {
   try {
     const parsed = await ocrImageFile(file);
     window._ocrFullText = parsed.fullText || '';
+    window._ocrJpeg = parsed._jpeg || '';
 
     // 미리보기 & 단계3
     document.getElementById('ocrPreview').src = URL.createObjectURL(file);
@@ -2192,6 +2250,8 @@ window.saveOcrBatch = async function() {
         services: p.services||'', fullText: (p.fullText||'').slice(0, 3000), chapter: p.chapter||'',
         referrer: '명함 스캔'
       }, 'scan');
+      const img = await _uploadCardImage(r.docId, p._jpeg);
+      if(img) await db.collection('users').doc(currentUser.uid).collection('cards').doc(r.docId).update({ image: img });
       if(r.merged) m++; else n++;
     }
     document.getElementById('scanModal').style.display = 'none';
@@ -2222,6 +2282,9 @@ window.saveOcrCard = async function() {
   if(!card.name) { showToast('❌ 이름을 입력해주세요'); return; }
   try {
     const r = await upsertCard(card, 'scan');
+    const img = await _uploadCardImage(r.docId, window._ocrJpeg);
+    if(img) await db.collection('users').doc(currentUser.uid).collection('cards').doc(r.docId).update({ image: img });
+    window._ocrJpeg = '';
     document.getElementById('scanModal').style.display = 'none';
     _saveToast(r, card.name, '명함 저장됐어요!');
     await loadCards();
