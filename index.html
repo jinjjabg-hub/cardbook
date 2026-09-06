@@ -1638,10 +1638,13 @@ window.shareCard = async function(url, name, docId) {
   // 1) DiCA 링크 없음 + 이미지 있음 → 명함 이미지 파일 자체를 공유
   if(!url && c && c.image && navigator.share) {
     try {
-      const blob = await (await fetch(CB_WORKER_URL + '/img?u=' + encodeURIComponent(c.image))).blob();
-      const file = new File([blob], (c.name||'명함') + '.jpg', { type: 'image/jpeg' });
+      const res = await fetch(CB_WORKER_URL + '/img?u=' + encodeURIComponent(c.image));
+      const blob = await res.blob();
+      if(!res.ok || !blob.type.startsWith('image/')) throw new Error('이미지 응답 아님: ' + res.status + ' ' + blob.type);
+      const file = new File([blob], 'namecard-' + Date.now() + '.jpg', { type: 'image/jpeg' });
       if(navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name + ' 명함' }); return; }
-    } catch(e) {}
+      throw new Error('이 브라우저는 파일 공유 미지원');
+    } catch(e) { if(e.name !== 'AbortError') showToast('이미지 공유 실패 → 텍스트로 보냅니다 (' + e.message + ')'); }
   }
   // 2) 링크도 이미지도 없음 → 텍스트로
   if(!url && c) {
