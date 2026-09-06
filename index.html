@@ -1638,7 +1638,7 @@ window.shareCard = async function(url, name, docId) {
   // 1) DiCA 링크 없음 + 이미지 있음 → 명함 이미지 파일 자체를 공유
   if(!url && c && c.image && navigator.share) {
     try {
-      const blob = await (await fetch(c.image)).blob();
+      const blob = await (await fetch(CB_WORKER_URL + '/img?u=' + encodeURIComponent(c.image))).blob();
       const file = new File([blob], (c.name||'명함') + '.jpg', { type: 'image/jpeg' });
       if(navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name + ' 명함' }); return; }
     } catch(e) {}

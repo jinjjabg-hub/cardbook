@@ -10,7 +10,7 @@ const OCR_MODELS = MODELS;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -61,8 +61,17 @@ const OCR_SCHEMA = `{
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
-    if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
     const url = new URL(request.url);
+
+    // ── 이미지 프록시: Firebase Storage 파일을 카드북 페이지가 가져갈 수 있게 (CORS 우회, 공유용) ──
+    if (request.method === 'GET' && url.pathname === '/img') {
+      const src = url.searchParams.get('u') || '';
+      if (!src.startsWith('https://firebasestorage.googleapis.com/')) return json({ error: 'not allowed' }, 403);
+      const r = await fetch(src);
+      return new Response(r.body, { status: r.status, headers: { 'Content-Type': r.headers.get('Content-Type') || 'image/jpeg', 'Cache-Control': 'public, max-age=86400', ...CORS } });
+    }
+
+    if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
 
     try {
       // ── 신규: 이미지 한 장으로 OCR + 구조화 ──
