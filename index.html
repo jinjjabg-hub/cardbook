@@ -43,6 +43,7 @@ body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-s
 .search-input::placeholder{color:var(--muted);}
 .search-input:focus{border-color:var(--gold);background:rgba(255,255,255,0.9);}
 .search-icon{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none;}
+mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1px}
 .ai-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.2);border-radius:8px;padding:3px 8px;font-size:10px;color:var(--gold);margin-top:6px;letter-spacing:.05em;}
 
 /* CHAPTER TABS */
@@ -671,10 +672,11 @@ function renderApp() {
         </div>
       </div>
       <div class="search-wrap">
-        <input class="search-input" id="searchInput" placeholder="이름, 업종, 리퍼럴 키워드 검색..." oninput="onSearch(this.value)">
+        <input class="search-input" id="searchInput" placeholder="기억나는 조각을 띄어쓰기로: 인테리어 해운대" oninput="onSearch(this.value)">
         <span class="search-icon">🔍</span>
       </div>
       <div><span class="ai-badge">✨ AI 검색 지원</span></div>
+      <div id="refineChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px"></div>
     </div>
     <div id="addHomeBanner" style="display:none">
       <div class="add-home-banner">
@@ -985,6 +987,7 @@ function renderCards(cards) {
   if(countEl) countEl.textContent = cards.length;
 
   if(cards.length === 0) {
+    if((window._searchTerms||[]).length) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">검색 결과가 없어요</div><div class="empty-desc">단어를 하나 빼거나 짧게 줄여보세요<br>예: "인테리어 해운대" → "인테리어"</div></div>`; return; }
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂️</div><div class="empty-title">${currentChapter==='전체'?'저장된 명함이 없어요':currentChapter+' 챕터 명함이 없어요'}</div><div class="empty-desc">명함 페이지에서<br>"명함 저장하기" 버튼을 눌러 추가하세요.</div></div>`;
     return;
   }
@@ -1041,6 +1044,7 @@ function renderCards(cards) {
           ${bniHtml}
         </div>
       </div>
+      ${(window._searchTerms||[]).length ? (() => { const sn = _matchSnippet(card, window._searchTerms); return sn ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;padding:6px 0 0;border-top:1px dashed var(--border);margin-top:8px">🔎 ${sn}</div>` : ''; })() : ''}
       ${_upd?`<div class="upd-banner">
         <div class="upd-banner-txt">📣 ${_cbEsc(_upd.notice)||'명함이 업데이트됐어요!'}<span class="upd-date">${(_upd.updatedAt||'').slice(0,10)}</span></div>
         <button class="upd-ok" onclick="ackCardUpdate('${card.docId}','${_upd.updatedAt}')">확인</button>
@@ -1218,14 +1222,63 @@ window.onSearch = function(val) {
   clearTimeout(searchTimer);
   const q = val.trim();
   if(q) showView('cards');
-  if(!q) { applyFilter(); return; }
+  if(!q) { window._searchTerms = []; const rc = document.getElementById('refineChips'); if(rc) rc.innerHTML = ''; applyFilter(); return; }
 
-  // 기본 검색 (정확한 단어 매칭 - fullText 전체 포함)
-  const basic = allCards.filter(c => {
-    const text = [c.name,c.nameEn,c.company,c.title,c.bni,c.industry,c.services,c.fullText,c.chapter,c.memo].filter(Boolean).join(' ').toLowerCase();
-    return text.includes(q.toLowerCase());
-  });
+  // 띄어쓰기 = AND: 모든 단어가 어디든 들어 있는 명함만 남김 → 조각 기억으로 좁혀가기
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  window._searchTerms = terms;
+  const basic = allCards.filter(c => { const t = _searchText(c); return terms.every(w => t.includes(w)); });
   renderCards(basic);
+  renderRefineChips(basic, terms);
+};
+
+function _searchText(c) {
+  return [c.name,c.nameEn,c.company,c.title,c.bni,c.industry,c.services,c.fullText,c.chapter,c.address,c.memo].filter(Boolean).join(' ').toLowerCase();
+}
+
+// 검색어가 걸린 문장 조각 (이름·회사 밖에서 찾아 "왜 걸렸는지" 보여줌)
+function _matchSnippet(c, terms) {
+  const src = [c.industry,c.services,c.fullText,c.address,c.memo].filter(Boolean).join(' · ').replace(/\s+/g,' ');
+  const low = src.toLowerCase();
+  const w = terms.find(t => low.includes(t) && !(c.name||'').toLowerCase().includes(t) && !(c.company||'').toLowerCase().includes(t));
+  if(!w) return '';
+  const i = low.indexOf(w);
+  const a = Math.max(0, i - 22), b = Math.min(src.length, i + w.length + 22);
+  let out = _cbEsc((a>0?'…':'') + src.slice(a,b) + (b<src.length?'…':''));
+  terms.forEach(t => { out = out.replace(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'), m => '<mark>' + m + '</mark>'); });
+  return out;
+}
+
+// 좁히기 칩: 검색 결과 안에서 자주 나오는 단어를 세어 "다음 조각"을 제안
+const _STOP = new Set(['대표','대표이사','이사','부장','과장','팀장','실장','본부장','전무','상무','사장','회장','원장','소장','주식회사','유한회사','부산','서울','경남','대한민국','email','mail','tel','fax','phone','http','https','www','com','net','co','kr','naver','gmail','bni','chapter','명함','저장','연락처','번호','전화','휴대폰','이메일','주소','및','등','또는','있습니다','합니다','the','and','for','with']);
+function renderRefineChips(cards, terms) {
+  const box = document.getElementById('refineChips');
+  if(!box) return;
+  if(cards.length < 3) { box.innerHTML = ''; return; }
+  const df = new Map();
+  cards.forEach(c => {
+    const seen = new Set();
+    const src = [c.chapter,c.industry,c.company,c.services,c.fullText,c.address,c.title].filter(Boolean).join(' ');
+    src.split(/[^가-힣a-zA-Z0-9]+/).forEach(tok => {
+      const t = tok.toLowerCase();
+      if(t.length < 2 || t.length > 12 || /^\d+$/.test(t) || _STOP.has(t) || seen.has(t)) return;
+      if(terms.some(w => t.includes(w) || w.includes(t))) return;
+      if((c.name||'').includes(tok)) return;
+      seen.add(t); df.set(tok, (df.get(tok)||0) + 1);
+    });
+  });
+  const chips = [...df.entries()]
+    .filter(([,n]) => n >= 2 && n < cards.length)   // 전부에 있으면 좁혀지지 않으니 제외
+    .sort((a,b) => b[1]-a[1] || a[0].length-b[0].length)
+    .filter(([t],i,arr) => !arr.slice(0,i).some(([u]) => t.startsWith(u) || u.startsWith(t)))  // 해운대/해운대구 같은 중복 제거
+    .slice(0, 8);
+  box.innerHTML = chips.length ? `<span style="font-size:10px;color:var(--muted);margin-right:2px">좁히기</span>` +
+    chips.map(([t,n]) => `<button class="tab" style="padding:4px 10px" onclick="refineSearch('${_cbEsc(t)}')">${_cbEsc(t)} <span style="opacity:.6">${n}</span></button>`).join('') : '';
+}
+window.refineSearch = function(word) {
+  const inp = document.getElementById('searchInput');
+  inp.value = (inp.value.trim() + ' ' + word).trim();
+  onSearch(inp.value);
 };
 
 async function aiSearch(query) {
