@@ -257,9 +257,15 @@ if('serviceWorker' in navigator) {
   }).catch(()=>{});
 }
 
-// ===== 카카오톡 안드로이드 → 크롬 딥링크 =====
-if(/KAKAOTALK/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent)) {
+// ===== 인앱 브라우저 탈출 =====
+// 카톡·네이버·인스타·페북·라인 등의 인앱 브라우저는 홈화면 설치·공유 대상·구글 로그인이 막혀 있어 카드북이 제대로 안 돈다.
+const CB_INAPP = /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
+if(CB_INAPP && /Android/i.test(navigator.userAgent)) {
+  // 안드로이드: 크롬으로 바로 넘김 (파라미터 유지)
   location.href = 'intent://' + location.href.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+} else if(CB_INAPP && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+  // iOS 카톡: 외부 브라우저(Safari)로 열기 링크 — 카톡이 제공하는 공식 스킴
+  if(/KAKAOTALK/i.test(navigator.userAgent)) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
 }
 
 // ===== Firebase 초기화 =====
@@ -1586,6 +1592,16 @@ if(_cbInstallIntent) {
   // 파라미터 정리(공유/재방문 시 반복 실행 방지)
   window.history.replaceState({}, '', window.location.pathname);
 }
+
+// iOS Safari는 beforeinstallprompt가 없어 배너가 안 뜨므로 직접 띄운다 (Safari 아닌 iOS 브라우저는 설치 불가라 Safari 안내)
+(function() {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
+  if(!isIOS || isStandalone || CB_INAPP || localStorage.getItem('addHomeDismissed')) return;
+  const show = () => { const b = document.getElementById('addHomeBanner'); if(!b) return setTimeout(show, 500);
+    b.style.display = 'block'; const btn = b.querySelector('.add-home-btn'); if(btn) { btn.textContent = '방법 보기'; btn.onclick = showInstallGuide; } };
+  setTimeout(show, 1500);
+})();
 
 window.addEventListener('appinstalled', () => {
   const b = document.getElementById('addHomeBanner');
