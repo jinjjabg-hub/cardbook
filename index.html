@@ -9,6 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
+<script src="https://js.tosspayments.com/v2/standard"></script>
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js" crossorigin="anonymous"></script>
 <style>
 :root{
@@ -104,7 +105,7 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .card-saved{padding:0 14px 10px;font-size:10px;color:rgba(240,232,216,0.18);}
 
 /* LOGIN */
-.login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:40px 24px;text-align:center;}
+.login-screen{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:80vh;padding:32px 24px 120px;text-align:center;}
 .login-icon{font-size:56px;margin-bottom:20px;}
 .login-title{font-family:'Nanum Gothic',sans-serif;font-size:22px;font-weight:800;color:#16305e;margin-bottom:10px;}
 .login-desc{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:24px;}
@@ -120,7 +121,7 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .social-divider div{flex:1;height:1px;background:var(--border);}
 .social-buttons{display:flex;gap:10px;width:100%;max-width:300px;}
 .google-btn,.kakao-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:40px;padding:11px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;}
-.google-btn{background:#fff;color:#1a1a1a;box-shadow:0 2px 8px rgba(0,0,0,0.2);}
+.google-btn{background:#fff;color:#1a1a1a;box-shadow:0 2px 8px rgba(0,0,0,0.2);padding:14px 16px;font-size:15px;border:1px solid rgba(0,0,0,0.08);}
 .kakao-btn{background:#FEE500;color:#3c1e1e;}
 .google-btn:hover,.kakao-btn:hover{transform:translateY(-2px);}
 
@@ -349,16 +350,6 @@ function renderLogin() {
       <div class="login-icon">🗂️</div>
       <div class="login-title">BNI 명함첩</div>
       <div class="login-desc">전문가 명함을 스마트하게 관리하세요</div>
-      <div class="auth-tabs">
-        <button class="auth-tab ${authMode==='login'?'active':''}" onclick="setAuthMode('login')">로그인</button>
-        <button class="auth-tab ${authMode==='signup'?'active':''}" onclick="setAuthMode('signup')">회원가입</button>
-      </div>
-      <div class="auth-form">
-        <input type="email" id="authEmail" class="auth-input" placeholder="이메일" autocomplete="email">
-        <input type="password" id="authPassword" class="auth-input" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">
-        <button class="auth-submit" onclick="handleEmailAuth()">${authMode==='login'?'로그인':'회원가입'}</button>
-        <div id="authError" class="error-msg"></div>
-      </div>
       <div style="width:100%;max-width:300px;margin-bottom:4px;">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.18);border-radius:12px;">
           <input type="checkbox" id="privacyAgree" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#2563eb;cursor:pointer;">
@@ -370,12 +361,22 @@ function renderLogin() {
         </label>
         <div id="privacyError" style="font-size:11px;color:#C8102E;margin-top:6px;padding-left:4px;min-height:16px;"></div>
       </div>
-      <div class="social-divider"><div></div><span>또는</span><div></div></div>
-      <div class="social-buttons">
+      <div class="social-buttons" style="margin-top:6px">
         <button class="google-btn" onclick="doGoogleLogin()">
           <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
           Google
         </button>
+      </div>
+      <div class="social-divider"><div></div><span>또는 이메일로</span><div></div></div>
+      <div class="auth-tabs">
+        <button class="auth-tab ${authMode==='login'?'active':''}" onclick="setAuthMode('login')">로그인</button>
+        <button class="auth-tab ${authMode==='signup'?'active':''}" onclick="setAuthMode('signup')">회원가입</button>
+      </div>
+      <div class="auth-form">
+        <input type="email" id="authEmail" class="auth-input" placeholder="이메일" autocomplete="email">
+        <input type="password" id="authPassword" class="auth-input" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">
+        <button class="auth-submit" onclick="handleEmailAuth()">${authMode==='login'?'로그인':'회원가입'}</button>
+        <div id="authError" class="error-msg"></div>
       </div>
     </div>
     <div class="bottom-nav">
@@ -586,6 +587,10 @@ window.openAccountModal = function() {
         <div style="font-size:13px;font-weight:700;color:#16305e;">계정 설정</div>
         <div style="font-size:12px;color:#5b7bb0;margin-top:6px;">\${currentUser?.email || ''}</div>
       </div>
+      <div id="creditBox" style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <div><div style="font-size:11px;color:#5b7bb0">남은 스캔 장수</div><div style="font-size:20px;font-weight:800;color:#16305e"><span id="creditNum">…</span>장</div></div>
+        <button onclick="openChargeModal()" style="padding:10px 16px;border-radius:10px;border:none;background:#16305e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">충전</button>
+      </div>
       <button onclick="doLogout();document.getElementById('accountModal').remove();"
         style="width:100%;padding:14px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.25);background:transparent;color:#16305e;font-size:14px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">
         로그아웃
@@ -602,6 +607,7 @@ window.openAccountModal = function() {
   `;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
+  getCredits().then(c => { const el = document.getElementById('creditNum'); if(el) el.textContent = c; }).catch(()=>{});
 };
 
 // ===== 계정 삭제 확인 =====
@@ -1334,7 +1340,7 @@ async function loadCards() {
     await loadCardUpdates();
     renderChapterUI();
     applyFilter();
-    if(!window._sharedHandled) { window._sharedHandled = true; handleSharedImages(); }
+    if(!window._sharedHandled) { window._sharedHandled = true; handleSharedImages(); handlePaymentReturn(); }
   } catch(e) { showToast('❌ 불러오기 실패'); }
 }
 
@@ -2075,21 +2081,90 @@ async function _sha256(b64) {
   const buf = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
 }
-// 스캔 한도: 월 100장 (실제 인식 요청 기준, 캐시 적중은 안 셈). 결제 없이 악용만 막는 소프트 브레이크
-const SCAN_LIMIT = 100;
+// ===== 스캔 장수(크레딧) =====
+// 가입 시 50장, 매월 10장 자동 적립, 충전분은 소멸 없음. 실제 인식 요청(캐시 미적중)마다 1장 차감. 인식 실패는 차감 안 함
+const FREE_SIGNUP = 50, FREE_MONTHLY = 10;
+const PACKS = [ { id:'p100', n:100, price:3000 }, { id:'p300', n:300, price:7000 }, { id:'p1000', n:1000, price:20000 } ];  // worker.js와 동일해야 함
+const TOSS_CLIENT_KEY = 'test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq';  // 토스페이먼츠 테스트 클라이언트 키 → 심사 후 라이브 키로 교체
 function _monthKey() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
-async function _checkScanQuota() {
+// 사용자 문서를 읽으며 첫 사용 50장·이번 달 10장을 적립한 뒤 현재 잔여 장수 반환
+async function getCredits() {
   const ref = db.collection('users').doc(currentUser.uid);
   const snap = await ref.get(); const u = snap.exists ? snap.data() : {};
-  const n = u.scanMonth === _monthKey() ? (u.scanCount||0) : 0;
-  if(n >= SCAN_LIMIT) throw new Error('이번 달 무료 스캔 ' + SCAN_LIMIT + '장을 다 썼어요. 다음 달 1일에 다시 열려요. DiCA·링크 저장은 계속 무제한이에요');
+  const patch = {};
+  let credits = typeof u.credits === 'number' ? u.credits : null;
+  if(credits === null) { credits = FREE_SIGNUP; patch.credits = credits; }
+  if(u.freeMonth !== _monthKey()) { credits += FREE_MONTHLY; patch.credits = credits; patch.freeMonth = _monthKey(); }
+  if(Object.keys(patch).length) await ref.set(patch, { merge: true });
+  return credits;
+}
+async function _checkScanQuota() {
+  const c = await getCredits();
+  if(c <= 0) { setTimeout(openChargeModal, 300); throw new Error('스캔 장수를 다 썼어요. 충전하면 바로 이어서 스캔할 수 있어요 (DiCA·링크 저장은 무제한)'); }
 }
 async function _bumpScanCount() {
   const ref = db.collection('users').doc(currentUser.uid);
   const snap = await ref.get(); const u = snap.exists ? snap.data() : {};
   const same = u.scanMonth === _monthKey();
-  await ref.set({ scanMonth: _monthKey(), scanCount: (same ? (u.scanCount||0) : 0) + 1, scanTotal: (u.scanTotal||0) + 1 }, { merge: true });
+  await ref.set({ scanMonth: _monthKey(), scanCount: (same ? (u.scanCount||0) : 0) + 1, scanTotal: (u.scanTotal||0) + 1,
+                  credits: firebase.firestore.FieldValue.increment(-1) }, { merge: true });
 }
+
+// ===== 충전 =====
+window.openChargeModal = async function() {
+  document.getElementById('accountModal')?.remove();
+  if(document.getElementById('chargeModal')) return;
+  const credits = await getCredits();
+  const modal = document.createElement('div');
+  modal.id = 'chargeModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:650;display:flex;align-items:flex-end;justify-content:center;font-family:"Noto Sans KR",sans-serif;';
+  modal.innerHTML = `
+    <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:28px 24px 40px;">
+      <div style="text-align:center;margin-bottom:6px;font-size:13px;font-weight:700;color:#16305e;">스캔 장수 충전</div>
+      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:18px;">남은 장수 <b style="font-size:16px;color:#16305e">${credits}</b>장 · 매월 ${FREE_MONTHLY}장 무료 적립 · 충전분은 소멸 없음</div>
+      ${PACKS.map(p => `
+        <button onclick="startPayment('${p.id}')" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.2);background:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">
+          <span style="font-size:15px;font-weight:800;color:#16305e">${p.n}장</span>
+          <span style="font-size:11px;color:#5b7bb0">장당 ${Math.round(p.price/p.n)}원</span>
+          <span style="font-size:14px;font-weight:700;color:#16305e">${p.price.toLocaleString()}원</span>
+        </button>`).join('')}
+      <div style="font-size:10px;color:#889;line-height:1.6;margin:10px 2px 14px">이미지 스캔·링크 읽기 1건 = 1장. 같은 이미지를 다시 넣거나 인식에 실패하면 차감되지 않아요. DiCA·연락처 저장은 무제한.</div>
+      <button onclick="document.getElementById('chargeModal').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#aaa;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+};
+window.startPayment = async function(packId) {
+  const p = PACKS.find(x => x.id === packId); if(!p || !currentUser) return;
+  try {
+    const orderId = 'cb_' + currentUser.uid + '_' + p.id + '_' + Date.now();
+    const base = location.origin + location.pathname;
+    const payment = TossPayments(TOSS_CLIENT_KEY).payment({ customerKey: currentUser.uid });
+    await payment.requestPayment({
+      method: 'CARD',
+      amount: { currency: 'KRW', value: p.price },
+      orderId, orderName: '카드북 스캔 ' + p.n + '장',
+      successUrl: base + '?pay=ok', failUrl: base + '?pay=fail',
+      customerEmail: currentUser.email || undefined, customerName: currentUser.displayName || undefined,
+    });
+  } catch(e) { if(e.code !== 'USER_CANCEL') showToast('❌ 결제 시작 실패: ' + e.message); }
+};
+// 결제창에서 돌아왔을 때 (?pay=ok&paymentKey=…&orderId=…&amount=…)
+async function handlePaymentReturn() {
+  const q = new URLSearchParams(location.search);
+  if(!q.get('pay')) return;
+  history.replaceState(null, '', location.pathname);
+  if(q.get('pay') === 'fail') { showToast('❌ 결제 실패: ' + (q.get('message') || q.get('code') || '')); return; }
+  showToast('⏳ 결제 확인 중...');
+  try {
+    const res = await fetch(CB_WORKER_URL + '/pay/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentKey: q.get('paymentKey'), orderId: q.get('orderId'), amount: Number(q.get('amount')) }) });
+    const d = await res.json();
+    if(d.error) throw new Error(d.error);
+    showToast('✅ ' + d.credits + '장 충전됐어요! 남은 장수 ' + (await getCredits()) + '장');
+  } catch(e) { showToast('❌ 충전 처리 실패: ' + e.message + ' — 결제는 됐다면 문의해 주세요'); }
+}
+
 // 명함 이미지를 Storage에 저장 → 다운로드 URL (실패해도 명함 저장은 진행)
 async function _uploadCardImage(docId, jpegB64) {
   if(!jpegB64) return '';
