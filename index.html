@@ -2104,7 +2104,7 @@ async function _sha256(b64) {
 // 브라우저 개발자도구로 누구나 자기 문서를 열어 값을 바꿀 수 있어서, 여기서 직접 늘리면 공짜로 무한정 스캔하는 구멍이 생긴다.
 const PACKS = [ { id:'p100', n:100, price:3000 }, { id:'p300', n:300, price:7000 }, { id:'p1000', n:1000, price:20000 } ];  // worker.js와 동일해야 함
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500;  // 표시용(실제 지급·차감은 Worker가 계산). "장" 단위는 사진 촬영이 아니라 이미지 명함 파일 등록 기준으로 안내한다
-const TOSS_CLIENT_KEY = 'test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq';  // 토스페이먼츠 테스트 클라이언트 키 → 심사 후 라이브 키로 교체
+const TOSS_CLIENT_KEY = 'test_ck_PBal2vxj811KJW5OMqpR85RQgOAN';  // 송승훈 테스트 상점 클라이언트 키 → 심사 후 live_ck_로 교체
 async function _idToken() { return currentUser ? await currentUser.getIdToken() : null; }
 async function getCredits() {
   const idToken = await _idToken(); if(!idToken) return 0;
