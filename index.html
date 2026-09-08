@@ -1217,7 +1217,7 @@ function renderHome() {
     <div class="home-hero">
       <div class="home-hero-label">MY NETWORK</div>
       <div class="home-hero-stats">
-        <div class="home-stat"><div class="home-stat-num">${allCards.length}</div><div class="home-stat-label">명함</div></div>
+        <div class="home-stat" onclick="showView('cards')" style="cursor:pointer"><div class="home-stat-num">${allCards.length}</div><div class="home-stat-label">명함</div></div>
         <div class="home-stat"><div class="home-stat-num">${updCards.length}</div><div class="home-stat-label">새 소식</div></div>
         <div class="home-stat"><div class="home-stat-num">${stale.length}</div><div class="home-stat-label">챙길 사람</div></div>
       </div>
