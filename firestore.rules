@@ -2,44 +2,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // 관리자 이메일 (여기에만 쓰기 권한)
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.token.email == 'jinjjabg@gmail.com';
+    // users/{uid} — 본인 문서만 읽고 쓸 수 있다.
+    // 단, 돈과 직결된 필드(credits, paidTotal, scanTotal, freeMonth, freeRemain, dica500Granted)는
+    // 서버(Worker, Admin SDK)만 바꿀 수 있다. Admin SDK는 이 규칙 자체를 건너뛰므로 Worker는 그대로 동작한다.
+    // 클라이언트가 개발자도구로 이 필드들을 바꾸려는 요청은 여기서 막힌다.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.keys().hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted']);
+      allow update: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted']);
+
+      // 명함첩 — 본인 것만 읽고 쓸 수 있다.
+      match /cards/{cardId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
     }
 
-    // BNI 멤버 명부: 로그인한 사람은 누구나 읽기 / 등록·수정은 관리자만
+    // BNI 멤버 명부 — 로그인한 사람은 누구나 읽지만(챕터 명부 조회), 등록/수정/삭제는 관리자만.
+    // 앱의 isAdmin()은 클라이언트 체크라 우회 가능하므로 여기서 이메일로 다시 확인한다.
     match /bni_members/{memberId} {
       allow read: if request.auth != null;
-      allow write: if isAdmin();
+      allow write: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com';
     }
 
-    // 내 명함첩: 본인 것만 읽고 쓰기
-    match /users/{userId}/cards/{cardId} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == userId;
+    // 결제 기록 — Worker(Admin SDK)만 쓴다. 클라이언트는 읽기도 쓰기도 못한다(본인 결제 내역 확인 UI가 생기면 그때 read만 열어준다).
+    match /payments/{orderId} {
+      allow read, write: if false;
     }
 
-    // 사용자 문서: 본인만
-    match /users/{userId} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == userId;
-    }
+    // 예전 코드가 쓰다 만 최상위 컬렉션 — 지금은 아무도 안 쓰지만 혹시 남아있는 호출을 막아둔다.
+    match /cards/{cardId} { allow read, write: if false; }
 
-    // 만두 ID 인덱스 (slug → uid 매핑, DiCA 카드의 "만두 연결하기" 버튼이 씀)
-    // 읽기: 로그인한 사람 누구나 (게스트가 명함 주인과 DM 열 때 조회 필요)
-    // 쓰기: 로그인한 본인이 "자기 uid"로만 등록 가능 — 남의 슬러그를 가로채서
-    //       엉뚱한 uid로 덮어쓰는 것 방지
-    match /manduid_index/{slug} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null
-        && request.resource.data.uid == request.auth.uid;
-    }
-
-    // 동의 기록: 본인만 쓰기
-    match /consents/{userId} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == userId;
+    // 그 외 모든 문서는 기본적으로 막는다.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

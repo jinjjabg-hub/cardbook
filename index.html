@@ -355,7 +355,7 @@ function renderLogin() {
       ${cardBanner}
       <div class="login-icon">🗂️</div>
       <div class="login-title">BNI 명함첩</div>
-      <div class="login-desc">전문가 명함을 스마트하게 관리하세요</div>
+      <div class="login-desc">전문가 명함을 스마트하게 관리하세요<br><a href="javascript:void(0)" onclick="openPricingModal()" style="color:#2563eb;font-size:12px;text-decoration:underline;">가입 시 이미지 명함 50장 무료 · 요금제 보기</a></div>
       <div style="width:100%;max-width:300px;margin-bottom:4px;">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.18);border-radius:12px;">
           <input type="checkbox" id="privacyAgree" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#2563eb;cursor:pointer;">
@@ -597,6 +597,7 @@ window.openAccountModal = function() {
         <div><div style="font-size:11px;color:#5b7bb0">남은 스캔 장수</div><div style="font-size:20px;font-weight:800;color:#16305e"><span id="creditNum">…</span>장</div></div>
         <button onclick="openChargeModal()" style="padding:10px 16px;border-radius:10px;border:none;background:#16305e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">충전</button>
       </div>
+      <button onclick="openPricingModal()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📋 요금제 자세히 보기</button>
       <button onclick="doLogout();document.getElementById('accountModal').remove();"
         style="width:100%;padding:14px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.25);background:transparent;color:#16305e;font-size:14px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">
         로그아웃
@@ -1790,6 +1791,7 @@ window.saveDicaUrl = async function() {
     document.getElementById('dicaRegisterModal')?.remove();
     showToast('✅ 내 명함이 등록됐어요!');
     generateMyQR();
+    await grantDicaOwnerBonus(url);
   } catch(e) {
     showToast('저장 실패. 다시 시도해주세요.');
   }
@@ -2098,33 +2100,74 @@ async function _sha256(b64) {
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
 }
 // ===== 스캔 장수(크레딧) =====
-// 가입 시 50장, 매월 10장 자동 적립, 충전분은 소멸 없음. 실제 인식 요청(캐시 미적중)마다 1장 차감. 인식 실패는 차감 안 함
-const FREE_SIGNUP = 50, FREE_MONTHLY = 10;
+// 장수 지급·차감은 전부 Worker(서버)가 처리한다. 클라이언트가 Firestore의 credits 필드를 직접 쓰지 않는 이유:
+// 브라우저 개발자도구로 누구나 자기 문서를 열어 값을 바꿀 수 있어서, 여기서 직접 늘리면 공짜로 무한정 스캔하는 구멍이 생긴다.
 const PACKS = [ { id:'p100', n:100, price:3000 }, { id:'p300', n:300, price:7000 }, { id:'p1000', n:1000, price:20000 } ];  // worker.js와 동일해야 함
+const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500;  // 표시용(실제 지급·차감은 Worker가 계산). "장" 단위는 사진 촬영이 아니라 이미지 명함 파일 등록 기준으로 안내한다
 const TOSS_CLIENT_KEY = 'test_ck_D5GePWvyJnrK0W0k6q8gLzN97Eoq';  // 토스페이먼츠 테스트 클라이언트 키 → 심사 후 라이브 키로 교체
-function _monthKey() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
-// 사용자 문서를 읽으며 첫 사용 50장·이번 달 10장을 적립한 뒤 현재 잔여 장수 반환
+async function _idToken() { return currentUser ? await currentUser.getIdToken() : null; }
 async function getCredits() {
-  const ref = db.collection('users').doc(currentUser.uid);
-  const snap = await ref.get(); const u = snap.exists ? snap.data() : {};
-  const patch = {};
-  let credits = typeof u.credits === 'number' ? u.credits : null;
-  if(credits === null) { credits = FREE_SIGNUP; patch.credits = credits; }
-  if(u.freeMonth !== _monthKey()) { credits += FREE_MONTHLY; patch.credits = credits; patch.freeMonth = _monthKey(); }
-  if(Object.keys(patch).length) await ref.set(patch, { merge: true });
-  return credits;
+  const idToken = await _idToken(); if(!idToken) return 0;
+  const res = await fetch(CB_WORKER_URL + '/credits/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken }) });
+  const d = await res.json();
+  return d.credits ?? 0;
 }
-async function _checkScanQuota() {
-  const c = await getCredits();
-  if(c <= 0) { setTimeout(openChargeModal, 300); throw new Error('스캔 장수를 다 썼어요. 충전하면 바로 이어서 스캔할 수 있어요 (DiCA·링크 저장은 무제한)'); }
+// DiCA 소유 인증(본인 명함 등록) 시 1회 500장 지급 — 도메인 확인·중복 방지는 전부 Worker에서 처리
+async function grantDicaOwnerBonus(url) {
+  try {
+    const idToken = await _idToken(); if(!idToken) return;
+    const res = await fetch(CB_WORKER_URL + '/credits/dica-bonus', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken, url }) });
+    const d = await res.json();
+    if(d.granted) showToast('🎁 내 명함 등록 완료 — 이미지 명함 ' + DICA_OWNER_BONUS + '장이 지급됐어요!');
+  } catch(e) { /* 조용히 무시 */ }
 }
-async function _bumpScanCount() {
-  const ref = db.collection('users').doc(currentUser.uid);
-  const snap = await ref.get(); const u = snap.exists ? snap.data() : {};
-  const same = u.scanMonth === _monthKey();
-  await ref.set({ scanMonth: _monthKey(), scanCount: (same ? (u.scanCount||0) : 0) + 1, scanTotal: (u.scanTotal||0) + 1,
-                  credits: firebase.firestore.FieldValue.increment(-1) }, { merge: true });
-}
+
+// ===== 요금제 =====
+window.openPricingModal = function() {
+  document.getElementById('accountModal')?.remove();
+  if(document.getElementById('pricingModal')) return;
+  const modal = document.createElement('div');
+  modal.id = 'pricingModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:660;display:flex;align-items:flex-end;justify-content:center;font-family:"Noto Sans KR",sans-serif;';
+  modal.innerHTML = `
+    <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;max-height:88vh;overflow-y:auto;padding:28px 24px 40px;">
+      <div style="text-align:center;font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">요금제</div>
+      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:20px;">DiCA·연락처·링크 저장은 언제나 무료예요<br><span style="font-size:11px">카톡·이메일로 받은 이미지 명함 파일이 인식이 가장 잘 돼요</span></div>
+
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:800;color:#16305e;margin-bottom:8px;">🆓 무료</div>
+        <div style="font-size:12px;color:#3b4a63;line-height:2.1;">
+          가입 시 <b>${FREE_SIGNUP}장</b> 지급 (소멸 없음)<br>
+          매달 1일 <b>${FREE_MONTHLY}장</b> 자동 충전 (이번 달 안에 써야 해요)<br>
+          <b>내 DiCA 명함 등록 시 이미지 명함 ${DICA_OWNER_BONUS}장</b> 추가 지급 (소멸 없음)
+        </div>
+      </div>
+
+      ${PACKS.map(p => `
+      <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:15px;font-weight:800;color:#16305e;">${p.n}장</div>
+          <div style="font-size:11px;color:#5b7bb0;">장당 ${Math.round(p.price/p.n)}원 · 유효기간 없음</div>
+        </div>
+        <div style="font-size:15px;font-weight:800;color:#16305e;">${p.price.toLocaleString()}원</div>
+      </div>`).join('')}
+
+      <div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:14px;padding:16px;margin:12px 0 20px;">
+        <div style="font-size:12px;font-weight:700;color:#16305e;margin-bottom:8px;">1장은 언제 차감되나요?</div>
+        <div style="font-size:11.5px;color:#3b4a63;line-height:2;">
+          ✔️ 명함 이미지를 <b>새로</b> 인식할 때만 1장<br>
+          ✔️ 이미 저장된 것과 같은 이미지는 <b>0원</b>(자동 재사용)<br>
+          ✔️ 인식이 실패하면 차감되지 않아요<br>
+          ✔️ DiCA·링크·연락처 저장은 <b>무제한·무료</b>
+        </div>
+      </div>
+
+      <button onclick="document.getElementById('pricingModal').remove();openChargeModal()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">충전하기</button>
+      <button onclick="document.getElementById('pricingModal').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#aaa;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+};
 
 // ===== 충전 =====
 window.openChargeModal = async function() {
@@ -2209,17 +2252,17 @@ async function ocrImageFile(file) {
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
     const jpeg = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
     const hash = await _sha256(jpeg);
-    await _checkScanQuota();
+    const idToken = await _idToken();
+    if(!idToken) throw new Error('로그인이 필요해요');
 
-    // Claude 비전으로 OCR + 구조화 (Cloudflare Worker 경유 - API 키는 서버에만 보관)
+    // Claude 비전으로 OCR + 구조화 (Cloudflare Worker 경유). 장수 확인·차감도 Worker가 원자적으로 처리 — 부족하면 402로 거절됨
     const cRes = await fetch(CB_WORKER_URL + '/ocr-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: jpeg, mediaType: 'image/jpeg', hash })
+      body: JSON.stringify({ image: jpeg, mediaType: 'image/jpeg', hash, idToken })
     });
     const parsed = await cRes.json();
-    if(parsed.error) throw new Error(parsed.error);
-    if(!parsed.cached) await _bumpScanCount();
+    if(parsed.error) { if(parsed.needCharge) setTimeout(openChargeModal, 300); throw new Error(parsed.error); }
     parsed._jpeg = jpeg;
     return parsed;
 
@@ -2498,15 +2541,16 @@ window.saveContactCard = async function() {
       <!-- 단계1: 촬영/선택 -->
       <div id="scanStep1">
         <div class="scan-btn-row">
-          <button class="scan-action-btn cam" onclick="triggerCamera()">
-            <span class="bi">📷</span>카메라 촬영
-          </button>
           <button class="scan-action-btn gal" onclick="triggerGallery()">
             <span class="bi">🖼️</span>갤러리 선택
           </button>
+          <button class="scan-action-btn cam" onclick="triggerCamera()">
+            <span class="bi">📷</span>카메라 촬영
+          </button>
         </div>
         <p style="font-size:12px;color:#64748b;text-align:center;line-height:1.6">
-          갤러리에서 여러 장을 한 번에 선택할 수 있어요<br>이름·연락처·업종·서비스까지 자동 인식
+          카톡·이메일로 받은 <b>명함 이미지 파일</b>이 인식이 가장 잘 돼요<br>여러 장을 한 번에 선택할 수 있어요<br>
+          <span style="color:#a08a3c">종이 명함을 직접 촬영하면 인식률이 떨어질 수 있어요</span>
         </p>
       </div>
       <!-- 단계2: OCR 처리 중 -->
