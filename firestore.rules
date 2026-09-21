@@ -32,6 +32,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 명함 업데이트 알림 — "내 명함이 바뀌었어요" 안내문. 뱃지 표시를 위해 로그인한 누구나 읽을 수 있고,
+    // 쓰기는 본인 소유(ownerUid가 본인 uid와 일치하는 경우)만 가능 — 남의 이름으로 알림을 보낼 수 없게 막는다.
+    match /card_updates/{key} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+    }
+
     // 예전 코드가 쓰다 만 최상위 컬렉션 — 지금은 아무도 안 쓰지만 혹시 남아있는 호출을 막아둔다.
     match /cards/{cardId} { allow read, write: if false; }
 
