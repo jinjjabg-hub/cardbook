@@ -85,6 +85,7 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .act-del{background:rgba(200,16,46,0.12);border:1px solid rgba(200,16,46,0.3);color:#C8102E;flex:0 0 36px;padding:9px;}
 .act-btn:hover{opacity:.75;transform:scale(0.97);}
 .act-share{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;flex:0 0 36px;padding:9px;}
+.act-vcf{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;flex:0 0 36px;padding:9px;}
 
 /* CRM */
 .card-crm{border-top:1px solid var(--border);padding:10px 14px;display:none;}
@@ -360,8 +361,9 @@ function renderLogin() {
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.18);border-radius:12px;">
           <input type="checkbox" id="privacyAgree" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#2563eb;cursor:pointer;">
           <span style="font-size:12px;color:#3b4a63;line-height:1.7;">
-            <b style="color:#16305e;">[필수]</b> 개인정보 수집·이용에 동의합니다.<br>
+            <b style="color:#16305e;">[필수]</b> 이용약관 및 개인정보 수집·이용에 동의합니다.<br>
             타인 명함 등록 시 해당 정보 주체의 동의를 받을 책임은 이용자 본인에게 있습니다.<br>
+            <a href="./terms.html" target="_blank" style="color:#2563eb;text-decoration:underline;font-size:11px;">이용약관 보기 →</a>　
             <a href="./privacy.html" target="_blank" style="color:#2563eb;text-decoration:underline;font-size:11px;">개인정보처리방침 보기 →</a>
           </span>
         </label>
@@ -598,6 +600,12 @@ window.openAccountModal = function() {
         <button onclick="openChargeModal()" style="padding:10px 16px;border-radius:10px;border:none;background:#16305e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">충전</button>
       </div>
       <button onclick="openPricingModal()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📋 요금제 자세히 보기</button>
+      <button onclick="refreshDicaCards()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">🔄 DiCA 카드 새로고침</button>
+      <div style="text-align:center;margin-bottom:12px;">
+        <a href="./terms.html" target="_blank" style="color:#5b7bb0;text-decoration:underline;font-size:11px;">이용약관</a>
+        <span style="color:#cbd5e1;margin:0 6px;">·</span>
+        <a href="./privacy.html" target="_blank" style="color:#5b7bb0;text-decoration:underline;font-size:11px;">개인정보처리방침</a>
+      </div>
       <button onclick="doLogout();document.getElementById('accountModal').remove();"
         style="width:100%;padding:14px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.25);background:transparent;color:#16305e;font-size:14px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">
         로그아웃
@@ -1070,6 +1078,7 @@ function renderCards(cards) {
       </div>`:''}
       <div class="card-actions">
         ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 ${card.phone}</a>`:'<span></span>'}
+        ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇</button>`:''}
         ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 명함 보기</a>`:''}
         ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️</a>`:''}
         <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">📤</button>
@@ -1690,6 +1699,40 @@ window.shareCard = async function(url, name, docId) {
     });
   }
 };
+// ===== 폰 연락처에 원터치 저장 (vCard) =====
+function _vcfEsc(s) {
+  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+}
+window.saveToPhoneContacts = function(docId) {
+  const c = allCards.find(x => x.docId === docId);
+  if(!c) { showToast('❌ 명함 정보를 찾을 수 없어요'); return; }
+  const noteParts = [c.chapter, c.industry, c.bni].filter(Boolean);
+  const lines = [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    'FN:' + _vcfEsc(c.name || '이름 없음'),
+    c.company ? 'ORG:' + _vcfEsc(c.company) : '',
+    c.title ? 'TITLE:' + _vcfEsc(c.title) : '',
+    c.phone ? 'TEL;TYPE=CELL:' + _vcfEsc(c.phone) : '',
+    c.email ? 'EMAIL:' + _vcfEsc(c.email) : '',
+    c.address ? 'ADR;TYPE=WORK:;;' + _vcfEsc(c.address) + ';;;;' : '',
+    c.url ? 'URL:' + _vcfEsc(c.url) : '',
+    noteParts.length ? 'NOTE:' + _vcfEsc(noteParts.join(' · ')) : '',
+    'END:VCARD'
+  ].filter(Boolean).join('\r\n');
+
+  const blob = new Blob([lines], { type: 'text/vcard;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  // download 속성을 안 주는 이유: iOS 사파리는 이래야 "연락처 추가" 화면을 바로 띄워줌.
+  // 안드로이드 크롬은 vcf를 다운로드한 뒤 알림을 눌러 여는 방식으로 동작함.
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+};
 window.shareApp = function() {
   if(navigator.share) navigator.share({ title:'BNI 명함첩', url: window.location.href });
   else { navigator.clipboard?.writeText(window.location.href); showToast('📋 링크 복사됨'); }
@@ -1990,6 +2033,20 @@ function _dicaRawUrl(pageUrl) {
 }
 
 // 명함 페이지 HTML 안의 saveToCardbook({...}) 호출에서 이름·회사·전화 등을 그대로 뽑아온다 (Worker·Claude 안 씀, 비용 0원)
+// DiCA 페이지 안의 <span data-lang="en">...</span> 같은 다국어 블록을 전부 모아 검색용 텍스트로 합친다.
+// 화면엔 한 언어만 보이지만(CSS로 숨김), 원본 HTML엔 모든 언어가 다 들어있어서 이미 받아둔 html에서 바로 꺼낼 수 있다.
+function _extractDicaMultilangText(html) {
+  const re = /<(span|div|p)[^>]*\sdata-lang="[a-z]{2,3}"[^>]*>([\s\S]*?)<\/\1>/g;
+  const seen = new Set();
+  const out = [];
+  let m;
+  while((m = re.exec(html))) {
+    const text = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if(text && !seen.has(text)) { seen.add(text); out.push(text); }
+  }
+  return out.join(' · ').slice(0, 3000);
+}
+
 async function _fetchDicaData(pageUrl) {
   const rawUrl = _dicaRawUrl(pageUrl);
   if(!rawUrl) return null;
@@ -2003,6 +2060,7 @@ async function _fetchDicaData(pageUrl) {
     const re = /(\w+)\s*:\s*'((?:[^'\\]|\\.)*)'/g;
     let mm;
     while((mm = re.exec(m[1]))) data[mm[1]] = mm[2].replace(/\\'/g, "'");
+    data._multilangText = _extractDicaMultilangText(html);
     return Object.keys(data).length ? data : null;
   } catch(e) { return null; }
 }
@@ -2023,7 +2081,8 @@ window.parseLinkCard = async function() {
       document.getElementById('lkEmail').value = d.email || '';
       document.getElementById('lkChapter').value = d.chapter || '';
       window._lkPendingUrl = url;
-      window._lkPendingText = text;
+      // 다국어 블록을 찾았으면 그걸 검색용 전문으로, 못 찾았으면 붙여넣은 텍스트로 폴백
+      window._lkPendingText = d._multilangText || text;
       document.getElementById('linkStep1').style.display = 'none';
       document.getElementById('linkStep2').style.display = 'block';
       showToast('✨ DiCA 명함에서 바로 가져왔어요!');
@@ -2067,6 +2126,35 @@ window.parseLinkCard = async function() {
   document.getElementById('linkStep2').style.display = 'block';
   if(name || phone || email) showToast('✨ 정보를 추출했어요! 확인 후 저장하세요');
   else showToast('직접 입력 후 저장해주세요');
+};
+
+// ===== 기존 DiCA 카드 일괄 갱신 (다국어 검색 텍스트 채우기 등) =====
+window.refreshDicaCards = async function() {
+  if(!currentUser) { showToast('❌ 로그인 필요'); return; }
+  const targets = allCards.filter(c => c.url && _dicaRawUrl(c.url));
+  if(!targets.length) { showToast('갱신할 DiCA 카드가 없어요'); return; }
+  showToast(`🔄 ${targets.length}장 갱신 중... 잠시만요`);
+  let ok = 0, fail = 0;
+  for(const c of targets) {
+    try {
+      const d = await _fetchDicaData(c.url);
+      if(!d) { fail++; continue; }
+      // 이름·회사 등은 DiCA 쪽이 최신본이니 덮어쓰고, chapter·memo처럼 사용자가 직접 손댔을 수 있는 값은 안 건드린다.
+      const patch = {};
+      if(d.name) patch.name = d.name;
+      if(d.title) patch.title = d.title;
+      if(d.company) patch.company = d.company;
+      if(d.phone) patch.phone = d.phone;
+      if(d.email) patch.email = d.email;
+      if(d._multilangText) patch.fullText = d._multilangText;
+      if(Object.keys(patch).length) {
+        await db.collection('users').doc(currentUser.uid).collection('cards').doc(c.docId).update(patch);
+        ok++;
+      } else fail++;
+    } catch(e) { fail++; }
+  }
+  showToast(`✅ ${ok}장 갱신 완료` + (fail ? ` · ${fail}장 실패` : ''));
+  await loadCards();
 };
 
 // ===== 링크 명함 저장 =====
