@@ -2044,7 +2044,7 @@ function _extractDicaMultilangText(html) {
     const text = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     if(text && !seen.has(text)) { seen.add(text); out.push(text); }
   }
-  return out.join(' · ').slice(0, 3000);
+  return out.join(' · ').slice(0, 8000);
 }
 
 async function _fetchDicaData(pageUrl) {
@@ -2197,7 +2197,7 @@ window.saveLinkCard = async function() {
     email:   document.getElementById('lkEmail').value.trim(),
     chapter: document.getElementById('lkChapter').value,
     url:     window._lkPendingUrl || '',
-    fullText:(window._lkPendingText || '').slice(0, 3000),
+    fullText:(window._lkPendingText || '').slice(0, 8000),
     referrer:'링크로 추가',
     savedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
