@@ -7,8 +7,13 @@
 const PACKS = { p100: { n: 100, price: 3000 }, p300: { n: 300, price: 7000 }, p1000: { n: 1000, price: 20000 } };
 const FIREBASE_PROJECT = 'mandu-e7c3c';
 const FIREBASE_WEB_API_KEY = 'AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0';
-const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500;
+const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500, AUTOCARD_OWNER_BONUS = 50;
 const DICA_DOMAINS = ['jinjjabg-hub.github.io'];
+// 자동 명함은 DiCA와 같은 도메인이라 경로로 구분한다: /autocard/ → 50장, 그 외 DiCA 링크 → 500장
+const AUTOCARD_PATH = '/autocard/';
+// 자동 명함 AI — 문구 초안·번역은 가벼운 작업이라 Haiku 먼저(비용↓), 모델명 오류 시 기존 목록으로 폴백
+const AUTOCARD_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6'];
+const AUTOCARD_LANGS = { ko: '한국어', en: 'English', ja: '日本語', zh: '简体中文', vi: 'Tiếng Việt', mn: 'Монгол (кирилл)' };
 function monthKey() { const d = new Date(); return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0'); }
 async function verifyIdToken(idToken) {
   if (!idToken) throw new Error('로그인이 필요해요');
@@ -21,6 +26,7 @@ async function verifyIdToken(idToken) {
   return uid;
 }
 // 라우트: /ocr-image (신규, 이미지→구조화+전문)  /ocr-parse (기존)  /ai-search (기존)
+//        /autocard/draft, /autocard/translate (자동 명함 문구 초안·번역)
 
 // 첫 번째가 안 되면(모델명 없음 404) 다음 모델로 자동 재시도
 const MODELS = ['claude-sonnet-4-6', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
@@ -145,6 +151,67 @@ async function creditUser(env, uid, orderId, n, meta) {
   if (!res.ok) throw new Error('Firestore 기록 실패: ' + (await res.text()).slice(0, 200));
 }
 
+// ── 자동 명함 본인 등록 보너스 50장 (1회) ──
+// DiCA는 "링크 선점제"지만, 자동 명함은 Firestore에 주인(ownerUid)이 기록돼 있어서 진짜 주인인지 바로 확인할 수 있다.
+async function autocardBonus(env, uid, cardId) {
+  if (!/^[A-Za-z0-9_-]{6,40}$/.test(cardId || '')) return json({ granted: false, reason: '명함 주소가 올바르지 않아요' });
+  const token = await firebaseAccessToken(env);
+  const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+  const res = await fetch(`https://firestore.googleapis.com/v1/${base}/autocards/${cardId}`, { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) return json({ granted: false, reason: '명함을 찾을 수 없어요' });
+  const f = (await res.json()).fields || {};
+  if (f.status?.stringValue !== 'published') return json({ granted: false, reason: '승인(발행)된 명함만 보너스가 지급돼요' });
+  if (f.ownerUid?.stringValue !== uid) return json({ granted: false, reason: '본인이 만든 자동 명함만 보너스가 지급돼요' });
+  const u = await getUserDoc(token, uid);
+  if (u.autocard50Granted) return json({ granted: false, reason: '이미 지급됨' });
+  const credits = (typeof u.credits === 'number' ? u.credits : FREE_SIGNUP) + AUTOCARD_OWNER_BONUS;
+  await commitWrites(token, [fsPatch(uid, { credits, autocard50Granted: true })]);
+  return json({ granted: true, credits, bonus: AUTOCARD_OWNER_BONUS });
+}
+
+// ── 자동 명함 AI: 질문 3개 답변 → 한 줄 소개 + 리퍼럴 문구 초안 ──
+const clip = (v, n) => String(v || '').slice(0, n);
+async function autocardDraft(env, body) {
+  const lang = AUTOCARD_LANGS[body.lang] ? body.lang : 'ko';
+  const a = body.answers || {};
+  if (!a.work && !a.customer && !a.referral) return json({ error: '질문에 하나 이상 답해주세요' }, 400);
+  const prompt = `너는 BNI(비즈니스 리퍼럴 모임) 멤버의 디지털 명함 문구를 쓰는 카피라이터야.
+아래 답변만 근거로 쓰고, 없는 경력·숫자·수상은 절대 지어내지 마.
+
+이름: ${clip(body.name, 40)}
+직함/회사: ${clip(body.title, 60)} ${clip(body.company, 60)}
+Q1 어떤 일을 하나요? ${clip(a.work, 400)}
+Q2 주로 누구를 돕나요? ${clip(a.customer, 400)}
+Q3 어떤 분을 소개받고 싶나요? ${clip(a.referral, 400)}
+
+작성 언어: ${AUTOCARD_LANGS[lang]}
+- slogan: 명함 맨 위 한 줄 소개. "누구를 어떻게 돕는지"가 한눈에 보이게. 35자 이내(영어면 70자 이내). 과장·느낌표 금지.
+- referral: "이런 분을 소개해주세요" 아래 들어갈 문장. 받는 사람이 주변의 구체적인 한 사람을 떠올릴 수 있게 상황·조건을 짚어서 1~2문장, 90자 이내.
+JSON으로만 답해: {"slogan":"","referral":""}`;
+  const r = await callClaude(env, [{ type: 'text', text: prompt }], 400, AUTOCARD_MODELS);
+  return json({ slogan: clip(r.slogan, 120), referral: clip(r.referral, 300) });
+}
+
+// ── 자동 명함 AI: 확정 문구를 선택 언어로 번역 (이름은 번역하지 않음 — 본인이 직접 입력) ──
+async function autocardTranslate(env, body) {
+  const from = AUTOCARD_LANGS[body.from] ? body.from : 'ko';
+  const to = [...new Set((body.to || []).filter(l => AUTOCARD_LANGS[l] && l !== from))].slice(0, 3);
+  if (!to.length) return json({});
+  const t = body.texts || {};
+  const texts = { title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), referral: clip(t.referral, 400) };
+  const shape = '{' + to.map(l => `"${l}":{"title":"","company":"","slogan":"","referral":""}`).join(',') + '}';
+  const prompt = `다음 디지털 명함 문구(${AUTOCARD_LANGS[from]})를 ${to.map(l => AUTOCARD_LANGS[l]).join(', ')}로 번역해.
+- 명함에 어울리게 자연스럽고 짧게. 의미를 더하거나 빼지 마.
+- company(회사명)는 고유명사라 번역하지 말고 그 언어 사용자가 읽을 수 있게 표기만(이미 영문이면 그대로).
+- 빈 문자열은 빈 문자열로 둬.
+원문: ${JSON.stringify(texts)}
+JSON으로만 답해: ${shape}`;
+  const r = await callClaude(env, [{ type: 'text', text: prompt }], 1500, AUTOCARD_MODELS);
+  const out = {};
+  for (const l of to) { const x = r[l] || {}; out[l] = { title: clip(x.title, 120), company: clip(x.company, 120), slogan: clip(x.slogan, 200), referral: clip(x.referral, 400) }; }
+  return json(out);
+}
+
 async function bniCheck(env, phone) {
   const norm = v => (v || '').replace(/[^0-9]/g, '');
   const p = norm(phone);
@@ -218,6 +285,10 @@ export default {
         const uid = await verifyIdToken(idToken);
         let host = '', normUrl = ''; try { const u2 = new URL(dicaUrl); host = u2.hostname; normUrl = (u2.hostname + u2.pathname).toLowerCase().replace(/\/$/, ''); } catch (e) { return json({ granted: false }); }
         if (!DICA_DOMAINS.includes(host)) return json({ granted: false, reason: '지원하지 않는 도메인' });
+        // 자동 명함 링크(/autocard/c/?id=...)는 500장이 아니라 50장 — 경로로 구분
+        if (normUrl.startsWith(host + AUTOCARD_PATH)) {
+          return await autocardBonus(env, uid, new URL(dicaUrl).searchParams.get('id'));
+        }
         const fbToken = await firebaseAccessToken(env);
         const u = await getUserDoc(fbToken, uid);
         if (u.dica500Granted) return json({ granted: false, reason: '이미 지급됨' });
@@ -237,8 +308,12 @@ export default {
         } catch (e) { return json({ granted: false, reason: e.message }); }
         const credits = (typeof u.credits === 'number' ? u.credits : FREE_SIGNUP) + DICA_OWNER_BONUS;
         await commitWrites(fbToken, [fsPatch(uid, { credits, dica500Granted: true })]);
-        return json({ granted: true, credits });
+        return json({ granted: true, credits, bonus: DICA_OWNER_BONUS });
       }
+
+      // ── 자동 명함 AI (로그인 없이 호출 — 입력 길이·출력 토큰을 작게 잘라 비용을 묶어둠) ──
+      if (url.pathname === '/autocard/draft') return await autocardDraft(env, await request.json());
+      if (url.pathname === '/autocard/translate') return await autocardTranslate(env, await request.json());
 
       // ── 결제 확인: 토스에 승인 요청 → 성공 시 장수 충전 ──
       if (url.pathname === '/pay/confirm') {
