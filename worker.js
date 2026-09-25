@@ -289,6 +289,18 @@ function cleanImport(r) {
     sns: (Array.isArray(r.sns) ? r.sns : []).map(snsLink).filter(Boolean).slice(0, 4),
   };
 }
+// 관리자(대표) 계정은 하루 제한 없음 — 로그인 토큰을 Google에 직접 조회해 이메일·인증 여부를 확인(클라이언트 말은 믿지 않음)
+const AUTOCARD_ADMINS = ['jinjjabg@gmail.com'];   // firestore.rules의 관리자 이메일과 같게
+async function isAdminToken(idToken) {
+  if (!idToken) return false;
+  try {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }),
+    });
+    const u = (await res.json()).users?.[0];
+    return !!(u && u.emailVerified && AUTOCARD_ADMINS.includes(String(u.email || '').toLowerCase()));
+  } catch (e) { return false; }   // 확인 실패 시 일반 사용자로 취급
+}
 async function importRateLimit(env, request, deviceId) {
   if (!env.OCR_CACHE) return null;   // KV 바인딩이 없으면 제한 없이 동작(캐시도 없음)
   const day = new Date().toISOString().slice(0, 10);
@@ -301,7 +313,7 @@ async function importRateLimit(env, request, deviceId) {
   return null;
 }
 async function autocardImport(env, request, body) {
-  const { image, mediaType, hash, deviceId } = body;
+  const { image, mediaType, hash, deviceId, idToken } = body;
   if (!image || image.length > 7_000_000) return json({ error: '이미지가 없거나 너무 커요' }, 400);
   // 캐시 키 버전: 추출 항목이 늘면(v2: sns 추가) 올린다. 카드북 OCR 캐시와 키가 겹치지 않게 접두어
   const okHash = hash && /^[a-f0-9]{64}$/.test(hash);
@@ -312,7 +324,7 @@ async function autocardImport(env, request, body) {
     if (hit) return json({ ...cleanImport(hit), cached: true });   // 같은 이미지 재요청은 횟수 차감 없음(정리 규칙은 최신으로 다시 적용)
     seenBefore = !!(await env.OCR_CACHE.get('ac-import:v1:' + hash));   // 예전 버전으로 이미 읽은 이미지 → 새 항목만 다시 읽음, 횟수는 안 셈
   }
-  if (!seenBefore) {
+  if (!seenBefore && !(await isAdminToken(idToken))) {
     const limited = await importRateLimit(env, request, deviceId);
     if (limited) return limited;
   }
