@@ -268,6 +268,15 @@ function snsLink(x) {
   const base = { instagram: 'https://www.instagram.com/', youtube: 'https://www.youtube.com/@', facebook: 'https://www.facebook.com/', tiktok: 'https://www.tiktok.com/@', threads: 'https://www.threads.net/@', blog: 'https://blog.naver.com/' }[type];
   return base ? { label: SNS_LABEL[type], url: base + id + (type === 'instagram' ? '/' : '') } : null;   // 카카오 채널은 아이디만으로는 주소를 알 수 없어 버림
 }
+// 포스터 분위기 → 명함 디자인(브랜드 색 3개 + 템플릿 + 글꼴). 값이 이상하면 비워서 앱의 기본값을 쓰게 함
+const AC_TPLS = ['minimal', 'split', 'badge', 'magazine', 'dark', 'block'], AC_FONTS_OK = ['modern', 'classic', 'elegant', 'soft', 'bold'];
+function cleanStyle(st) {
+  st = st || {};
+  const hex = v => /^#?[0-9a-f]{6}$/i.test(String(v || '').trim()) ? ('#' + String(v).trim().replace('#', '')).toUpperCase() : '';
+  const out = { main: hex(st.main), sub: hex(st.sub), point: hex(st.point), tpl: AC_TPLS.includes(st.tpl) ? st.tpl : '', font: AC_FONTS_OK.includes(st.font) ? st.font : '' };
+  if (!out.main || !out.sub || !out.point) out.main = out.sub = out.point = '';   // 색은 3개가 다 있어야 씀
+  return out;
+}
 function cleanImport(r) {
   const str = (v, n) => clip(String(v || '').trim(), n);
   const list = (v, n, len) => (Array.isArray(v) ? v : []).map(x => str(x, len)).filter(Boolean).slice(0, n);
@@ -287,6 +296,7 @@ function cleanImport(r) {
     slogan: str(r.slogan, 120), specialties: list(r.specialties, 8, 60), referral: list(r.referral, 5, 120), career: list(r.career, 12, 80),
     chapter: normChapter(r.chapter), photoBox,
     sns: (Array.isArray(r.sns) ? r.sns : []).map(snsLink).filter(Boolean).slice(0, 4),
+    style: cleanStyle(r.style),
   };
 }
 // 관리자(대표) 계정은 하루 제한 없음 — 로그인 토큰을 Google에 직접 조회해 이메일·인증 여부를 확인(클라이언트 말은 믿지 않음)
@@ -315,14 +325,14 @@ async function importRateLimit(env, request, deviceId) {
 async function autocardImport(env, request, body) {
   const { image, mediaType, hash, deviceId, idToken } = body;
   if (!image || image.length > 7_000_000) return json({ error: '이미지가 없거나 너무 커요' }, 400);
-  // 캐시 키 버전: 추출 항목이 늘면(v2: sns 추가) 올린다. 카드북 OCR 캐시와 키가 겹치지 않게 접두어
+  // 캐시 키 버전: 추출 항목이 늘면 올린다(v2: sns, v3: style). 카드북 OCR 캐시와 키가 겹치지 않게 접두어
   const okHash = hash && /^[a-f0-9]{64}$/.test(hash);
-  const cacheKey = okHash ? 'ac-import:v2:' + hash : '';
+  const cacheKey = okHash ? 'ac-import:v3:' + hash : '';
   let seenBefore = false;
   if (cacheKey && env.OCR_CACHE) {
     const hit = await env.OCR_CACHE.get(cacheKey, 'json');
     if (hit) return json({ ...cleanImport(hit), cached: true });   // 같은 이미지 재요청은 횟수 차감 없음(정리 규칙은 최신으로 다시 적용)
-    seenBefore = !!(await env.OCR_CACHE.get('ac-import:v1:' + hash));   // 예전 버전으로 이미 읽은 이미지 → 새 항목만 다시 읽음, 횟수는 안 셈
+    for (const old of ['v2', 'v1']) if (!seenBefore) seenBefore = !!(await env.OCR_CACHE.get(`ac-import:${old}:` + hash));   // 예전 버전으로 이미 읽은 이미지 → 새 항목만 다시 읽음, 횟수는 안 셈
   }
   if (!seenBefore && !(await isAdminToken(idToken))) {
     const limited = await importRateLimit(env, request, deviceId);
@@ -340,8 +350,13 @@ async function autocardImport(env, request, body) {
 - referral: "원하는 리퍼럴", "이런 분을 소개해주세요"처럼 소개받고 싶은 대상을 명시한 항목이 있을 때만. 없으면 [].
 - career: 학력·자격·경력·수상·방송 이력 항목(원문 그대로, 최대 12개).
 - chapter: "BNI ○○ Chapter" 같은 챕터 표기 원문.
+- style: 이 명함의 디자인 느낌을 디지털 명함으로 옮기기 위한 값.
+  main = 브랜드 대표색(로고·큰 제목·색 띠에 쓰인 진한 색), sub = 바탕색(주로 밝은 색), point = 강조색(버튼·포인트 글자에 어울리는 색). 모두 #RRGGBB.
+  배경 사진(건물·하늘·풍경)이나 인물 옷 색이 아니라, 로고·제목·강조 글자에 쓰인 색에서 골라. 색이 거의 없으면 로고 색을 main으로.
+  tpl = 분위기에 가장 가까운 것 하나: minimal(깔끔·밝음) | split(사선·역동) | badge(친근·부드러움) | magazine(고급·편집) | dark(어두운 고급) | block(굵은 색 면·강렬).
+  font = modern(깔끔한 고딕) | classic(명조) | elegant(부드러운 바탕) | soft(둥근·친근) | bold(굵고 강렬한 제목).
 - photoBox: 이미지 속 인물 사진(얼굴과 상반신) 영역을 이미지 전체 대비 퍼센트로 {x,y,w,h} (왼쪽 위 기준, 0~100). 인물이 없으면 모두 0.
-JSON만 답해: {"name":"","title":"","company":"","phone":"","phone2":"","email":"","website":"","address":"","slogan":"","specialties":[],"referral":[],"career":[],"chapter":"","sns":[],"photoBox":{"x":0,"y":0,"w":0,"h":0}}`;
+JSON만 답해: {"name":"","title":"","company":"","phone":"","phone2":"","email":"","website":"","address":"","slogan":"","specialties":[],"referral":[],"career":[],"chapter":"","sns":[],"style":{"main":"","sub":"","point":"","tpl":"","font":""},"photoBox":{"x":0,"y":0,"w":0,"h":0}}`;
   const raw = await callClaude(env, [
     { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
     { type: 'text', text: prompt },
