@@ -203,10 +203,11 @@ async function autocardTranslate(env, body) {
   const to = [...new Set((body.to || []).filter(l => AUTOCARD_LANGS[l] && l !== from))].slice(0, 3);
   if (!to.length) return json({});
   const t = body.texts || {};
-  const texts = { title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), work: clip(t.work, 400), help: clip(t.help, 400), referral: clip(t.referral, 400), specialties: clip(t.specialties, 600) };
-  const shape = '{' + to.map(l => `"${l}":{"title":"","company":"","slogan":"","work":"","help":"","referral":"","specialties":""}`).join(',') + '}';
+  const texts = { name: clip(t.name, 40), title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), work: clip(t.work, 400), help: clip(t.help, 400), referral: clip(t.referral, 400), specialties: clip(t.specialties, 600) };
+  const shape = '{' + to.map(l => `"${l}":{"name":"","title":"","company":"","slogan":"","work":"","help":"","referral":"","specialties":""}`).join(',') + '}';
   const prompt = `다음 디지털 명함 문구(${AUTOCARD_LANGS[from]})를 ${to.map(l => AUTOCARD_LANGS[l]).join(', ')}로 번역해.
 - 명함에 어울리게 자연스럽고 짧게. 의미를 더하거나 빼지 마.
+- name(사람 이름)은 뜻을 번역하지 말고 그 언어 사용자가 읽는 표기로: 영어·베트남어는 로마자로 이름 먼저·성 나중(예: 송승훈 → Seunghoon Song), 일본어는 가타카나(예: ソン・スンフン), 중국어는 가장 흔한 한자 표기로 추정, 몽골어는 키릴 문자. 원문 이름이 이미 그 언어 표기면 그대로.
 - company(회사명)는 고유명사라 번역하지 말고 그 언어 사용자가 읽을 수 있게 표기만(이미 영문이면 그대로).
 - specialties는 줄바꿈(\n)으로 구분된 전문분야 목록이야. 줄마다 번역하고 줄 수와 순서를 그대로 유지해.
 - 빈 문자열은 빈 문자열로 둬.
@@ -214,7 +215,7 @@ async function autocardTranslate(env, body) {
 JSON으로만 답해: ${shape}`;
   const r = await callClaude(env, [{ type: 'text', text: prompt }], 3000, AUTOCARD_MODELS);
   const out = {};
-  for (const l of to) { const x = r[l] || {}; out[l] = { title: clip(x.title, 120), company: clip(x.company, 120), slogan: clip(x.slogan, 200), work: clip(x.work, 500), help: clip(x.help, 500), referral: clip(x.referral, 400), specialties: clip(x.specialties, 800) }; }
+  for (const l of to) { const x = r[l] || {}; out[l] = { name: clip(x.name, 60), title: clip(x.title, 120), company: clip(x.company, 120), slogan: clip(x.slogan, 200), work: clip(x.work, 500), help: clip(x.help, 500), referral: clip(x.referral, 400), specialties: clip(x.specialties, 800) }; }
   return json(out);
 }
 
