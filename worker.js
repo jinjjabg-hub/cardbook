@@ -27,7 +27,7 @@ async function verifyIdToken(idToken) {
   return uid;
 }
 // 라우트: /ocr-image (신규, 이미지→구조화+전문)  /ocr-parse (기존)  /ai-search (기존)
-//        /autocard/draft, /autocard/translate (자동 명함 문구 초안·번역)
+//        /autocard/draft, /autocard/translate (자동 명함 문구 초안·번역), /autocard/import (이미지 명함 → 자동 입력)
 
 // 첫 번째가 안 되면(모델명 없음 404) 다음 모델로 자동 재시도
 const MODELS = ['claude-sonnet-4-6', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
@@ -203,18 +203,102 @@ async function autocardTranslate(env, body) {
   const to = [...new Set((body.to || []).filter(l => AUTOCARD_LANGS[l] && l !== from))].slice(0, 3);
   if (!to.length) return json({});
   const t = body.texts || {};
-  const texts = { title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), work: clip(t.work, 400), help: clip(t.help, 400), referral: clip(t.referral, 400) };
-  const shape = '{' + to.map(l => `"${l}":{"title":"","company":"","slogan":"","work":"","help":"","referral":""}`).join(',') + '}';
+  const texts = { title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), work: clip(t.work, 400), help: clip(t.help, 400), referral: clip(t.referral, 400), specialties: clip(t.specialties, 600) };
+  const shape = '{' + to.map(l => `"${l}":{"title":"","company":"","slogan":"","work":"","help":"","referral":"","specialties":""}`).join(',') + '}';
   const prompt = `다음 디지털 명함 문구(${AUTOCARD_LANGS[from]})를 ${to.map(l => AUTOCARD_LANGS[l]).join(', ')}로 번역해.
 - 명함에 어울리게 자연스럽고 짧게. 의미를 더하거나 빼지 마.
 - company(회사명)는 고유명사라 번역하지 말고 그 언어 사용자가 읽을 수 있게 표기만(이미 영문이면 그대로).
+- specialties는 줄바꿈(\n)으로 구분된 전문분야 목록이야. 줄마다 번역하고 줄 수와 순서를 그대로 유지해.
 - 빈 문자열은 빈 문자열로 둬.
 원문: ${JSON.stringify(texts)}
 JSON으로만 답해: ${shape}`;
   const r = await callClaude(env, [{ type: 'text', text: prompt }], 3000, AUTOCARD_MODELS);
   const out = {};
-  for (const l of to) { const x = r[l] || {}; out[l] = { title: clip(x.title, 120), company: clip(x.company, 120), slogan: clip(x.slogan, 200), work: clip(x.work, 500), help: clip(x.help, 500), referral: clip(x.referral, 400) }; }
+  for (const l of to) { const x = r[l] || {}; out[l] = { title: clip(x.title, 120), company: clip(x.company, 120), slogan: clip(x.slogan, 200), work: clip(x.work, 500), help: clip(x.help, 500), referral: clip(x.referral, 400), specialties: clip(x.specialties, 800) }; }
   return json(out);
+}
+
+// ── 자동 명함: 기존 이미지 명함(포스터형) 한 장 → 명함 칸 자동 채우기 ──
+// 원본 이미지는 여기서 읽기만 하고 저장하지 않는다(캐시에는 추출 결과 JSON만 남음).
+const IMPORT_DAILY_PER_DEVICE = 5;   // 기기당 하루 5회
+const IMPORT_DAILY_PER_IP = 40;      // 같은 와이파이(BNI 모임 장소)에서 여러 명이 쓰는 경우를 고려해 IP는 넉넉하게
+// 전화번호를 010-0000-0000 형식으로 (010.5456.8274, +82 10 …, 공백·괄호 표기 대응)
+function normPhone(v) {
+  let d = String(v || '').replace(/[^0-9+]/g, '');
+  if (d.startsWith('+82')) d = '0' + d.slice(3); else if (d.startsWith('82') && d.length >= 11) d = '0' + d.slice(2);
+  d = d.replace(/\+/g, '');
+  if (/^02\d{7,8}$/.test(d)) return d.replace(/^(02)(\d{3,4})(\d{4})$/, '$1-$2-$3');
+  if (/^0\d{9,10}$/.test(d)) return d.replace(/^(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+  if (/^1\d{3}\d{4}$/.test(d)) return d.replace(/^(\d{4})(\d{4})$/, '$1-$2');   // 1588-0000 같은 대표번호
+  return '';   // 형식을 알 수 없으면 비워서 사람이 확인하게(엉뚱한 번호를 채우지 않음)
+}
+// "BNI Innovation Chapter", "FOREST CHAPTER", "Pioneer_Chapter" → 챕터명만
+function normChapter(v) {
+  let c = String(v || '').replace(/BNI/gi, '').replace(/[_\-]?\s*(chapter|챕터)\.?/gi, '').replace(/\s+/g, ' ').trim();
+  if (c && c === c.toUpperCase() && /[A-Z]/.test(c) && c.length > 5) c = c.charAt(0) + c.slice(1).toLowerCase();   // FOREST → Forest (SMART처럼 짧은 약어는 그대로)
+  return c.slice(0, 40);
+}
+function cleanImport(r) {
+  const str = (v, n) => clip(String(v || '').trim(), n);
+  const list = (v, n, len) => (Array.isArray(v) ? v : []).map(x => str(x, len)).filter(Boolean).slice(0, n);
+  let phone = normPhone(r.phone), phone2 = normPhone(r.phone2);
+  const mobile = p => /^01[016789]-/.test(p);
+  if (!mobile(phone) && mobile(phone2)) [phone, phone2] = [phone2, phone];   // 휴대폰을 대표 번호로
+  if (phone2 === phone) phone2 = '';
+  const email = str(r.email, 100).replace(/\s+/g, '').toLowerCase();
+  let website = str(r.website, 200).replace(/\s+/g, '');
+  const box = r.photoBox || {}, pct = v => Math.max(0, Math.min(100, Number(v) || 0));
+  let photoBox = { x: pct(box.x), y: pct(box.y), w: pct(box.w), h: pct(box.h) };
+  if (photoBox.w < 5 || photoBox.h < 5) photoBox = null;   // 인물 사진이 없거나 못 찾음
+  else { photoBox.w = Math.min(photoBox.w, 100 - photoBox.x); photoBox.h = Math.min(photoBox.h, 100 - photoBox.y); }
+  return {
+    name: str(r.name, 40), title: str(r.title, 60), company: str(r.company, 80),
+    phone, phone2, email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : '', website, address: str(r.address, 150),
+    slogan: str(r.slogan, 120), specialties: list(r.specialties, 8, 60), referral: list(r.referral, 5, 120), career: list(r.career, 12, 80),
+    chapter: normChapter(r.chapter), photoBox,
+  };
+}
+async function importRateLimit(env, request, deviceId) {
+  if (!env.OCR_CACHE) return null;   // KV 바인딩이 없으면 제한 없이 동작(캐시도 없음)
+  const day = new Date().toISOString().slice(0, 10);
+  const ip = request.headers.get('CF-Connecting-IP') || 'noip';
+  const dev = /^[A-Za-z0-9-]{8,64}$/.test(deviceId || '') ? deviceId : 'nodev-' + ip;
+  const keys = [[`ac-rl:dev:${dev}:${day}`, IMPORT_DAILY_PER_DEVICE], [`ac-rl:ip:${ip}:${day}`, IMPORT_DAILY_PER_IP]];
+  const counts = await Promise.all(keys.map(([k]) => env.OCR_CACHE.get(k).then(v => Number(v) || 0)));
+  if (counts.some((c, i) => c >= keys[i][1])) return json({ error: '오늘 이미지로 시작하기를 모두 썼어요(하루 5번). 내일 다시 하거나 처음부터 입력해주세요.', limited: true }, 429);
+  await Promise.all(keys.map(([k], i) => env.OCR_CACHE.put(k, String(counts[i] + 1), { expirationTtl: 60 * 60 * 26 })));
+  return null;
+}
+async function autocardImport(env, request, body) {
+  const { image, mediaType, hash, deviceId } = body;
+  if (!image || image.length > 7_000_000) return json({ error: '이미지가 없거나 너무 커요' }, 400);
+  const cacheKey = hash && /^[a-f0-9]{64}$/.test(hash) ? 'ac-import:v1:' + hash : '';   // 카드북 OCR 캐시와 키가 겹치지 않게 접두어
+  if (cacheKey && env.OCR_CACHE) {
+    const hit = await env.OCR_CACHE.get(cacheKey, 'json');
+    if (hit) return json({ ...hit, cached: true });   // 같은 이미지 재요청은 횟수 차감 없음
+  }
+  const limited = await importRateLimit(env, request, deviceId);
+  if (limited) return limited;
+  const prompt = `이 이미지는 BNI 멤버의 포스터형 명함(홍보 이미지)이야. 이미지에 실제로 적힌 글자만 옮겨 아래 JSON으로 답해.
+규칙:
+- 이미지에 없는 정보는 빈 문자열 "" 또는 빈 배열 []. 추측·보충·지어내기 절대 금지. 글자를 고치거나 다듬지 말고 보이는 그대로.
+- name: 사람 이름만(직함 제외). title: 직함(대표, 대표원장, 대표 세무사 등). company: 회사·상호명(한글 표기가 있으면 한글).
+- phone: 휴대폰(010…). phone2: 사무실·대표 전화(T., Tel 등). 팩스(F., Fax)는 넣지 마.
+- email, website, address: 보이는 그대로.
+- slogan: 가장 크게 강조된 소개 문구 한 줄(없으면 "").
+- specialties: 전문분야·서비스·취급 품목을 짧은 항목 리스트로(원문 표현 유지, 최대 8개).
+- referral: "원하는 리퍼럴", "이런 분을 소개해주세요"처럼 소개받고 싶은 대상을 명시한 항목이 있을 때만. 없으면 [].
+- career: 학력·자격·경력·수상·방송 이력 항목(원문 그대로, 최대 12개).
+- chapter: "BNI ○○ Chapter" 같은 챕터 표기 원문.
+- photoBox: 이미지 속 인물 사진(얼굴과 상반신) 영역을 이미지 전체 대비 퍼센트로 {x,y,w,h} (왼쪽 위 기준, 0~100). 인물이 없으면 모두 0.
+JSON만 답해: {"name":"","title":"","company":"","phone":"","phone2":"","email":"","website":"","address":"","slogan":"","specialties":[],"referral":[],"career":[],"chapter":"","photoBox":{"x":0,"y":0,"w":0,"h":0}}`;
+  const raw = await callClaude(env, [
+    { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
+    { type: 'text', text: prompt },
+  ], 2000, OCR_MODELS);
+  const result = cleanImport(raw);
+  if (cacheKey && env.OCR_CACHE) await env.OCR_CACHE.put(cacheKey, JSON.stringify(result), { expirationTtl: 60 * 60 * 24 * 30 });
+  return json(result);
 }
 
 async function bniCheck(env, phone) {
@@ -319,6 +403,7 @@ export default {
       // ── 자동 명함 AI (로그인 없이 호출 — 입력 길이·출력 토큰을 작게 잘라 비용을 묶어둠) ──
       if (url.pathname === '/autocard/draft') return await autocardDraft(env, await request.json());
       if (url.pathname === '/autocard/translate') return await autocardTranslate(env, await request.json());
+      if (url.pathname === '/autocard/import') return await autocardImport(env, request, await request.json());
 
       // ── 결제 확인: 토스에 승인 요청 → 성공 시 장수 충전 ──
       if (url.pathname === '/pay/confirm') {
