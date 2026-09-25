@@ -177,7 +177,8 @@ async function autocardDraft(env, body) {
   const a = body.answers || {};
   if (!a.work && !a.customer && !a.referral) return json({ error: '질문에 하나 이상 답해주세요' }, 400);
   const prompt = `너는 BNI(비즈니스 리퍼럴 모임) 멤버의 디지털 명함 문구를 쓰는 카피라이터야.
-아래 답변만 근거로 쓰고, 없는 경력·숫자·수상은 절대 지어내지 마.
+아래 답변에 있는 내용만 근거로 써. 답변에 없는 경력·연차·숫자·수상·자격·고객 수는 절대 지어내지 마.
+답변이 짧으면 문구도 짧게 써(부풀리지 말 것). 과장 표현(최고, 1등, 완벽한 등)과 느낌표 금지.
 
 이름: ${clip(body.name, 40)}
 직함/회사: ${clip(body.title, 60)} ${clip(body.company, 60)}
@@ -186,11 +187,14 @@ Q2 주로 누구를 돕나요? ${clip(a.customer, 400)}
 Q3 어떤 분을 소개받고 싶나요? ${clip(a.referral, 400)}
 
 작성 언어: ${AUTOCARD_LANGS[lang]}
-- slogan: 명함 맨 위 한 줄 소개. "누구를 어떻게 돕는지"가 한눈에 보이게. 35자 이내(영어면 70자 이내). 과장·느낌표 금지.
-- referral: "이런 분을 소개해주세요" 아래 들어갈 문장. 받는 사람이 주변의 구체적인 한 사람을 떠올릴 수 있게 상황·조건을 짚어서 1~2문장, 90자 이내.
-JSON으로만 답해: {"slogan":"","referral":""}`;
-  const r = await callClaude(env, [{ type: 'text', text: prompt }], 400, AUTOCARD_MODELS);
-  return json({ slogan: clip(r.slogan, 120), referral: clip(r.referral, 300) });
+- slogan: 명함 맨 위 한 줄 소개. "누구를 어떻게 돕는지"가 한눈에 보이게. 35자 이내(영어면 70자 이내).
+- work: "하는 일" 섹션. Q1을 바탕으로 무슨 일을, 어떻게 하는지 2~3문장. 150자 이내.
+- help: "이런 분을 돕습니다" 섹션. Q2를 바탕으로 어떤 상황의 어떤 사람에게 무엇이 도움이 되는지 2~3문장. 150자 이내.
+- referral: "이런 분을 소개해주세요" 섹션. Q3를 바탕으로 받는 사람이 주변의 구체적인 한 사람을 떠올릴 수 있게 상황·조건을 짚어서 1~2문장, 90자 이내.
+답변이 비어 있는 질문에 해당하는 필드는 다른 답변에서 알 수 있는 만큼만 쓰고, 알 수 없으면 빈 문자열.
+JSON으로만 답해: {"slogan":"","work":"","help":"","referral":""}`;
+  const r = await callClaude(env, [{ type: 'text', text: prompt }], 800, AUTOCARD_MODELS);
+  return json({ slogan: clip(r.slogan, 120), work: clip(r.work, 400), help: clip(r.help, 400), referral: clip(r.referral, 300) });
 }
 
 // ── 자동 명함 AI: 확정 문구를 선택 언어로 번역 (이름은 번역하지 않음 — 본인이 직접 입력) ──
@@ -199,17 +203,17 @@ async function autocardTranslate(env, body) {
   const to = [...new Set((body.to || []).filter(l => AUTOCARD_LANGS[l] && l !== from))].slice(0, 3);
   if (!to.length) return json({});
   const t = body.texts || {};
-  const texts = { title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), referral: clip(t.referral, 400) };
-  const shape = '{' + to.map(l => `"${l}":{"title":"","company":"","slogan":"","referral":""}`).join(',') + '}';
+  const texts = { title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), work: clip(t.work, 400), help: clip(t.help, 400), referral: clip(t.referral, 400) };
+  const shape = '{' + to.map(l => `"${l}":{"title":"","company":"","slogan":"","work":"","help":"","referral":""}`).join(',') + '}';
   const prompt = `다음 디지털 명함 문구(${AUTOCARD_LANGS[from]})를 ${to.map(l => AUTOCARD_LANGS[l]).join(', ')}로 번역해.
 - 명함에 어울리게 자연스럽고 짧게. 의미를 더하거나 빼지 마.
 - company(회사명)는 고유명사라 번역하지 말고 그 언어 사용자가 읽을 수 있게 표기만(이미 영문이면 그대로).
 - 빈 문자열은 빈 문자열로 둬.
 원문: ${JSON.stringify(texts)}
 JSON으로만 답해: ${shape}`;
-  const r = await callClaude(env, [{ type: 'text', text: prompt }], 1500, AUTOCARD_MODELS);
+  const r = await callClaude(env, [{ type: 'text', text: prompt }], 3000, AUTOCARD_MODELS);
   const out = {};
-  for (const l of to) { const x = r[l] || {}; out[l] = { title: clip(x.title, 120), company: clip(x.company, 120), slogan: clip(x.slogan, 200), referral: clip(x.referral, 400) }; }
+  for (const l of to) { const x = r[l] || {}; out[l] = { title: clip(x.title, 120), company: clip(x.company, 120), slogan: clip(x.slogan, 200), work: clip(x.work, 500), help: clip(x.help, 500), referral: clip(x.referral, 400) }; }
   return json(out);
 }
 
