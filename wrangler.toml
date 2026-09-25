@@ -1,0 +1,20 @@
+# Cloudflare Worker cardbook-ai 배포 설정 (GitHub Actions가 main에 worker.js가 바뀌면 자동 배포)
+# 비밀값(ANTHROPIC_API_KEY, TOSS_SECRET_KEY, FIREBASE_SA)은 여기 없음 — Cloudflare에 저장된 것을 그대로 유지한다.
+name = "cardbook-ai"
+main = "worker.js"
+account_id = "184cfa4f47e805123284c4dbf2278a38"
+compatibility_date = "2026-08-21"   # 대시보드 Settings → Runtime의 날짜와 같게(다르면 동작이 달라질 수 있음)
+keep_vars = true                         # 대시보드에서 넣은 일반 변수도 배포 때 지우지 않음
+
+# 명함 스캔·이미지 명함 가져오기 캐시 + 하루 사용 횟수 제한. 이 줄이 빠지면 배포할 때 연결이 끊긴다.
+[[kv_namespaces]]
+binding = "OCR_CACHE"
+id = "3d788854399e45a9967c7268e9053af5"   # cardbook-ocr-cache
+
+# 대시보드 Observability 설정과 같게 유지(Logs 켜짐, Invocation logs 포함) — 배포 때 꺼지지 않게 명시
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true

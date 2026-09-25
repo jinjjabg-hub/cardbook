@@ -1,0 +1,63 @@
+# main에 워커 코드나 보안 규칙이 바뀌면 자동으로 배포한다.
+#  - worker.js / wrangler.toml → Cloudflare Worker cardbook-ai
+#  - firestore.rules / storage.rules → Firebase 보안 규칙
+# 필요한 GitHub Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FIREBASE_RULES_SA
+name: Deploy backend (Worker + Firebase rules)
+
+on:
+  push:
+    branches: ["main"]
+    paths: ["worker.js", "wrangler.toml", "firestore.rules", "storage.rules", "scripts/deploy-rules.mjs", ".github/workflows/deploy-backend.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      worker: ${{ steps.f.outputs.worker }}
+      rules: ${{ steps.f.outputs.rules }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 2 }
+      - id: f
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "worker=true" >> $GITHUB_OUTPUT; echo "rules=true" >> $GITHUB_OUTPUT; exit 0; fi
+          CHANGED=$(git diff --name-only HEAD~1 HEAD)
+          echo "$CHANGED"
+          echo "worker=$(echo "$CHANGED" | grep -qE '^(worker\.js|wrangler\.toml|\.github/workflows/deploy-backend\.yml)$' && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "rules=$(echo "$CHANGED" | grep -qE '^(firestore\.rules|storage\.rules|scripts/deploy-rules\.mjs|\.github/workflows/deploy-backend\.yml)$' && echo true || echo false)" >> $GITHUB_OUTPUT
+
+  worker:
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 설정 확인 (저장소 ID·호환 날짜가 채워졌는지)
+        run: |
+          if grep -q '__KV_ID__\|__COMPAT_DATE__' wrangler.toml; then echo "wrangler.toml에 아직 채우지 않은 값이 있어요 — 배포 중단"; exit 1; fi
+          node --check worker.js
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Cloudflare Worker 배포
+        run: npx --yes wrangler@3 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  rules:
+    needs: changes
+    if: needs.changes.outputs.rules == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Firebase 보안 규칙 게시
+        run: node scripts/deploy-rules.mjs
+        env:
+          FIREBASE_RULES_SA: ${{ secrets.FIREBASE_RULES_SA }}
