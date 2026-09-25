@@ -238,6 +238,22 @@ function normChapter(v) {
   if (c && c === c.toUpperCase() && /[A-Z]/.test(c) && c.length > 5) c = c.charAt(0) + c.slice(1).toLowerCase();   // FOREST → Forest (SMART처럼 짧은 약어는 그대로)
   return c.slice(0, 40);
 }
+// "박 지 형"처럼 글자 간격을 띄운 한글 이름 → "박지형" (영문 이름은 그대로)
+function normName(v) {
+  const n = String(v || '').trim().replace(/\s+/g, ' ');
+  return /^[가-힣](\s[가-힣]){1,4}$/.test(n) ? n.replace(/\s/g, '') : n;
+}
+// 홈페이지만 남김: 마크다운 링크 표기 풀기, 도메인 모양이 아니면(인스타 아이디 등) 버림 — 안 열리는 링크를 만들지 않기 위해
+const WEB_TLD = /\.(com|net|org|kr|co\.kr|or\.kr|io|me|shop|store|biz|info|ai|app|co|site|online|page|link|xyz|us|jp|cn|vn|mn|kro\.kr|modoo\.at|tistory\.com|blog\.me)$/i;
+function normWebsite(v) {
+  let w = String(v || '').trim();
+  const md = w.match(/\[([^\]]*)\]\(([^)]*)\)/); if (md) w = md[2] || md[1];
+  w = w.replace(/\s+/g, '').replace(/[)\]]+$/, '');
+  if (!w) return '';
+  let host = '';
+  try { host = new URL(/^https?:\/\//i.test(w) ? w : 'https://' + w).hostname; } catch (e) { return ''; }
+  return WEB_TLD.test(host) ? w : '';
+}
 function cleanImport(r) {
   const str = (v, n) => clip(String(v || '').trim(), n);
   const list = (v, n, len) => (Array.isArray(v) ? v : []).map(x => str(x, len)).filter(Boolean).slice(0, n);
@@ -246,13 +262,13 @@ function cleanImport(r) {
   if (!mobile(phone) && mobile(phone2)) [phone, phone2] = [phone2, phone];   // 휴대폰을 대표 번호로
   if (phone2 === phone) phone2 = '';
   const email = str(r.email, 100).replace(/\s+/g, '').toLowerCase();
-  let website = str(r.website, 200).replace(/\s+/g, '');
+  const website = normWebsite(str(r.website, 300));
   const box = r.photoBox || {}, pct = v => Math.max(0, Math.min(100, Number(v) || 0));
   let photoBox = { x: pct(box.x), y: pct(box.y), w: pct(box.w), h: pct(box.h) };
   if (photoBox.w < 5 || photoBox.h < 5) photoBox = null;   // 인물 사진이 없거나 못 찾음
   else { photoBox.w = Math.min(photoBox.w, 100 - photoBox.x); photoBox.h = Math.min(photoBox.h, 100 - photoBox.y); }
   return {
-    name: str(r.name, 40), title: str(r.title, 60), company: str(r.company, 80),
+    name: normName(str(r.name, 40)), title: str(r.title, 60), company: str(r.company, 80),
     phone, phone2, email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : '', website, address: str(r.address, 150),
     slogan: str(r.slogan, 120), specialties: list(r.specialties, 8, 60), referral: list(r.referral, 5, 120), career: list(r.career, 12, 80),
     chapter: normChapter(r.chapter), photoBox,
@@ -275,16 +291,16 @@ async function autocardImport(env, request, body) {
   const cacheKey = hash && /^[a-f0-9]{64}$/.test(hash) ? 'ac-import:v1:' + hash : '';   // 카드북 OCR 캐시와 키가 겹치지 않게 접두어
   if (cacheKey && env.OCR_CACHE) {
     const hit = await env.OCR_CACHE.get(cacheKey, 'json');
-    if (hit) return json({ ...hit, cached: true });   // 같은 이미지 재요청은 횟수 차감 없음
+    if (hit) return json({ ...cleanImport(hit), cached: true });   // 같은 이미지 재요청은 횟수 차감 없음(정리 규칙은 최신으로 다시 적용)
   }
   const limited = await importRateLimit(env, request, deviceId);
   if (limited) return limited;
   const prompt = `이 이미지는 BNI 멤버의 포스터형 명함(홍보 이미지)이야. 이미지에 실제로 적힌 글자만 옮겨 아래 JSON으로 답해.
 규칙:
 - 이미지에 없는 정보는 빈 문자열 "" 또는 빈 배열 []. 추측·보충·지어내기 절대 금지. 글자를 고치거나 다듬지 말고 보이는 그대로.
-- name: 사람 이름만(직함 제외). title: 직함(대표, 대표원장, 대표 세무사 등). company: 회사·상호명(한글 표기가 있으면 한글).
+- name: 사람 이름만(직함 제외). 글자 사이 띄어쓰기는 빼고 붙여 써(예: "박 지 형" → "박지형"). 한글 이름이 없고 영문 이름만 있으면 영문 그대로. title: 직함(대표, 대표원장, 대표 세무사 등). company: 회사·상호명(한글 표기가 있으면 한글).
 - phone: 휴대폰(010…). phone2: 사무실·대표 전화(T., Tel 등). 팩스(F., Fax)는 넣지 마.
-- email, website, address: 보이는 그대로.
+- email, address: 보이는 그대로. website: 홈페이지 주소만 글자 그대로(마크다운 링크 표기 금지). 인스타그램·블로그 아이디(@…, 아이콘 옆 아이디)는 website에 넣지 마.
 - slogan: 가장 크게 강조된 소개 문구 한 줄(없으면 "").
 - specialties: 전문분야·서비스·취급 품목을 짧은 항목 리스트로(원문 표현 유지, 최대 8개).
 - referral: "원하는 리퍼럴", "이런 분을 소개해주세요"처럼 소개받고 싶은 대상을 명시한 항목이 있을 때만. 없으면 [].
