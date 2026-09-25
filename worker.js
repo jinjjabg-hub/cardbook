@@ -254,6 +254,20 @@ function normWebsite(v) {
   try { host = new URL(/^https?:\/\//i.test(w) ? w : 'https://' + w).hostname; } catch (e) { return ''; }
   return WEB_TLD.test(host) ? w : '';
 }
+// SNS(인스타·블로그·유튜브 등) → 바로 열리는 링크. 아이디만 있으면 서비스 주소를 붙인다
+const SNS_LABEL = { instagram: '인스타그램', blog: '블로그', youtube: '유튜브', facebook: '페이스북', kakao: '카카오톡 채널', tiktok: '틱톡', threads: '스레드' };
+function snsLink(x) {
+  const type = String((x && x.type) || '').toLowerCase().trim(), raw = String((x && x.value) || '').trim().replace(/\s+/g, '');
+  if (!SNS_LABEL[type] || !raw) return null;
+  const md = raw.match(/\[([^\]]*)\]\(([^)]*)\)/), v = md ? md[2] || md[1] : raw;
+  // 주소로 볼지: 그 서비스 도메인이 들어 있을 때만(인스타 아이디 "royalbronze.official"은 점이 있어도 아이디)
+  const own = { instagram: /instagram\.com/i, youtube: /youtube\.com|youtu\.be/i, facebook: /facebook\.com|fb\.com/i, tiktok: /tiktok\.com/i, threads: /threads\.(net|com)/i, kakao: /kakao\.com/i, blog: /blog\.|tistory\.com|brunch\.co\.kr/i }[type];
+  if (own.test(v) || (type === 'blog' && normWebsite(v))) return { label: SNS_LABEL[type], url: /^https?:\/\//i.test(v) ? v : 'https://' + v };
+  const id = v.replace(/^@/, '');
+  if (!/^[\w.]{2,40}$/.test(id)) return null;
+  const base = { instagram: 'https://www.instagram.com/', youtube: 'https://www.youtube.com/@', facebook: 'https://www.facebook.com/', tiktok: 'https://www.tiktok.com/@', threads: 'https://www.threads.net/@', blog: 'https://blog.naver.com/' }[type];
+  return base ? { label: SNS_LABEL[type], url: base + id + (type === 'instagram' ? '/' : '') } : null;   // 카카오 채널은 아이디만으로는 주소를 알 수 없어 버림
+}
 function cleanImport(r) {
   const str = (v, n) => clip(String(v || '').trim(), n);
   const list = (v, n, len) => (Array.isArray(v) ? v : []).map(x => str(x, len)).filter(Boolean).slice(0, n);
@@ -272,6 +286,7 @@ function cleanImport(r) {
     phone, phone2, email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : '', website, address: str(r.address, 150),
     slogan: str(r.slogan, 120), specialties: list(r.specialties, 8, 60), referral: list(r.referral, 5, 120), career: list(r.career, 12, 80),
     chapter: normChapter(r.chapter), photoBox,
+    sns: (Array.isArray(r.sns) ? r.sns : []).map(snsLink).filter(Boolean).slice(0, 4),
   };
 }
 async function importRateLimit(env, request, deviceId) {
@@ -288,26 +303,33 @@ async function importRateLimit(env, request, deviceId) {
 async function autocardImport(env, request, body) {
   const { image, mediaType, hash, deviceId } = body;
   if (!image || image.length > 7_000_000) return json({ error: '이미지가 없거나 너무 커요' }, 400);
-  const cacheKey = hash && /^[a-f0-9]{64}$/.test(hash) ? 'ac-import:v1:' + hash : '';   // 카드북 OCR 캐시와 키가 겹치지 않게 접두어
+  // 캐시 키 버전: 추출 항목이 늘면(v2: sns 추가) 올린다. 카드북 OCR 캐시와 키가 겹치지 않게 접두어
+  const okHash = hash && /^[a-f0-9]{64}$/.test(hash);
+  const cacheKey = okHash ? 'ac-import:v2:' + hash : '';
+  let seenBefore = false;
   if (cacheKey && env.OCR_CACHE) {
     const hit = await env.OCR_CACHE.get(cacheKey, 'json');
     if (hit) return json({ ...cleanImport(hit), cached: true });   // 같은 이미지 재요청은 횟수 차감 없음(정리 규칙은 최신으로 다시 적용)
+    seenBefore = !!(await env.OCR_CACHE.get('ac-import:v1:' + hash));   // 예전 버전으로 이미 읽은 이미지 → 새 항목만 다시 읽음, 횟수는 안 셈
   }
-  const limited = await importRateLimit(env, request, deviceId);
-  if (limited) return limited;
+  if (!seenBefore) {
+    const limited = await importRateLimit(env, request, deviceId);
+    if (limited) return limited;
+  }
   const prompt = `이 이미지는 BNI 멤버의 포스터형 명함(홍보 이미지)이야. 이미지에 실제로 적힌 글자만 옮겨 아래 JSON으로 답해.
 규칙:
 - 이미지에 없는 정보는 빈 문자열 "" 또는 빈 배열 []. 추측·보충·지어내기 절대 금지. 글자를 고치거나 다듬지 말고 보이는 그대로.
 - name: 사람 이름만(직함 제외). 글자 사이 띄어쓰기는 빼고 붙여 써(예: "박 지 형" → "박지형"). 한글 이름이 없고 영문 이름만 있으면 영문 그대로. title: 직함(대표, 대표원장, 대표 세무사 등). company: 회사·상호명(한글 표기가 있으면 한글).
 - phone: 휴대폰(010…). phone2: 사무실·대표 전화(T., Tel 등). 팩스(F., Fax)는 넣지 마.
 - email, address: 보이는 그대로. website: 홈페이지 주소만 글자 그대로(마크다운 링크 표기 금지). 인스타그램·블로그 아이디(@…, 아이콘 옆 아이디)는 website에 넣지 마.
+- sns: 인스타그램·블로그·유튜브·페이스북·카카오톡 채널·틱톡·스레드 주소나 아이디가 보이면 [{"type":"instagram|blog|youtube|facebook|kakao|tiktok|threads","value":"보이는 그대로"}]. 아이콘으로 종류를 판단해. 없으면 [].
 - slogan: 가장 크게 강조된 소개 문구 한 줄(없으면 "").
 - specialties: 전문분야·서비스·취급 품목을 짧은 항목 리스트로(원문 표현 유지, 최대 8개).
 - referral: "원하는 리퍼럴", "이런 분을 소개해주세요"처럼 소개받고 싶은 대상을 명시한 항목이 있을 때만. 없으면 [].
 - career: 학력·자격·경력·수상·방송 이력 항목(원문 그대로, 최대 12개).
 - chapter: "BNI ○○ Chapter" 같은 챕터 표기 원문.
 - photoBox: 이미지 속 인물 사진(얼굴과 상반신) 영역을 이미지 전체 대비 퍼센트로 {x,y,w,h} (왼쪽 위 기준, 0~100). 인물이 없으면 모두 0.
-JSON만 답해: {"name":"","title":"","company":"","phone":"","phone2":"","email":"","website":"","address":"","slogan":"","specialties":[],"referral":[],"career":[],"chapter":"","photoBox":{"x":0,"y":0,"w":0,"h":0}}`;
+JSON만 답해: {"name":"","title":"","company":"","phone":"","phone2":"","email":"","website":"","address":"","slogan":"","specialties":[],"referral":[],"career":[],"chapter":"","sns":[],"photoBox":{"x":0,"y":0,"w":0,"h":0}}`;
   const raw = await callClaude(env, [
     { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
     { type: 'text', text: prompt },
