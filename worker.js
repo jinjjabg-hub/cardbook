@@ -9,8 +9,9 @@ const FIREBASE_PROJECT = 'mandu-e7c3c';
 const FIREBASE_WEB_API_KEY = 'AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0';
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500, AUTOCARD_OWNER_BONUS = 50;
 const DICA_DOMAINS = ['jinjjabg-hub.github.io'];
-// 자동 명함은 DiCA와 같은 도메인이라 경로로 구분한다: /autocard/ → 50장, 그 외 DiCA 링크 → 500장
-const AUTOCARD_PATH = '/autocard/';
+// 자동 명함은 DiCA와 같은 도메인이라 경로로 구분한다: 자동 명함 경로 → 50장, 그 외 DiCA 링크 → 500장
+// (지금은 카드북 레포 안 /cardbook/autocard/, 나중에 autocard 레포로 옮겨도 되게 /autocard/도 인정)
+const AUTOCARD_PATHS = ['/cardbook/autocard/', '/autocard/'];
 // 자동 명함 AI — 문구 초안·번역은 가벼운 작업이라 Haiku 먼저(비용↓), 모델명 오류 시 기존 목록으로 폴백
 const AUTOCARD_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6'];
 const AUTOCARD_LANGS = { ko: '한국어', en: 'English', ja: '日本語', zh: '简体中文', vi: 'Tiếng Việt', mn: 'Монгол (кирилл)' };
@@ -285,8 +286,8 @@ export default {
         const uid = await verifyIdToken(idToken);
         let host = '', normUrl = ''; try { const u2 = new URL(dicaUrl); host = u2.hostname; normUrl = (u2.hostname + u2.pathname).toLowerCase().replace(/\/$/, ''); } catch (e) { return json({ granted: false }); }
         if (!DICA_DOMAINS.includes(host)) return json({ granted: false, reason: '지원하지 않는 도메인' });
-        // 자동 명함 링크(/autocard/c/?id=...)는 500장이 아니라 50장 — 경로로 구분
-        if (normUrl.startsWith(host + AUTOCARD_PATH)) {
+        // 자동 명함 링크(…/autocard/c/?id=...)는 500장이 아니라 50장 — 경로로 구분
+        if (AUTOCARD_PATHS.some(p => normUrl.startsWith(host + p))) {
           return await autocardBonus(env, uid, new URL(dicaUrl).searchParams.get('id'));
         }
         const fbToken = await firebaseAccessToken(env);

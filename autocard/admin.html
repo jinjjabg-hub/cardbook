@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>자동 명함 승인</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #141414; --muted: #6b6b6b; --line: #e3e1dc; --bg: #f6f5f2; --brand: #1F3A5F; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Noto Sans KR', system-ui, sans-serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .tabs { display: flex; gap: 6px; margin: 16px 0; }
+  .tabs button { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 14px; font: 700 13px 'Noto Sans KR', sans-serif; cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .item { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 10px; display: flex; gap: 12px; align-items: center; }
+  .item img, .item .ph { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #ddd; flex-shrink: 0; }
+  .item .info { flex: 1; min-width: 0; font-size: 13px; line-height: 1.55; }
+  .item .info b { font-size: 15px; }
+  .item .acts { display: flex; flex-direction: column; gap: 6px; }
+  .btn { border: 0; border-radius: 10px; padding: 9px 14px; font: 700 13px 'Noto Sans KR', sans-serif; cursor: pointer; background: var(--ink); color: #fff; text-decoration: none; text-align: center; }
+  .btn.ok { background: #1d7a4f; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .empty { text-align: center; padding: 40px 0; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>자동 명함 승인</h1>
+  <div class="muted" id="who">로그인 확인 중…</div>
+  <div class="tabs" id="tabs">
+    <button type="button" data-s="pending" class="on">승인 대기</button>
+    <button type="button" data-s="published">발행됨</button>
+    <button type="button" data-s="draft">작성 중</button>
+  </div>
+  <div id="list"></div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/card.js"></script>
+<script>
+// 관리자만 쓰는 화면. 버튼을 숨기는 건 편의일 뿐이고, 실제 권한은 firestore.rules가 막는다
+// (status를 'published'로 바꾸는 쓰기는 관리자 이메일만 통과).
+const { auth, db } = acInitFirebase();
+const $ = id => document.getElementById(id);
+let tab = 'pending';
+
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    $('who').innerHTML = '<button type="button" class="btn" id="login">Google 로그인</button>';
+    $('login').onclick = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => alert(e.message));
+    return;
+  }
+  if (!AC_ADMIN_EMAILS.includes(user.email)) { $('who').textContent = user.email + ' — 관리자 계정이 아니에요'; return; }
+  $('who').textContent = user.email + ' · 결제(입금) 확인 후 승인하세요';
+  load();
+});
+
+document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+  tab = b.dataset.s; document.querySelectorAll('[data-s]').forEach(x => x.classList.toggle('on', x === b)); load();
+});
+
+async function load() {
+  $('list').innerHTML = '<div class="empty">불러오는 중…</div>';
+  try {
+    const snap = await db.collection('autocards').where('status', '==', tab).get();
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (!docs.length) { $('list').innerHTML = '<div class="empty">없어요</div>'; return; }
+    $('list').innerHTML = docs.map(c => {
+      const v = acView(c, c.langs[0]);
+      return `<div class="item">
+        ${v.profile ? `<img src="${acEsc(v.profile)}" alt="">` : '<div class="ph"></div>'}
+        <div class="info"><b>${acEsc(v.name)}</b> ${acEsc(v.title)}<br>
+          ${acEsc(c.ownerEmail)} · ${acEsc(c.phone || c.email || '')}<br>
+          <b>${acWon(c.price || acPrice(c.langs))}</b> · ${c.langs.map(l => l.toUpperCase()).join('/')} · ${acEsc(AC_TEMPLATES[c.design.tpl] || '')}
+          <span class="muted">· ${new Date(c.updatedAt || c.createdAt).toLocaleString('ko-KR')}</span>
+          ${c.referredBy ? `<br><span class="muted">유입: ${acEsc(c.referredBy)} 명함에서</span>` : ''}</div>
+        <div class="acts">
+          <a class="btn ghost" href="c/?id=${encodeURIComponent(c.id)}" target="_blank">보기</a>
+          ${c.status === 'pending' ? `<button type="button" class="btn ok" data-pub="${c.id}">승인·발행</button>` : ''}
+          ${c.status === 'published' ? `<button type="button" class="btn ghost" data-unpub="${c.id}">내리기</button>` : ''}
+        </div></div>`;
+    }).join('');
+    document.querySelectorAll('[data-pub]').forEach(b => b.onclick = () => setStatus(b.dataset.pub, 'published'));
+    document.querySelectorAll('[data-unpub]').forEach(b => b.onclick = () => { if (confirm('이 명함을 비공개(승인 대기)로 돌릴까요?')) setStatus(b.dataset.unpub, 'pending'); });
+  } catch (e) { $('list').innerHTML = `<div class="empty">불러오기 실패: ${acEsc(e.message)}</div>`; }
+}
+
+async function setStatus(id, status) {
+  const patch = { status, updatedAt: Date.now() };
+  if (status === 'published') { patch.publishedAt = Date.now(); patch.approvedBy = auth.currentUser.email; }
+  try { await db.collection('autocards').doc(id).update(patch); load(); }
+  catch (e) { alert('실패: ' + e.message); }
+}
+</script>
+</body>
+</html>
