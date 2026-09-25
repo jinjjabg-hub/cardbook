@@ -40,20 +40,36 @@ service cloud.firestore {
     }
 
     // 자동 명함(AutoCard) — 공개(published)된 명함은 누구나 읽고, 그 전 단계는 본인·관리자만.
-    // 쓰기는 본인(ownerUid)만. 단 status를 'published'로 바꾸는 건 관리자만 → 관리자 승인 = 발행.
+    // 발행(published)은 관리자만 → 관리자 승인 = 발행.
+    // 발행 후 셀프 수정: 문구·사진·연락처·디자인은 주인이 자유롭게 고치지만,
+    // 가격이 걸린 항목(언어 목록·가격·상태)은 못 바꾼다. 언어 추가는 upgrade 요청 → 관리자가 결제 확인 후 반영.
     match /autocards/{cardId} {
       function acSignedIn() { return request.auth != null; }
       function acAdmin() { return acSignedIn() && request.auth.token.email == 'jinjjabg@gmail.com' && request.auth.token.email_verified == true; }
       function acOwner() { return acSignedIn() && resource.data.ownerUid == request.auth.uid; }
+      // 가격 = 5,900 + (언어 수 - 1) × 5,000, 언어는 1~4개 — 클라이언트가 가격을 깎아서 보낼 수 없게 서버에서 다시 계산
+      function acPriceOk(d) { return d.langs is list && d.langs.size() >= 1 && d.langs.size() <= 4 && d.price == 5900 + (d.langs.size() - 1) * 5000; }
+      // 언어 추가 요청: 지금 언어를 모두 포함하고 최대 4개
+      function acUpgradeOk(d) { return !('upgrade' in d) || (d.upgrade.langs is list && d.upgrade.langs.size() <= 4 && d.upgrade.langs.hasAll(resource.data.langs)); }
+      function acLocked() { return ['ownerUid', 'ownerEmail', 'status', 'langs', 'price', 'publishedAt', 'approvedBy', 'createdAt']; }
+
       allow read: if resource.data.status == 'published' || acOwner() || acAdmin();
       allow create: if acSignedIn()
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.ownerEmail == request.auth.token.email
-        && request.resource.data.status in ['draft', 'pending'];
-      allow update: if acAdmin() || (acOwner()
-        && request.resource.data.ownerUid == resource.data.ownerUid
-        && request.resource.data.ownerEmail == resource.data.ownerEmail
-        && (request.resource.data.status == resource.data.status || request.resource.data.status in ['draft', 'pending']));
+        && request.resource.data.status in ['draft', 'pending']
+        && (request.resource.data.status == 'draft' || acPriceOk(request.resource.data));
+      allow update: if acAdmin()
+        // 발행 전(작성 중·승인 대기): 주인이 자유롭게 고치되 가격은 언어 수와 맞아야 함
+        || (acOwner() && resource.data.status != 'published'
+            && request.resource.data.ownerUid == resource.data.ownerUid
+            && request.resource.data.ownerEmail == resource.data.ownerEmail
+            && request.resource.data.status in ['draft', 'pending']
+            && (request.resource.data.status == 'draft' || acPriceOk(request.resource.data)))
+        // 발행 후: 셀프 수정 OK, 가격이 걸린 항목은 잠금
+        || (acOwner() && resource.data.status == 'published'
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(acLocked())
+            && acUpgradeOk(request.resource.data));
       allow delete: if acAdmin() || (acOwner() && resource.data.status != 'published');
     }
 
