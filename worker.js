@@ -36,7 +36,7 @@ async function verifyIdToken(idToken) {
   return uid;
 }
 // 라우트: /ocr-image (신규, 이미지→구조화+전문)  /ocr-parse (기존)  /ai-search (기존)
-//        /autocard/draft, /autocard/translate (자동 명함 문구 초안·번역), /autocard/import (이미지 명함 → 자동 입력), /autocard/ui (목록에 없는 언어 화면 번역)
+//        /autocard/draft, /autocard/translate (자동 명함 문구 초안·번역), /autocard/import (이미지 명함 → 자동 입력), /autocard/ui (목록에 없는 언어 화면 번역), /autocard/pay/confirm (결제 → 발행·언어 추가)
 
 // 첫 번째가 안 되면(모델명 없음 404) 다음 모델로 자동 재시도
 const MODELS = ['claude-sonnet-4-6', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
@@ -177,6 +177,77 @@ async function autocardBonus(env, uid, cardId) {
   const credits = (typeof u.credits === 'number' ? u.credits : FREE_SIGNUP) + AUTOCARD_OWNER_BONUS;
   await commitWrites(token, [fsPatch(uid, { credits, autocard50Granted: true })]);
   return json({ granted: true, credits, bonus: AUTOCARD_OWNER_BONUS });
+}
+
+// ── 자동 명함 결제: 토스 승인 → 바로 발행(pub) 또는 언어 추가(up) ──
+// orderId = ac_{명함ID}_{pub|up}_{시각}. 금액은 앱이 보낸 값을 믿지 않고 Firestore의 명함 언어 수로 다시 계산한다.
+// 결제 기록 autocardPayments/{orderId}는 "없을 때만 생성" → 새로고침·중복 호출에도 한 번만 반영
+const AC_PRICE_BASE = 5900, AC_PRICE_LANG = 5000, AC_MAX_LANGS_SRV = 4;
+const acPriceSrv = n => AC_PRICE_BASE + (n - 1) * AC_PRICE_LANG;
+function fsVal(v) {
+  if (!v) return undefined;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fsVal);
+  if ('mapValue' in v) { const o = {}; for (const [k, x] of Object.entries(v.mapValue.fields || {})) o[k] = fsVal(x); return o; }
+  return undefined;
+}
+function fsEnc(v) {
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(fsEnc) } };
+  if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (v && typeof v === 'object') { const f = {}; for (const [k, x] of Object.entries(v)) f[k] = fsEnc(x); return { mapValue: { fields: f } }; }
+  return { stringValue: String(v ?? '') };
+}
+async function autocardPay(env, body) {
+  const { paymentKey, orderId } = body || {}, amount = Number((body || {}).amount);
+  const m = /^ac_([A-Za-z0-9]{10,40})_(pub|up)_(\d{10,16})$/.exec(orderId || '');
+  if (!m || !paymentKey) return json({ error: '주문번호 형식 오류' }, 400);
+  const [, cardId, kind] = m;
+  if (!env.TOSS_SECRET_KEY || !env.FIREBASE_SA) return json({ error: '결제 설정이 아직 안 됐어요' }, 500);
+  const token = await firebaseAccessToken(env);
+  const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+  const res = await fetch(`https://firestore.googleapis.com/v1/${base}/autocards/${cardId}`, { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) return json({ error: '명함을 찾을 수 없어요' }, 404);
+  const f = (await res.json()).fields || {}, card = {};
+  for (const [k, v] of Object.entries(f)) card[k] = fsVal(v);
+  const langs = Array.isArray(card.langs) ? card.langs : [];
+  const done = await fetch(`https://firestore.googleapis.com/v1/${base}/autocardPayments/${orderId}`, { headers: { Authorization: 'Bearer ' + token } });
+  if (done.ok) return json({ ok: true, duplicate: true, kind, cardId, langs });   // 이미 처리된 주문(새로고침 등)
+
+  // 이번 결제가 무엇이고 얼마여야 하는지(서버 계산)
+  let expect, patch;
+  if (kind === 'pub') {
+    if (!['draft', 'pending'].includes(card.status)) return json({ error: '이미 발행된 명함이에요' }, 400);
+    if (langs.length < 1 || langs.length > AC_MAX_LANGS_SRV) return json({ error: '언어 수 오류' }, 400);
+    expect = acPriceSrv(langs.length);
+    patch = { status: 'published', price: expect, publishedAt: Date.now(), approvedBy: 'payment', paid: { amount: expect, orderId, at: Date.now() } };
+  } else {
+    const want = card.upgrade && Array.isArray(card.upgrade.langs) ? card.upgrade.langs : [];
+    if (card.status !== 'published') return json({ error: '발행된 명함만 언어를 추가할 수 있어요' }, 400);
+    if (!langs.every(l => want.includes(l)) || want.length <= langs.length || want.length > AC_MAX_LANGS_SRV || new Set(want).size !== want.length || !want.every(autocardLangName)) return json({ error: '추가할 언어 정보가 올바르지 않아요' }, 400);
+    expect = (want.length - langs.length) * AC_PRICE_LANG;
+    patch = { langs: want, price: acPriceSrv(want.length) };
+  }
+  if (amount !== expect) return json({ error: '금액 불일치' }, 400);
+
+  const tRes = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
+    method: 'POST', headers: { Authorization: 'Basic ' + btoa(env.TOSS_SECRET_KEY + ':'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paymentKey, orderId, amount }),
+  });
+  const tData = await tRes.json();
+  if (!tRes.ok && tData.code !== 'ALREADY_PROCESSED_PAYMENT') return json({ error: tData.message || '결제 승인 실패', code: tData.code }, 400);
+
+  const fields = {}; for (const [k, v] of Object.entries(patch)) fields[k] = fsEnc(v);
+  const mask = Object.keys(patch).concat(kind === 'up' ? ['upgrade'] : []);   // 언어 추가 요청(upgrade)은 반영 후 지움
+  const writes = [
+    { update: { name: `${base}/autocardPayments/${orderId}`, fields: { cardId: fsEnc(cardId), kind: fsEnc(kind), amount: fsEnc(amount), paymentKey: fsEnc(paymentKey), method: fsEnc(tData.method || ''), ownerUid: fsEnc(card.ownerUid || ''), at: fsEnc(Date.now()) } }, currentDocument: { exists: false } },
+    { update: { name: `${base}/autocards/${cardId}`, fields }, updateMask: { fieldPaths: mask } },
+  ];
+  try { await commitWrites(token, writes); }
+  catch (e) { if (/ALREADY_EXISTS|already exists/i.test(e.message)) return json({ ok: true, duplicate: true, kind, cardId, langs: patch.langs || langs }); throw e; }
+  return json({ ok: true, kind, cardId, langs: patch.langs || langs, amount });
 }
 
 // ── 자동 명함 AI: 질문 3개 답변 → 한 줄 소개 + 리퍼럴 문구 초안 ──
@@ -537,6 +608,7 @@ export default {
       if (url.pathname === '/autocard/translate') return await autocardTranslate(env, await request.json());
       if (url.pathname === '/autocard/import') return await autocardImport(env, request, await request.json());
       if (url.pathname === '/autocard/ui') return await autocardUi(env, request, await request.json());
+      if (url.pathname === '/autocard/pay/confirm') return await autocardPay(env, await request.json());
 
       // ── 결제 확인: 토스에 승인 요청 → 성공 시 장수 충전 ──
       if (url.pathname === '/pay/confirm') {

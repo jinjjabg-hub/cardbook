@@ -40,7 +40,7 @@ service cloud.firestore {
     }
 
     // 자동 명함(AutoCard) — 공개(published)된 명함은 누구나 읽고, 그 전 단계는 본인·관리자만.
-    // 발행(published)은 관리자만 → 관리자 승인 = 발행.
+    // 발행(published)은 관리자 또는 결제 확인 Worker(서비스 계정, 규칙 우회)만 → 결제하면 바로 발행.
     // 발행 후 셀프 수정: 문구·사진·연락처·디자인은 주인이 자유롭게 고치지만,
     // 가격이 걸린 항목(언어 목록·가격·상태)은 못 바꾼다. 언어 추가는 upgrade 요청 → 관리자가 결제 확인 후 반영.
     match /autocards/{cardId} {
@@ -51,7 +51,7 @@ service cloud.firestore {
       function acPriceOk(d) { return d.langs is list && d.langs.size() >= 1 && d.langs.size() <= 4 && d.price == 5900 + (d.langs.size() - 1) * 5000; }
       // 언어 추가 요청: 지금 언어를 모두 포함하고 최대 4개
       function acUpgradeOk(d) { return !('upgrade' in d) || (d.upgrade.langs is list && d.upgrade.langs.size() <= 4 && d.upgrade.langs.hasAll(resource.data.langs)); }
-      function acLocked() { return ['ownerUid', 'ownerEmail', 'status', 'langs', 'price', 'publishedAt', 'approvedBy', 'createdAt']; }
+      function acLocked() { return ['ownerUid', 'ownerEmail', 'status', 'langs', 'price', 'publishedAt', 'approvedBy', 'createdAt', 'paid']; }
 
       allow read: if resource.data.status == 'published' || acOwner() || acAdmin();
       allow create: if acSignedIn()
@@ -72,6 +72,9 @@ service cloud.firestore {
             && acUpgradeOk(request.resource.data));
       allow delete: if acAdmin() || (acOwner() && resource.data.status != 'published');
     }
+
+    // 자동 명함 결제 기록 — Worker(서비스 계정)만 쓰고 읽음
+    match /autocardPayments/{orderId} { allow read: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com'; allow write: if false; }
 
     // 예전 코드가 쓰다 만 최상위 컬렉션 — 지금은 아무도 안 쓰지만 혹시 남아있는 호출을 막아둔다.
     match /cards/{cardId} { allow read, write: if false; }
