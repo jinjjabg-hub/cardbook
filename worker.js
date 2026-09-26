@@ -14,7 +14,16 @@ const DICA_DOMAINS = ['jinjjabg-hub.github.io'];
 const AUTOCARD_PATHS = ['/cardbook/autocard/', '/autocard/'];
 // 자동 명함 AI — 문구 초안·번역은 가벼운 작업이라 Haiku 먼저(비용↓), 모델명 오류 시 기존 목록으로 폴백
 const AUTOCARD_MODELS = ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6'];
-const AUTOCARD_LANGS = { ko: '한국어', en: 'English', ja: '日本語', zh: '简体中文', vi: 'Tiếng Việt', mn: 'Монгол (кирилл)', th: 'ภาษาไทย' };
+const AUTOCARD_LANGS = { ko: '한국어', en: 'English', ja: '日本語', zh: '简体中文', vi: 'Tiếng Việt', mn: 'Монгол (кирилл)', th: 'ภาษาไทย', es: 'Español', fr: 'Français' };
+// 명함 언어: 위 목록(화면까지 번역해 둔 언어) + 그 밖의 실제 언어 코드(ISO 639, 예: id 인도네시아어). 없는 코드는 '' → 거부
+const AUTOCARD_EXTRA_LANGS = { id: 'Indonesian', ms: 'Malay', hi: 'Hindi', pt: 'Portuguese', de: 'German', it: 'Italian', ru: 'Russian', ar: 'Arabic', tr: 'Turkish', nl: 'Dutch', pl: 'Polish', uk: 'Ukrainian', fa: 'Persian', bn: 'Bengali', ur: 'Urdu', ta: 'Tamil', te: 'Telugu', km: 'Khmer', lo: 'Lao', my: 'Burmese', ne: 'Nepali', si: 'Sinhala', tl: 'Tagalog (Filipino)', fil: 'Filipino', sw: 'Swahili', he: 'Hebrew', el: 'Greek', cs: 'Czech', sv: 'Swedish', da: 'Danish', nb: 'Norwegian', no: 'Norwegian', fi: 'Finnish', hu: 'Hungarian', ro: 'Romanian', kk: 'Kazakh', uz: 'Uzbek', ky: 'Kyrgyz' };
+function autocardLangName(code) {
+  code = String(code || '');
+  if (AUTOCARD_LANGS[code]) return AUTOCARD_LANGS[code];
+  if (!/^[a-z]{2,3}$/.test(code)) return '';
+  try { const n = new Intl.DisplayNames(['en'], { type: 'language' }).of(code); if (n && n.toLowerCase() !== code) return n; } catch (e) {}
+  return AUTOCARD_EXTRA_LANGS[code] || '';
+}
 function monthKey() { const d = new Date(); return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0'); }
 async function verifyIdToken(idToken) {
   if (!idToken) throw new Error('로그인이 필요해요');
@@ -27,7 +36,7 @@ async function verifyIdToken(idToken) {
   return uid;
 }
 // 라우트: /ocr-image (신규, 이미지→구조화+전문)  /ocr-parse (기존)  /ai-search (기존)
-//        /autocard/draft, /autocard/translate (자동 명함 문구 초안·번역), /autocard/import (이미지 명함 → 자동 입력)
+//        /autocard/draft, /autocard/translate (자동 명함 문구 초안·번역), /autocard/import (이미지 명함 → 자동 입력), /autocard/ui (목록에 없는 언어 화면 번역)
 
 // 첫 번째가 안 되면(모델명 없음 404) 다음 모델로 자동 재시도
 const MODELS = ['claude-sonnet-4-6', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'];
@@ -173,7 +182,7 @@ async function autocardBonus(env, uid, cardId) {
 // ── 자동 명함 AI: 질문 3개 답변 → 한 줄 소개 + 리퍼럴 문구 초안 ──
 const clip = (v, n) => String(v || '').slice(0, n);
 async function autocardDraft(env, body) {
-  const lang = AUTOCARD_LANGS[body.lang] ? body.lang : 'ko';
+  const lang = autocardLangName(body.lang) ? body.lang : 'ko';
   const a = body.answers || {};
   if (!a.work && !a.customer && !a.referral) return json({ error: '질문에 하나 이상 답해주세요' }, 400);
   const prompt = `너는 BNI(비즈니스 리퍼럴 모임) 멤버의 디지털 명함 문구를 쓰는 카피라이터야.
@@ -186,7 +195,7 @@ Q1 어떤 일을 하나요? ${clip(a.work, 400)}
 Q2 주로 누구를 돕나요? ${clip(a.customer, 400)}
 Q3 어떤 분을 소개받고 싶나요? ${clip(a.referral, 400)}
 
-작성 언어: ${AUTOCARD_LANGS[lang]}
+작성 언어: ${autocardLangName(lang)}
 - slogan: 명함 맨 위 한 줄 소개. "누구를 어떻게 돕는지"가 한눈에 보이게. 35자 이내(영어면 70자 이내).
 - work: "하는 일" 섹션. Q1을 바탕으로 무슨 일을, 어떻게 하는지 2~3문장. 150자 이내.
 - help: "이런 분을 돕습니다" 섹션. Q2를 바탕으로 어떤 상황의 어떤 사람에게 무엇이 도움이 되는지 2~3문장. 150자 이내.
@@ -199,13 +208,13 @@ JSON으로만 답해: {"slogan":"","work":"","help":"","referral":""}`;
 
 // ── 자동 명함 AI: 확정 문구를 선택 언어로 번역 (이름은 번역하지 않음 — 본인이 직접 입력) ──
 async function autocardTranslate(env, body) {
-  const from = AUTOCARD_LANGS[body.from] ? body.from : 'ko';
-  const to = [...new Set((body.to || []).filter(l => AUTOCARD_LANGS[l] && l !== from))].slice(0, 3);
+  const from = autocardLangName(body.from) ? body.from : 'ko';
+  const to = [...new Set((body.to || []).filter(l => autocardLangName(l) && l !== from))].slice(0, 3);
   if (!to.length) return json({});
   const t = body.texts || {};
   const texts = { name: clip(t.name, 40), title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), work: clip(t.work, 400), help: clip(t.help, 400), referral: clip(t.referral, 400), specialties: clip(t.specialties, 600) };
   const shape = '{' + to.map(l => `"${l}":{"name":"","title":"","company":"","slogan":"","work":"","help":"","referral":"","specialties":""}`).join(',') + '}';
-  const prompt = `다음 디지털 명함 문구(${AUTOCARD_LANGS[from]})를 ${to.map(l => AUTOCARD_LANGS[l]).join(', ')}로 번역해.
+  const prompt = `다음 디지털 명함 문구(${autocardLangName(from)})를 ${to.map(l => autocardLangName(l) + '(' + l + ')').join(', ')}로 번역해.
 - 명함에 어울리게 자연스럽고 짧게. 의미를 더하거나 빼지 마.
 - name(사람 이름)은 뜻을 번역하지 말고 그 언어 사용자가 읽는 표기로: 영어·베트남어는 로마자로 이름 먼저·성 나중(예: 송승훈 → Seunghoon Song), 일본어는 가타카나(예: ソン・スンフン), 중국어는 가장 흔한 한자 표기로 추정, 몽골어는 키릴 문자, 태국어는 태국 문자(예: 송승훈 → ซง ซึงฮุน). 원문 이름이 이미 그 언어 표기면 그대로.
 - company(회사명)는 고유명사라 번역하지 말고 그 언어 사용자가 읽을 수 있게 표기만(이미 영문이면 그대로).
@@ -311,6 +320,53 @@ async function isAdminToken(idToken) {
     const u = (await res.json()).users?.[0];
     return !!(u && u.emailVerified && AUTOCARD_ADMINS.includes(String(u.email || '').toLowerCase()));
   } catch (e) { return false; }   // 확인 실패 시 일반 사용자로 취급
+}
+// ── 자동 명함: 목록에 없는 언어의 화면 문구를 AI가 번역(언어·원문별로 KV에 영구 저장 → 두 번째 사람부터 즉시) ──
+// 원문(영어)은 앱이 보낸다. 캐시 키에 원문 해시가 들어가므로 누가 이상한 원문을 보내도 그 사람에게만 영향.
+const UI_DAILY_PER_IP = 8;   // 새 언어 번역(캐시 없음)만 셈 — 같은 와이파이에서 여러 언어가 들어와도 충분
+async function autocardUi(env, request, body) {
+  const lang = String(body.lang || ''), name = autocardLangName(lang);
+  if (!name) return json({ error: 'unsupported language' }, 400);
+  const src = body.src && typeof body.src === 'object' ? body.src : {};
+  const norm = {}; let total = 0;
+  for (const k of Object.keys(src).filter(k => /^[\w.]{1,40}$/.test(k) && typeof src[k] === 'string').sort().slice(0, 320)) { norm[k] = src[k].slice(0, 600); total += norm[k].length; }
+  if (!Object.keys(norm).length || total > 45000) return json({ error: 'bad source' }, 400);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(norm)));
+  const hash = [...new Uint8Array(digest)].slice(0, 10).map(b => b.toString(16).padStart(2, '0')).join('');
+  const cacheKey = `ac-ui:v1:${lang}:${hash}`;
+  if (env.OCR_CACHE) {
+    const hit = await env.OCR_CACHE.get(cacheKey, 'json');
+    if (hit) return json({ strings: hit, cached: true });
+    const day = new Date().toISOString().slice(0, 10), rk = `ac-uirl:ip:${request.headers.get('CF-Connecting-IP') || 'noip'}:${day}`;
+    const n = Number(await env.OCR_CACHE.get(rk)) || 0;
+    if (n >= UI_DAILY_PER_IP) return json({ error: 'daily limit', limited: true }, 429);
+    await env.OCR_CACHE.put(rk, String(n + 1), { expirationTtl: 60 * 60 * 26 });
+  }
+  // 한 번에 다 보내면 응답이 길어져 느리고 잘릴 수 있어 60개씩 나눠 동시에 번역
+  const keys = Object.keys(norm), chunks = [];
+  for (let i = 0; i < keys.length; i += 60) chunks.push(Object.fromEntries(keys.slice(i, i + 60).map(k => [k, norm[k]])));
+  const parts = await Promise.all(chunks.map(c => callClaude(env, [{ type: 'text', text: `Translate the UI strings of a mobile web app (a digital business card maker) from English into ${name} (language code "${lang}").
+Rules:
+- Natural, short wording that a native speaker expects in an app. Keep the meaning; add nothing.
+- Keep {placeholders} such as {price}, {n}, {lang} exactly as they are.
+- Keep HTML tags (<b>, </b>, <br>, <a href="...">, </a>) exactly as they are; translate only the text around them.
+- Keep \n line breaks, emoji, and the words CardBook, BNI, Google, AI, QR, PNG, URL, Q1, Q2, Q3.
+- Keys starting with "card." are button labels on the business card itself.
+- Values of keys starting with "font_" look like "Name|Description"; keep the "|".
+Answer only with JSON using exactly the same keys: {"key": "translation", ...}
+Strings: ${JSON.stringify(c)}` }], 8000, AUTOCARD_MODELS).catch(() => ({}))));
+  const got = Object.assign({}, ...parts), out = {};
+  // 틀이 깨진 번역(자리표시자·태그가 달라짐)은 영어 원문으로 둠 — 화면이 깨지는 것보다 영어 한 줄이 낫다
+  const sig = v => JSON.stringify([(v.match(/\{\w+\}/g) || []).sort(), (v.match(/<\/?[a-z]+/gi) || []).map(x => x.toLowerCase()).sort()]);
+  let ok = 0;
+  for (const k of keys) {
+    const v = got[k];
+    if (typeof v === 'string' && v.trim() && v.length <= 1500 && !/<script|on\w+=/i.test(v) && sig(v) === sig(norm[k])) { out[k] = v; ok++; }
+    else out[k] = norm[k];
+  }
+  if (ok < keys.length * 0.8) return json({ error: 'translation failed' }, 502);   // 대부분 실패면 저장하지 않음(다음 사람이 다시 시도)
+  if (env.OCR_CACHE) await env.OCR_CACHE.put(cacheKey, JSON.stringify(out));
+  return json({ strings: out });
 }
 async function importRateLimit(env, request, deviceId) {
   if (!env.OCR_CACHE) return null;   // KV 바인딩이 없으면 제한 없이 동작(캐시도 없음)
@@ -470,6 +526,7 @@ export default {
       if (url.pathname === '/autocard/draft') return await autocardDraft(env, await request.json());
       if (url.pathname === '/autocard/translate') return await autocardTranslate(env, await request.json());
       if (url.pathname === '/autocard/import') return await autocardImport(env, request, await request.json());
+      if (url.pathname === '/autocard/ui') return await autocardUi(env, request, await request.json());
 
       // ── 결제 확인: 토스에 승인 요청 → 성공 시 장수 충전 ──
       if (url.pathname === '/pay/confirm') {
