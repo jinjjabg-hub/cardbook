@@ -266,6 +266,16 @@ function normWebsite(v) {
 }
 // SNS(인스타·블로그·유튜브 등) → 바로 열리는 링크. 아이디만 있으면 서비스 주소를 붙인다
 const SNS_LABEL = { instagram: '인스타그램', blog: '블로그', youtube: '유튜브', facebook: '페이스북', kakao: '카카오톡 채널', tiktok: '틱톡', threads: '스레드' };
+// AI가 한 칸에 "@a @b"나 "@id 감도녀 YouTube 채널"처럼 보내도 버리지 않게: 주소면 그대로, 아니면 아이디 모양만 골라 하나씩
+function snsLinks(x) {
+  const type = (x && x.type) || '', raw = String((x && x.value) || '').trim();
+  const one = snsLink(x); if (one && !/\s/.test(raw)) return [one];
+  const parts = raw.split(/[\s,/|·]+/).filter(Boolean);
+  const urls = parts.filter(p => /\.[a-z]{2,}\//i.test(p) || /^https?:/i.test(p));
+  const ids = parts.filter(p => /^@[\w.]{2,40}$/.test(p));
+  const pick = urls.length || ids.length ? [...urls, ...ids] : (one ? [raw] : []);
+  return pick.map(v => snsLink({ type, value: v })).filter(Boolean);
+}
 function snsLink(x) {
   const type = String((x && x.type) || '').toLowerCase().trim(), raw = String((x && x.value) || '').trim().replace(/\s+/g, '');
   if (!SNS_LABEL[type] || !raw) return null;
@@ -305,7 +315,7 @@ function cleanImport(r) {
     phone, phone2, email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : '', website, address: str(r.address, 150),
     slogan: str(r.slogan, 120), specialties: list(r.specialties, 8, 60), referral: list(r.referral, 5, 120), career: list(r.career, 12, 80),
     chapter: normChapter(r.chapter), photoBox,
-    sns: (Array.isArray(r.sns) ? r.sns : []).map(snsLink).filter(Boolean).slice(0, 4),
+    sns: (Array.isArray(r.sns) ? r.sns : []).flatMap(snsLinks).filter((l, i, a) => a.findIndex(x => x.url === l.url) === i).slice(0, 4),
     style: cleanStyle(r.style),
   };
 }
@@ -382,14 +392,14 @@ async function importRateLimit(env, request, deviceId) {
 async function autocardImport(env, request, body) {
   const { image, mediaType, hash, deviceId, idToken } = body;
   if (!image || image.length > 7_000_000) return json({ error: '이미지가 없거나 너무 커요' }, 400);
-  // 캐시 키 버전: 추출 항목이 늘면 올린다(v2: sns, v3: style). 카드북 OCR 캐시와 키가 겹치지 않게 접두어
+  // 캐시 키 버전: 추출 항목이 늘면 올린다(v2: sns, v3: style, v4: 아이콘만 있는 SNS·여러 아이디). 카드북 OCR 캐시와 키가 겹치지 않게 접두어
   const okHash = hash && /^[a-f0-9]{64}$/.test(hash);
-  const cacheKey = okHash ? 'ac-import:v3:' + hash : '';
+  const cacheKey = okHash ? 'ac-import:v4:' + hash : '';
   let seenBefore = false;
   if (cacheKey && env.OCR_CACHE) {
     const hit = await env.OCR_CACHE.get(cacheKey, 'json');
     if (hit) return json({ ...cleanImport(hit), cached: true });   // 같은 이미지 재요청은 횟수 차감 없음(정리 규칙은 최신으로 다시 적용)
-    for (const old of ['v2', 'v1']) if (!seenBefore) seenBefore = !!(await env.OCR_CACHE.get(`ac-import:${old}:` + hash));   // 예전 버전으로 이미 읽은 이미지 → 새 항목만 다시 읽음, 횟수는 안 셈
+    for (const old of ['v3', 'v2', 'v1']) if (!seenBefore) seenBefore = !!(await env.OCR_CACHE.get(`ac-import:${old}:` + hash));   // 예전 버전으로 이미 읽은 이미지 → 새 항목만 다시 읽음, 횟수는 안 셈
   }
   if (!seenBefore && !(await isAdminToken(idToken))) {
     const limited = await importRateLimit(env, request, deviceId);
@@ -401,7 +411,7 @@ async function autocardImport(env, request, body) {
 - name: 사람 이름만(직함 제외). 글자 사이 띄어쓰기는 빼고 붙여 써(예: "박 지 형" → "박지형"). 한글 이름이 없고 영문 이름만 있으면 영문 그대로. title: 직함(대표, 대표원장, 대표 세무사 등). company: 회사·상호명(한글 표기가 있으면 한글).
 - phone: 휴대폰(010…). phone2: 사무실·대표 전화(T., Tel 등). 팩스(F., Fax)는 넣지 마.
 - email, address: 보이는 그대로. website: 홈페이지 주소만 글자 그대로(마크다운 링크 표기 금지). 인스타그램·블로그 아이디(@…, 아이콘 옆 아이디)는 website에 넣지 마.
-- sns: 인스타그램·블로그·유튜브·페이스북·카카오톡 채널·틱톡·스레드 주소나 아이디가 보이면 [{"type":"instagram|blog|youtube|facebook|kakao|tiktok|threads","value":"보이는 그대로"}]. 아이콘으로 종류를 판단해. 없으면 [].
+- sns: 인스타그램·블로그·유튜브·페이스북·카카오톡 채널·틱톡·스레드 주소나 아이디가 보이면 [{"type":"instagram|blog|youtube|facebook|kakao|tiktok|threads","value":"보이는 그대로"}]. 서비스 이름 없이 아이콘만 있어도 아이콘 모양으로 종류를 판단해(카메라 모양=instagram, 빨간 재생 버튼=youtube, f=facebook, 초록 N/블로그=blog, 말풍선 TALK=kakao). 아이디가 여러 개면 하나씩 따로 항목으로. value에는 아이디(@…)나 주소만 넣고 설명 글("○○ 채널" 등)은 빼. 없으면 [].
 - slogan: 가장 크게 강조된 소개 문구 한 줄(없으면 "").
 - specialties: 전문분야·서비스·취급 품목을 짧은 항목 리스트로(원문 표현 유지, 최대 8개).
 - referral: "원하는 리퍼럴", "이런 분을 소개해주세요"처럼 소개받고 싶은 대상을 명시한 항목이 있을 때만. 없으면 [].
