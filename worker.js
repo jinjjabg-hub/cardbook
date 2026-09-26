@@ -209,7 +209,7 @@ JSON으로만 답해: {"slogan":"","work":"","help":"","referral":""}`;
 // ── 자동 명함 AI: 확정 문구를 선택 언어로 번역 (이름은 번역하지 않음 — 본인이 직접 입력) ──
 async function autocardTranslate(env, body) {
   const from = autocardLangName(body.from) ? body.from : 'ko';
-  const to = [...new Set((body.to || []).filter(l => autocardLangName(l) && l !== from))].slice(0, 3);
+  const to = [...new Set((body.to || []).filter(l => autocardLangName(l) && l !== from))].slice(0, 4);   // 입력 언어가 명함 언어에 없으면 최대 4개로 번역
   if (!to.length) return json({});
   const t = body.texts || {};
   const texts = { name: clip(t.name, 40), title: clip(t.title, 80), company: clip(t.company, 80), slogan: clip(t.slogan, 200), work: clip(t.work, 400), help: clip(t.help, 400), referral: clip(t.referral, 400), specialties: clip(t.specialties, 600) };
