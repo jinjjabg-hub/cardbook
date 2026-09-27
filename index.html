@@ -924,14 +924,14 @@ window.openMemberAdmin = function() {
   modal.innerHTML = `
     <div style="background:#fff;border-radius:20px;padding:24px;width:100%;max-width:380px;max-height:88vh;overflow-y:auto;">
       <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">멤버 등록</div>
-      <div style="font-size:11px;color:#64748b;margin-bottom:18px;">디카를 만든 멤버를 명부에 추가합니다</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:18px;">비즈홈·디지털 명함이 있는 멤버를 명부에 추가합니다</div>
       <input id="maName" placeholder="이름 *" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maTitle" placeholder="직함 (예: 대표)" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maCompany" placeholder="회사명" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maIndustry" placeholder="업종 (예: 뷰티, 보험)" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maPhone" placeholder="전화번호" type="tel" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maEmail" placeholder="이메일" type="email" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
-      <input id="maUrl" placeholder="디카 링크 (https://...)" type="url" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
+      <input id="maUrl" placeholder="비즈홈·디지털 명함 링크 (https://...)" type="url" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maChapter" list="chapterList" placeholder="챕터 입력 (예: 파이오니어)" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:12px;outline:none;">
       <button onclick="saveMemberToRoster()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">명부에 등록</button>
       <button onclick="document.getElementById('memberAdminModal').remove()" style="width:100%;padding:11px;border-radius:12px;border:none;background:transparent;color:#64748b;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
@@ -1869,7 +1869,7 @@ function showDicaRegisterModal() {
       <div style="text-align:center;margin-bottom:20px;">
         <div style="font-size:40px;margin-bottom:10px;">📇</div>
         <div style="font-family:'Nanum Gothic',sans-serif;font-size:18px;font-weight:800;color:#16305e;margin-bottom:8px;">내 디지털 명함 등록</div>
-        <div style="font-size:13px;color:#5b7bb0;line-height:1.7;">내 DiCA 링크를 등록하면<br>QR과 명함 공유가 바로 활성화돼요.</div>
+        <div style="font-size:13px;color:#5b7bb0;line-height:1.7;">내 명함(비즈홈·디지털 명함) 링크를 등록하면<br>QR과 명함 공유가 바로 활성화돼요.</div>
       </div>
       <input id="dicaUrlInput" type="url" placeholder="https://jinjjabg-hub.github.io/..." 
         style="width:100%;background:#fff;border:1.5px solid rgba(37,99,235,0.25);border-radius:12px;padding:13px 14px;font-size:13px;color:#16305e;font-family:'Noto Sans KR',sans-serif;outline:none;margin-bottom:12px;"
@@ -2149,7 +2149,7 @@ window.parseLinkCard = async function() {
       window._lkPendingText = d._multilangText || text;
       document.getElementById('linkStep1').style.display = 'none';
       document.getElementById('linkStep2').style.display = 'block';
-      showToast('✨ DiCA 명함에서 바로 가져왔어요!');
+      showToast('✨ 명함 링크에서 바로 가져왔어요!');
       return;
     }
   }
@@ -2196,7 +2196,7 @@ window.parseLinkCard = async function() {
 window.refreshDicaCards = async function() {
   if(!currentUser) { showToast('❌ 로그인 필요'); return; }
   const targets = allCards.filter(c => c.url && _dicaRawUrl(c.url));
-  if(!targets.length) { showToast('갱신할 DiCA 카드가 없어요'); return; }
+  if(!targets.length) { showToast('갱신할 비즈홈·디지털 명함이 없어요'); return; }
   showToast(`🔄 ${targets.length}장 갱신 중... 잠시만요`);
   let ok = 0, fail = 0;
   for(const c of targets) {
@@ -2346,14 +2346,14 @@ window.openPricingModal = function() {
   modal.innerHTML = `
     <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;max-height:88vh;overflow-y:auto;padding:28px 24px 40px;">
       <div style="text-align:center;font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">요금제</div>
-      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:20px;">DiCA·연락처·링크 저장은 언제나 무료예요<br><span style="font-size:11px">카톡·이메일로 받은 이미지 명함 파일이 인식이 가장 잘 돼요</span></div>
+      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:20px;">비즈홈·디지털 명함·연락처·링크 저장은 언제나 무료·무제한이에요<br><span style="font-size:11px">카톡·이메일로 받은 이미지 명함 파일이 인식이 가장 잘 돼요</span></div>
 
       <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:12px;">
         <div style="font-size:13px;font-weight:800;color:#16305e;margin-bottom:8px;">🆓 무료</div>
         <div style="font-size:12px;color:#3b4a63;line-height:2.1;">
           가입 시 <b>${FREE_SIGNUP}장</b> 지급 (소멸 없음)<br>
           매달 1일 <b>${FREE_MONTHLY}장</b> 자동 충전 (이번 달 안에 써야 해요)<br>
-          <b>내 DiCA 명함 등록 시 이미지 명함 ${DICA_OWNER_BONUS}장</b> 추가 지급 (소멸 없음)<br>
+          <b>내 비즈홈 등록 시 이미지 명함 ${DICA_OWNER_BONUS}장</b> 추가 지급 (소멸 없음)<br>
           <b>내 디지털 명함 등록 시 50장</b> 추가 지급 (1회, 소멸 없음)
         </div>
       </div>
@@ -2373,7 +2373,7 @@ window.openPricingModal = function() {
           ✔️ 명함 이미지를 <b>새로</b> 인식할 때만 1장<br>
           ✔️ 이미 저장된 것과 같은 이미지는 <b>0원</b>(자동 재사용)<br>
           ✔️ 인식이 실패하면 차감되지 않아요<br>
-          ✔️ DiCA·링크·연락처 저장은 <b>무제한·무료</b>
+          ✔️ 비즈홈·디지털 명함·링크·연락처 저장은 <b>무제한·무료</b> (장수 차감 없음)
         </div>
       </div>
 
@@ -2402,7 +2402,7 @@ window.openChargeModal = async function() {
           <span style="font-size:11px;color:#5b7bb0">장당 ${Math.round(p.price/p.n)}원</span>
           <span style="font-size:14px;font-weight:700;color:#16305e">${p.price.toLocaleString()}원</span>
         </button>`).join('')}
-      <div style="font-size:10px;color:#889;line-height:1.6;margin:10px 2px 14px">이미지 스캔 1건 = 1장. 같은 이미지를 다시 넣거나 인식에 실패하면 차감되지 않아요. DiCA·링크·연락처 저장은 무제한.</div>
+      <div style="font-size:10px;color:#889;line-height:1.6;margin:10px 2px 14px">이미지 스캔 1건 = 1장. 같은 이미지를 다시 넣거나 인식에 실패하면 차감되지 않아요. 비즈홈·디지털 명함·링크·연락처 저장은 무제한(장수 차감 없음).</div>
       <button onclick="document.getElementById('chargeModal').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#aaa;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
@@ -2840,12 +2840,12 @@ window.saveContactCard = async function() {
         <div style="text-align:center;padding:6px 0 14px;">
           <div style="font-size:40px;margin-bottom:8px;">🔗</div>
           <div style="font-size:14px;font-weight:700;color:#16305e;margin-bottom:6px;">디지털 명함 링크로 추가</div>
-          <div style="font-size:12px;color:#64748b;line-height:1.7;">🟢 <b>DiCA 링크</b>는 주소만 넣으면 자동으로 읽어와요<br>⚪ <b>그 외 링크</b>는 내용을 붙여넣어야 정보가 채워져요</div>
+          <div style="font-size:12px;color:#64748b;line-height:1.7;">🟢 <b>비즈홈·디지털 명함 링크</b>는 주소만 넣으면 자동으로 읽어와요<br>⚪ <b>그 외 링크</b>는 내용을 붙여넣어야 정보가 채워져요</div>
         </div>
         <div class="ocr-field"><div class="ocr-label">명함 링크</div><input class="ocr-input" id="lkUrl" placeholder="https://..." type="url"/></div>
         <div class="ocr-field">
-          <div class="ocr-label">명함 내용 붙여넣기 (DiCA 링크면 생략 가능)</div>
-          <textarea id="lkText" placeholder="DiCA가 아닌 링크라면: 명함 페이지에서 전체선택 → 복사 → 여기에 붙여넣기" style="width:100%;min-height:110px;box-sizing:border-box;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.2);font-family:'Noto Sans KR',sans-serif;font-size:13px;resize:vertical;outline:none;background:#fff;color:#16305e;"></textarea>
+          <div class="ocr-label">명함 내용 붙여넣기 (비즈홈·디지털 명함 링크면 생략 가능)</div>
+          <textarea id="lkText" placeholder="비즈홈·디지털 명함이 아닌 링크라면: 명함 페이지에서 전체선택 → 복사 → 여기에 붙여넣기" style="width:100%;min-height:110px;box-sizing:border-box;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.2);font-family:'Noto Sans KR',sans-serif;font-size:13px;resize:vertical;outline:none;background:#fff;color:#16305e;"></textarea>
         </div>
         <button class="ocr-save-btn" onclick="parseLinkCard()">✨ 정보 자동 추출</button>
       </div>
