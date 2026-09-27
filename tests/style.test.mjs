@@ -1,0 +1,10 @@
+import assert from 'assert';
+let reply = {}; globalThis.fetch = async () => new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(reply) }] }));
+const w = (await import('./worker.mjs')).default; let n = 0;
+const call = async () => (await (await w.fetch(new Request('https://w/autocard/import', { method: 'POST', headers: { 'CF-Connecting-IP': 's' + n++ }, body: JSON.stringify({ image: 'x' }) }), { ANTHROPIC_API_KEY: 'k' })).json()).style;
+reply = { style: { main: '#1b7f3a', sub: 'FFFFFF', point: '#0F2A5C', tpl: 'minimal', font: 'modern' } };
+assert.deepEqual(await call(), { main: '#1B7F3A', sub: '#FFFFFF', point: '#0F2A5C', tpl: 'minimal', font: 'modern' });
+reply = { style: { main: 'green', sub: '#fff', point: '#123456', tpl: 'fancy', font: 'comic' } };
+assert.deepEqual(await call(), { main: '', sub: '', point: '', tpl: '', font: '' }, '이상한 값은 버림(색은 3개 다 있어야)');
+reply = {}; assert.deepEqual(await call(), { main: '', sub: '', point: '', tpl: '', font: '' });
+console.log('STYLE TESTS PASSED');
