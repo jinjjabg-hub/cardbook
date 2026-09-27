@@ -201,6 +201,22 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .mycard-sheet{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:600;display:flex;align-items:flex-end;justify-content:center;}
 .mycard-sheet-box{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:430px;padding:20px 20px 28px;box-sizing:border-box;}
 .mycard-sheet-btn{display:block;width:100%;box-sizing:border-box;padding:14px;border-radius:12px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:9px;font-family:'Noto Sans KR',sans-serif;}
+/* ===== 디카 저장 팝업 · 홈화면 추가 팝업 (아래에서 올라오는 시트) ===== */
+.dica-popup,.install-popup{position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:450;align-items:flex-end;justify-content:center;padding:16px;}
+.dica-sheet,.install-sheet{background:#f6f8fc;border-radius:20px;padding:26px 22px 20px;width:100%;max-width:400px;max-height:calc(100vh - 32px);overflow-y:auto;text-align:center;font-family:'Noto Sans KR',sans-serif;box-shadow:0 -8px 30px rgba(0,0,0,0.2);}
+.dica-avatar{width:60px;height:60px;border-radius:50%;background:#16305e;color:#f6f8fc;font-size:24px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;}
+.dica-name{font-size:19px;font-weight:800;color:#16305e;}
+.dica-sub{font-size:13px;color:#5b7bb0;margin-top:4px;}
+.dica-company{font-size:13px;color:#3b4a63;margin:2px 0 14px;}
+.dica-save-btn,.install-main-btn{display:block;width:100%;padding:14px;border-radius:12px;border:none;background:#16305e;color:#f6f8fc;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;}
+.dica-cancel-btn,.install-skip-btn{display:block;width:100%;margin-top:8px;padding:12px;border-radius:12px;border:none;background:transparent;color:#5b7bb0;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
+.install-icon{font-size:40px;margin-bottom:10px;}
+.install-title{font-size:17px;font-weight:800;color:#16305e;margin-bottom:8px;}
+.install-desc{font-size:13px;color:#3b4a63;line-height:1.7;margin-bottom:14px;}
+#installSteps{text-align:left;margin-bottom:16px;}
+.install-step{display:flex;align-items:center;gap:10px;padding:8px 0;}
+.install-step-num{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:rgba(37,99,235,0.13);color:#2563eb;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.install-step-text{font-size:13px;color:#3b4a63;line-height:1.5;}
 </style>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1458,7 +1474,7 @@ function _showKakaoInChrome() {
           3️⃣ <b style="color:#fff">Chrome</b> 선택 → 명함 저장
         </div>
       </div>
-      <button onclick="this.closest('[style]').remove()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#FEE500;color:#3c1e1e;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">확인</button>
+      <button onclick="this.closest('body > div').remove()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#FEE500;color:#3c1e1e;font-weight:700;font-size:14px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">확인</button>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -1511,14 +1527,17 @@ function _showDuplicateConfirm(name) {
         <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:8px;">이미 저장된 명함이에요</div>
         <div style="font-size:13px;color:#5b7bb0;margin-bottom:24px;line-height:1.7;">${name}님 명함이 카드북에 있어요.<br>최신 정보로 업데이트할까요?</div>
         <div style="display:flex;gap:10px;">
-          <button onclick="this.closest('[style]').remove(); window._dupResolve(false);" 
+          <button data-dup="0" 
             style="flex:1;padding:13px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.25);background:transparent;color:#5b7bb0;font-size:14px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">취소</button>
-          <button onclick="this.closest('[style]').remove(); window._dupResolve(true);"
+          <button data-dup="1"
             style="flex:1;padding:13px;border-radius:12px;border:none;background:#16305e;color:#f6f8fc;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">업데이트</button>
         </div>
       </div>
     `;
-    window._dupResolve = resolve;
+    // 누른 버튼만 지워지고 팝업이 남던 문제 → 팝업 전체를 닫고 한 번만 응답
+    const done = ok => { modal.remove(); resolve(ok); };
+    modal.querySelectorAll('[data-dup]').forEach(b => b.onclick = () => done(b.dataset.dup === '1'));
+    modal.onclick = e => { if(e.target === modal) done(false); };
     document.body.appendChild(modal);
   });
 }
@@ -1655,7 +1674,7 @@ function showInstallGuide() {
       <div style="font-size:36px;margin-bottom:12px">📱</div>
       <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:10px">홈화면에 추가하기</div>
       <div style="font-size:14px;color:#3b4a63;line-height:1.7;margin-bottom:20px">${msg}</div>
-      <button onclick="this.closest('div[style]').remove()" style="background:#16305e;color:#f6f8fc;border:none;border-radius:12px;padding:13px 32px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif">확인</button>
+      <button onclick="this.closest('body > div').remove()" style="background:#16305e;color:#f6f8fc;border:none;border-radius:12px;padding:13px 32px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif">확인</button>
     </div>
   `;
   document.body.appendChild(overlay);
