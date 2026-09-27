@@ -178,6 +178,9 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .home-bh{background:#fff;color:#16305e;border:1.5px solid rgba(201,164,90,0.55);box-shadow:none;}
 .home-bh .home-ac-ico{background:rgba(201,164,90,0.16);}
 .home-ac-ico{flex-shrink:0;width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;font-size:19px;}
+.home-ac-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;}
+.home-ac-share{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;border:none;border-radius:12px;background:rgba(255,255,255,0.18);color:#fff;font-size:16px;padding:8px 10px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;}
+.home-ac-share span{font-size:11px;font-weight:700;}
 .home-ac-txt{flex:1;min-width:0;}
 .home-ac-txt b{display:block;font-size:14px;font-weight:800;}
 .home-ac-txt small{display:block;font-size:11.5px;opacity:.85;margin-top:2px;line-height:1.45;}
@@ -1262,11 +1265,13 @@ function renderHome() {
       </div>
       <button class="home-hero-btn" onclick="goMyCard()">${myDicaUrl ? '📇 내 명함 · QR' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
     </div>
-    <a class="home-ac" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener" ${myDicaUrl ? 'onclick="return shareAutocard()"' : ''}>
-      <span class="home-ac-ico">✨</span>
-      <span class="home-ac-txt"><b>${myDicaUrl ? '주변 분께 디지털 명함 추천하기' : '내 디지털 명함 만들기'}</b><small>명함 사진 한 장이면 5분 · 5,900원 · 받은 사람은 카드북에 저장</small></span>
-      <span class="home-ac-go">›</span>
-    </a>
+    <div class="home-ac">
+      <a class="home-ac-main" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener">
+        <span class="home-ac-ico">✨</span>
+        <span class="home-ac-txt"><b>${myDicaUrl ? '디지털 명함 만들기' : '내 디지털 명함 만들기'}</b><small>명함 사진 한 장이면 5분 · 5,900원 · 받은 사람은 카드북에 저장</small></span>
+      </a>
+      <button type="button" class="home-ac-share" onclick="shareAutocard()">📤<span>추천</span></button>
+    </div>
     ${myDicaUrl ? `<a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/T.M-LINK/#pricing" target="_blank" rel="noopener">
       <span class="home-ac-ico">🏠</span>
       <span class="home-ac-txt"><b>비즈홈 — 나만의 작은 홈페이지</b><small>경력·사례·서비스·영상까지 · 15만 원부터 · BNI 특별가</small></span>
