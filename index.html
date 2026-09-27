@@ -316,6 +316,8 @@ let currentChapter = '전체';
 let searchTimer = null;
 let authMode = 'login';
 let myDicaUrl = null; // 내 DiCA 링크 (Firestore에서 로드)
+// 자동 명함 발행 화면의 "카드북에 내 명함으로 등록" → ?mycard=<명함 주소>. 로그인 전에 들어와도 잃지 않게 먼저 보관
+try { const _mc = new URLSearchParams(location.search).get('mycard'); if(_mc) sessionStorage.setItem('cbMyCard', _mc); } catch(e) {}
 // ===== 챕터: 고정 목록 없음. 데이터에 있는 챕터명이 곧 목록 =====
 function allChapterNames() {
   const set = new Set();
@@ -1241,7 +1243,7 @@ function renderHome() {
         <div class="home-stat"><div class="home-stat-num">${updCards.length}</div><div class="home-stat-label">새 소식</div></div>
         <div class="home-stat"><div class="home-stat-num">${stale.length}</div><div class="home-stat-label">챙길 사람</div></div>
       </div>
-      <button class="home-hero-btn" onclick="goMyCard()">📇 내 명함 · QR</button>
+      <button class="home-hero-btn" onclick="goMyCard()">${myDicaUrl ? '📇 내 명함 · QR' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
     </div>
     <div class="home-section">
       <div class="home-sec-title">📣 새 소식</div>
@@ -1802,6 +1804,7 @@ async function loadUserProfile(uid) {
       el.textContent = display;
     }
     // dicaUrl 없으면 등록 모달 표시 (신규 or 기존인데 등록 안 한 경우)
+    if(await applyMyCardParam()) return;
     if(!myDicaUrl) {
       showDicaRegisterModal();
     } else {
@@ -1810,6 +1813,21 @@ async function loadUserProfile(uid) {
   } catch(e) {
     console.error('프로필 로드 실패', e);
   }
+}
+
+// 자동 명함 주소만 받는다(다른 사이트 주소를 내 명함으로 심는 링크 방지). 보너스 지급은 Worker가 본인 명함인지 다시 확인
+async function applyMyCardParam() {
+  let url = null;
+  try { url = sessionStorage.getItem('cbMyCard'); sessionStorage.removeItem('cbMyCard'); } catch(e) {}
+  if(!url || !/^https:\/\/jinjjabg-hub\.github\.io\/autocard\/c\/\?id=[A-Za-z0-9_-]{6,40}$/.test(url)) return false;
+  if(myDicaUrl === url) { showToast('✅ 이미 내 명함으로 등록돼 있어요'); generateMyQR(); return true; }
+  if(myDicaUrl && !confirm('내 명함을 방금 만든 자동 명함으로 바꿀까요?')) { generateMyQR(); return true; }
+  await db.collection('users').doc(currentUser.uid).set({ dicaUrl: url }, { merge: true });
+  myDicaUrl = url;
+  showToast('✅ 내 명함으로 등록됐어요!');
+  generateMyQR();
+  await grantDicaOwnerBonus(url);
+  return true;
 }
 
 // ===== 내 DiCA 등록 모달 =====
@@ -1830,6 +1848,11 @@ function showDicaRegisterModal() {
         style="width:100%;background:#fff;border:1.5px solid rgba(37,99,235,0.25);border-radius:12px;padding:13px 14px;font-size:13px;color:#16305e;font-family:'Noto Sans KR',sans-serif;outline:none;margin-bottom:12px;"
         onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='rgba(37,99,235,0.25)'">
       <button onclick="saveDicaUrl()" style="width:100%;background:#16305e;color:#f6f8fc;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">등록하기</button>
+      <div style="margin:6px 0 12px;padding:14px;border-radius:14px;background:#fff;border:1.5px dashed rgba(37,99,235,0.35);text-align:center;">
+        <div style="font-size:13px;font-weight:800;color:#16305e;margin-bottom:4px;">아직 디지털 명함이 없나요?</div>
+        <div style="font-size:12px;color:#5b7bb0;line-height:1.6;margin-bottom:10px;">명함 사진 한 장이면 5분 만에 만들어져요 · 5,900원<br>만든 뒤 버튼 한 번으로 여기 내 명함에 등록돼요</div>
+        <a href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener" style="display:block;background:linear-gradient(135deg,#2563eb,#60a5fa);color:#fff;border-radius:12px;padding:13px;font-size:14px;font-weight:700;text-decoration:none;">✨ 내 디지털 명함 만들기</a>
+      </div>
       <button onclick="skipDicaRegister()" style="width:100%;background:none;border:none;color:#a0a0a0;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;padding:8px;">나중에 하기</button>
     </div>
   `;
