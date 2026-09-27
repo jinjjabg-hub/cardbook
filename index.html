@@ -175,6 +175,8 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .home-stat-label{font-size:10px;opacity:.85;margin-top:2px;}
 .home-hero-btn{width:100%;border:none;background:#fff;color:#1d4ed8;font-weight:800;font-size:13px;padding:11px;border-radius:11px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;}
 .home-ac{display:flex;align-items:center;gap:12px;margin:12px 16px 0;padding:14px;border-radius:16px;text-decoration:none;background:linear-gradient(135deg,#16305e,#2563eb);color:#fff;box-shadow:0 6px 18px rgba(37,99,235,0.22);}
+.home-bh{background:#fff;color:#16305e;border:1.5px solid rgba(201,164,90,0.55);box-shadow:none;}
+.home-bh .home-ac-ico{background:rgba(201,164,90,0.16);}
 .home-ac-ico{flex-shrink:0;width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,0.16);display:flex;align-items:center;justify-content:center;font-size:19px;}
 .home-ac-txt{flex:1;min-width:0;}
 .home-ac-txt b{display:block;font-size:14px;font-weight:800;}
@@ -1210,8 +1212,8 @@ window.showView = function(v) {
 window.shareAutocard = function() {
   const url = 'https://jinjjabg-hub.github.io/autocard/';
   const text = '명함 사진 한 장이면 5분 만에 디지털 명함이 만들어져요 (5,900원)';
-  if(navigator.share) navigator.share({ title: '자동 명함', text, url }).catch(() => {});
-  else navigator.clipboard?.writeText(url).then(() => showToast('🔗 자동 명함 주소를 복사했어요'), () => window.open(url, '_blank'));
+  if(navigator.share) navigator.share({ title: '디지털 명함', text, url }).catch(() => {});
+  else navigator.clipboard?.writeText(url).then(() => showToast('🔗 디지털 명함 만들기 주소를 복사했어요'), () => window.open(url, '_blank'));
   return false;
 };
 
@@ -1262,9 +1264,14 @@ function renderHome() {
     </div>
     <a class="home-ac" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener" ${myDicaUrl ? 'onclick="return shareAutocard()"' : ''}>
       <span class="home-ac-ico">✨</span>
-      <span class="home-ac-txt"><b>${myDicaUrl ? '주변 분께 자동 명함 추천하기' : '내 디지털 명함 만들기'}</b><small>명함 사진 한 장이면 5분 · 5,900원 · 받은 사람은 카드북에 저장</small></span>
+      <span class="home-ac-txt"><b>${myDicaUrl ? '주변 분께 디지털 명함 추천하기' : '내 디지털 명함 만들기'}</b><small>명함 사진 한 장이면 5분 · 5,900원 · 받은 사람은 카드북에 저장</small></span>
       <span class="home-ac-go">›</span>
     </a>
+    ${myDicaUrl ? `<a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/T.M-LINK/#pricing" target="_blank" rel="noopener">
+      <span class="home-ac-ico">🏠</span>
+      <span class="home-ac-txt"><b>비즈홈 — 나만의 작은 홈페이지</b><small>경력·사례·서비스·영상까지 · 15만 원부터 · BNI 특별가</small></span>
+      <span class="home-ac-go">›</span>
+    </a>` : ''}
     <div class="home-section">
       <div class="home-sec-title">📣 새 소식</div>
       ${updHtml}
@@ -1841,7 +1848,7 @@ async function applyMyCardParam() {
   try { url = sessionStorage.getItem('cbMyCard'); sessionStorage.removeItem('cbMyCard'); } catch(e) {}
   if(!url || !/^https:\/\/jinjjabg-hub\.github\.io\/autocard\/c\/\?id=[A-Za-z0-9_-]{6,40}$/.test(url)) return false;
   if(myDicaUrl === url) { showToast('✅ 이미 내 명함으로 등록돼 있어요'); generateMyQR(); return true; }
-  if(myDicaUrl && !confirm('내 명함을 방금 만든 자동 명함으로 바꿀까요?')) { generateMyQR(); return true; }
+  if(myDicaUrl && !confirm('내 명함을 방금 만든 디지털 명함으로 바꿀까요?')) { generateMyQR(); return true; }
   await db.collection('users').doc(currentUser.uid).set({ dicaUrl: url }, { merge: true });
   myDicaUrl = url;
   showToast('✅ 내 명함으로 등록됐어요!');
@@ -2347,7 +2354,7 @@ window.openPricingModal = function() {
           가입 시 <b>${FREE_SIGNUP}장</b> 지급 (소멸 없음)<br>
           매달 1일 <b>${FREE_MONTHLY}장</b> 자동 충전 (이번 달 안에 써야 해요)<br>
           <b>내 DiCA 명함 등록 시 이미지 명함 ${DICA_OWNER_BONUS}장</b> 추가 지급 (소멸 없음)<br>
-          <b>내 자동 명함 등록 시 50장</b> 추가 지급 (1회, 소멸 없음)
+          <b>내 디지털 명함 등록 시 50장</b> 추가 지급 (1회, 소멸 없음)
         </div>
       </div>
 
