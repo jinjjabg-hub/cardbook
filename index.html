@@ -1101,7 +1101,7 @@ function renderCards(cards) {
       <div class="card-actions">
         ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 ${card.phone}</a>`:'<span></span>'}
         ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇</button>`:''}
-        ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 명함 보기</a>`:''}
+        ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 비즈홈</a>`:''}
         ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️</a>`:''}
         <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">📤</button>
         <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️</button>
