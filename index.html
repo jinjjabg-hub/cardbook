@@ -78,14 +78,14 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .bni-dot{width:4px;height:4px;background:var(--red);border-radius:50%;flex-shrink:0;}
 
 /* ACTIONS */
-.card-actions{padding:0 12px 12px;display:flex;gap:7px;}
-.act-btn{flex:1;padding:9px 6px;border-radius:10px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;border:none;min-height:36px;transition:all .2s;}
+.card-actions{padding:0 12px 12px;display:flex;flex-wrap:wrap;gap:7px;}
+.act-btn{flex:1;padding:9px 6px;border-radius:10px;flex-basis:30%;font-size:14px;font-weight:700;white-space:nowrap;cursor:pointer;font-family:'Noto Sans KR',sans-serif;display:flex;align-items:center;justify-content:center;gap:4px;text-decoration:none;border:none;min-height:36px;transition:all .2s;}
 .act-call{background:var(--gold-dim);border:1px solid rgba(37,99,235,0.3);color:var(--gold);}
 .act-view{background:rgba(255,255,255,0.5);border:1px solid rgba(37,99,235,0.2);color:#16305e;}
-.act-del{background:rgba(200,16,46,0.12);border:1px solid rgba(200,16,46,0.3);color:#C8102E;flex:0 0 36px;padding:9px;}
+.act-del{background:rgba(200,16,46,0.12);border:1px solid rgba(200,16,46,0.3);color:#C8102E;padding:9px 6px;}
 .act-btn:hover{opacity:.75;transform:scale(0.97);}
-.act-share{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;flex:0 0 36px;padding:9px;}
-.act-vcf{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;flex:0 0 36px;padding:9px;}
+.act-share{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;padding:9px 6px;}
+.act-vcf{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;padding:9px 6px;}
 
 /* CRM */
 .card-crm{border-top:1px solid var(--border);padding:10px 14px;display:none;}
@@ -1099,12 +1099,12 @@ function renderCards(cards) {
         <button class="upd-ok" onclick="ackCardUpdate('${card.docId}','${_upd.updatedAt}')">확인</button>
       </div>`:''}
       <div class="card-actions">
-        ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 ${card.phone}</a>`:'<span></span>'}
-        ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇</button>`:''}
+        ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 전화하기</a>`:''}
+        ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇 저장</button>`:''}
         ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 비즈홈</a>`:''}
-        ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️</a>`:''}
-        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">📤</button>
-        <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️</button>
+        ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️ 명함</a>`:''}
+        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">📤 전달하기</button>
+        <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️ 삭제하기</button>
       </div>
       <button class="crm-toggle" onclick="toggleCRM(this)">
         <span class="crm-arrow">▶</span> 메모
