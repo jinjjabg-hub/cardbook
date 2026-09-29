@@ -139,8 +139,8 @@
     }
 
     ol { counter-reset: item; }
-    ol li { counter-increment: item; padding-left: 22px; }
-    ol li::before {
+    ol > li { counter-increment: item; padding-left: 22px; }
+    ol > li::before {
       content: counter(item) '.';
       position: absolute;
       left: 0;
