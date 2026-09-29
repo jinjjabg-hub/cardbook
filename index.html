@@ -1100,7 +1100,7 @@ function renderCards(cards) {
       </div>`:''}
       <div class="card-actions">
         ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 전화하기</a>`:''}
-        ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇 저장</button>`:''}
+        ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇 연락처 저장</button>`:''}
         ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 비즈홈</a>`:''}
         ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️ 명함</a>`:''}
         <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">📤 전달하기</button>
@@ -1770,18 +1770,28 @@ window.saveToPhoneContacts = function(docId) {
     'END:VCARD'
   ].filter(Boolean).join('\r\n');
 
-  const blob = new Blob([lines], { type: 'text/vcard;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  // download 속성을 안 주는 이유: iOS 사파리는 이래야 "연락처 추가" 화면을 바로 띄워줌.
-  // 안드로이드 크롬은 vcf를 다운로드한 뒤 알림을 눌러 여는 방식으로 동작함.
+  const fname = (c.name || 'contact').replace(/[\\/:*?"<>|]/g,'') + '.vcf';
+  const file = new File([lines], fname, { type: 'text/vcard' });
+  // 1순위: 공유창(아이폰·안드로이드 모두 "연락처" 앱을 고를 수 있음)
+  if(navigator.canShare && navigator.canShare({ files:[file] })) {
+    navigator.share({ files:[file], title:c.name || '' })
+      .catch(e => { if(e.name !== 'AbortError') _downloadVcf(file); });
+    return;
+  }
+  // 2순위: 파일 내려받기 (PC·공유창 미지원 브라우저)
+  _downloadVcf(file);
+};
+function _downloadVcf(file) {
+  const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url;
-  a.target = '_blank';
+  a.download = file.name;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-};
+  showToast('📇 연락처 파일이 저장됐어요. 열어서 추가해 주세요');
+}
 window.shareApp = function() {
   if(navigator.share) navigator.share({ title:'BNI 명함첩', url: window.location.href });
   else { navigator.clipboard?.writeText(window.location.href); showToast('📋 링크 복사됨'); }
