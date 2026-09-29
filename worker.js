@@ -4,7 +4,9 @@
 // 결제(Secret): TOSS_SECRET_KEY(토스페이먼츠 시크릿 키), FIREBASE_SA(Firebase 서비스 계정 JSON 전체)
 
 // 충전 상품 — index.html의 PACKS와 반드시 같아야 함 (금액 검증에 사용)
-const PACKS = { p100: { n: 100, price: 3000 }, p300: { n: 300, price: 7000 }, p1000: { n: 1000, price: 20000 } };
+const PACKS = { p30: { n: 30, price: 1000 }, p100: { n: 100, price: 3000 }, p300: { n: 300, price: 7000 } };
+// 유료 크레딧은 구매일로부터 30일 뒤 소멸(다음 달 이월 불가) — 토스 '크레딧 소프트웨어업' 조건. 무상 지급분(가입·등록 보너스·리워드)은 소멸 없음
+const PAID_VALID_DAYS = 30, SAVE_REWARD = 5, SAVE_REWARD_MONTHLY_CAP = 50;
 const FIREBASE_PROJECT = 'mandu-e7c3c';
 const FIREBASE_WEB_API_KEY = 'AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0';
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500, AUTOCARD_OWNER_BONUS = 50;
@@ -121,6 +123,7 @@ async function getUserDoc(token, uid) {
   const doc = await res.json();
   const out = {};
   for (const [k, v] of Object.entries(doc.fields || {})) out[k] = v.integerValue !== undefined ? Number(v.integerValue) : (v.booleanValue ?? v.stringValue);
+  out.__updateTime = doc.updateTime;
   return out;
 }
 function fsPatch(uid, fields) {
@@ -133,32 +136,86 @@ async function commitWrites(token, writes) {
   const res = await fetch(`https://firestore.googleapis.com/v1/${base}:commit`, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ writes }) });
   if (!res.ok) throw new Error('Firestore 쓰기 실패: ' + (await res.text()).slice(0, 200));
 }
+// ── 크레딧(스캔 장수): 세 종류로 나눠 보관 ──
+//  credits    : 무상 지급분(가입·비즈홈/디지털 명함 등록 보너스·리워드) — 소멸 없음
+//  freeRemain : 이번 달 무료분(freeMonth 달에만 유효)
+//  paidLots   : 유료 충전분 [{n, exp, o}] JSON — 구매일로부터 PAID_VALID_DAYS일 뒤 소멸
+// 차감 순서: 이번 달 무료분 → 유료분(소멸 임박순) → 무상 지급분
+function parseLots(str, now = Date.now()) {
+  try { return (JSON.parse(str || '[]') || []).filter(l => l && l.n > 0 && l.exp > now).sort((a, b) => a.exp - b.exp); } catch (e) { return []; }
+}
+function creditState(u, now = Date.now()) {
+  const month = monthKey();
+  let base = typeof u.credits === 'number' ? u.credits : FREE_SIGNUP;
+  // 예전 문서(creditsV2 없음)는 credits에 월 무료분이 섞여 있음 → 한 번만 떼어낸다
+  if (!u.creditsV2 && typeof u.credits === 'number' && u.freeMonth) base = Math.max(0, base - Math.max(0, u.freeRemain || 0));
+  const monthly = u.freeMonth === month ? Math.max(0, u.freeRemain ?? FREE_MONTHLY) : FREE_MONTHLY;
+  const lots = parseLots(u.paidLots, now);
+  const paid = lots.reduce((a, l) => a + l.n, 0);
+  return { base, monthly, lots, paid, total: base + monthly + paid };
+}
+function statePatch(uid, st) {
+  return fsPatch(uid, { credits: st.base, freeMonth: monthKey(), freeRemain: st.monthly, paidLots: JSON.stringify(st.lots), creditsV2: true });
+}
+function spendOne(st) {
+  if (st.monthly > 0) st.monthly--;
+  else if (st.lots.length) { st.lots[0].n--; if (!st.lots[0].n) st.lots.shift(); }
+  else st.base--;
+  st.paid = st.lots.reduce((a, l) => a + l.n, 0); st.total--;
+  return st;
+}
+function creditSummary(st) {
+  return { credits: st.total, free: st.base + st.monthly, monthly: st.monthly, paid: st.paid, paidExp: st.lots[0]?.exp || null };
+}
 async function ensureCredits(token, uid) {
   const u = await getUserDoc(token, uid);
-  const isNew = typeof u.credits !== 'number';
-  let credits = isNew ? FREE_SIGNUP : u.credits;
-  const patch = {};
-  if (isNew) patch.credits = credits;
-  if (u.freeMonth !== monthKey()) {
-    const usedFree = Math.max(0, u.freeRemain || 0);
-    credits = credits - usedFree + FREE_MONTHLY;
-    patch.credits = credits; patch.freeMonth = monthKey(); patch.freeRemain = FREE_MONTHLY;
-  }
-  if (Object.keys(patch).length) await commitWrites(token, [fsPatch(uid, patch)]);
-  return credits;
+  const st = creditState(u);
+  const changed = !u.creditsV2 || u.freeMonth !== monthKey() || u.credits !== st.base || (u.paidLots || '[]') !== JSON.stringify(st.lots);
+  if (changed) await commitWrites(token, [statePatch(uid, st)]);
+  return st;
 }
 
+// 명함 주소 → 주인 uid. 디지털 명함은 autocards/{id}.ownerUid(발행된 것만), 비즈홈은 본인 등록 기록(dicaClaims)
+async function cardOwner(token, cardUrl) {
+  let u; try { u = new URL(cardUrl); } catch (e) { return null; }
+  if (!DICA_DOMAINS.includes(u.hostname)) return null;
+  const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+  const norm = (u.hostname + u.pathname).toLowerCase().replace(/\/$/, '');
+  if (AUTOCARD_PATHS.some(p => norm.startsWith(u.hostname + p))) {
+    const id = u.searchParams.get('id');
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(id || '')) return null;
+    const r = await fetch(`https://firestore.googleapis.com/v1/${base}/autocards/${id}`, { headers: { Authorization: 'Bearer ' + token } });
+    if (!r.ok) return null;
+    const f = (await r.json()).fields || {};
+    return f.status?.stringValue === 'published' ? f.ownerUid?.stringValue || null : null;
+  }
+  const r = await fetch(`https://firestore.googleapis.com/v1/${base}/dicaClaims/${encodeURIComponent(encodeURIComponent(norm))}`, { headers: { Authorization: 'Bearer ' + token } });
+  if (!r.ok) return null;
+  return (await r.json()).fields?.uid?.stringValue || null;
+}
 async function creditUser(env, uid, orderId, n, meta) {
   const token = await firebaseAccessToken(env);
   const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
-  const body = {
-    writes: [
-      { update: { name: `${base}/payments/${orderId}`, fields: { uid: { stringValue: uid }, credits: { integerValue: String(n) }, amount: { integerValue: String(meta.amount) }, paymentKey: { stringValue: meta.paymentKey }, method: { stringValue: meta.method || '' }, paidAt: { timestampValue: new Date().toISOString() } } }, currentDocument: { exists: false } },
-      { transform: { document: `${base}/users/${uid}`, fieldTransforms: [ { fieldPath: 'credits', increment: { integerValue: String(n) } }, { fieldPath: 'paidTotal', increment: { integerValue: String(n) } } ] } },
-    ],
-  };
-  const res = await fetch(`https://firestore.googleapis.com/v1/${base}:commit`, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error('Firestore 기록 실패: ' + (await res.text()).slice(0, 200));
+  const exp = Date.now() + PAID_VALID_DAYS * 86400000;
+  // 결제 기록은 "없을 때만" 생성(중복 방지) + 유료분 묶음 추가. 같은 사용자의 동시 결제로 묶음이 덮이지 않게 updateTime 조건을 걸고 재시도
+  for (let i = 0; i < 3; i++) {
+    const u = await getUserDoc(token, uid);
+    const st = creditState(u);
+    st.lots.push({ n, exp, o: orderId });
+    const up = statePatch(uid, st);
+    if (u.__updateTime) up.currentDocument = { updateTime: u.__updateTime };
+    const body = { writes: [
+      { update: { name: `${base}/payments/${orderId}`, fields: { uid: { stringValue: uid }, credits: { integerValue: String(n) }, amount: { integerValue: String(meta.amount) }, paymentKey: { stringValue: meta.paymentKey }, method: { stringValue: meta.method || '' }, paidAt: { timestampValue: new Date().toISOString() }, expiresAt: { timestampValue: new Date(exp).toISOString() } } }, currentDocument: { exists: false } },
+      up,
+      { transform: { document: `${base}/users/${uid}`, fieldTransforms: [ { fieldPath: 'paidTotal', increment: { integerValue: String(n) } } ] } },
+    ] };
+    const res = await fetch(`https://firestore.googleapis.com/v1/${base}:commit`, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (res.ok) return exp;
+    const t = await res.text();
+    if (/FAILED_PRECONDITION/.test(t) && !/ALREADY_EXISTS|already exists/i.test(t)) continue;   // 그사이 문서가 바뀜 → 다시 읽고 재시도
+    throw new Error('Firestore 기록 실패: ' + t.slice(0, 200));
+  }
+  throw new Error('Firestore 기록 실패: 잠시 후 다시 시도해주세요');
 }
 
 // ── 자동 명함 본인 등록 보너스 50장 (1회) ──
@@ -547,8 +604,8 @@ export default {
           const hit = await env.OCR_CACHE.get(hash, 'json');
           if (hit) return json({ ...hit, cached: true });
         }
-        const credits = await ensureCredits(fbToken, uid);
-        if (credits <= 0) return json({ error: '스캔 장수를 다 썼어요. 충전하면 바로 이어서 스캔할 수 있어요 (DiCA·링크 저장은 무제한)', needCharge: true }, 402);
+        const st = await ensureCredits(fbToken, uid);
+        if (st.total <= 0) return json({ error: '스캔 장수를 다 썼어요. 충전하면 바로 이어서 스캔할 수 있어요 (비즈홈·디지털 명함·링크 저장은 무제한)', needCharge: true }, 402);
         const result = await callClaude(env, [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
           { type: 'text', text: `이 명함(또는 명함 전단) 이미지를 읽고 아래 JSON 스키마로만 답해. 마크다운 없이 JSON만. 없는 항목은 빈 문자열.\n${OCR_SCHEMA}` },
@@ -556,10 +613,10 @@ export default {
         if (hash && env.OCR_CACHE) await env.OCR_CACHE.put(hash, JSON.stringify(result), { expirationTtl: 60 * 60 * 24 * 365 });
         const base_ = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
         await commitWrites(fbToken, [
-          fsPatch(uid, { credits: credits - 1 }),
+          statePatch(uid, spendOne(st)),
           { transform: { document: `${base_}/users/${uid}`, fieldTransforms: [ { fieldPath: 'scanTotal', increment: { integerValue: '1' } } ] } },
         ]).catch(() => {});
-        return json({ ...result, creditsLeft: credits - 1 });
+        return json({ ...result, creditsLeft: st.total });
       }
 
       // ── 로그인 시 잔여 장수 조회 (가입/월간 무료분 반영) ──
@@ -567,8 +624,7 @@ export default {
         const { idToken } = await request.json();
         const uid = await verifyIdToken(idToken);
         const fbToken = await firebaseAccessToken(env);
-        const credits = await ensureCredits(fbToken, uid);
-        return json({ credits });
+        return json(creditSummary(await ensureCredits(fbToken, uid)));
       }
 
       // ── DiCA 본인 명함 등록 시 500장 1회 지급 (같은 링크는 최초 1명만 — 선점제) ──
@@ -603,6 +659,30 @@ export default {
         return json({ granted: true, credits, bonus: DICA_OWNER_BONUS });
       }
 
+      // ── 리워드: 내 명함(비즈홈·디지털 명함)을 다른 사람이 카드북에 저장하면 명함 주인에게 +5장 ──
+      // 무상 지급분이라 소멸 없음(이월 가능). 같은 사람이 같은 주인 명함을 저장하면 1번만, 주인당 한 달 최대 50장
+      if (url.pathname === '/credits/save-reward') {
+        const { idToken, url: cardUrl } = await request.json();
+        const saver = await verifyIdToken(idToken);
+        const fbToken = await firebaseAccessToken(env);
+        const owner = await cardOwner(fbToken, cardUrl);
+        if (!owner || owner === saver) return json({ granted: false });
+        const u = await getUserDoc(fbToken, owner);
+        const month = monthKey();
+        const given = u.rewardMonth === month ? (u.rewardCount || 0) : 0;
+        if (given + SAVE_REWARD > SAVE_REWARD_MONTHLY_CAP) return json({ granted: false, reason: 'cap' });
+        const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+        const claim = await fetch(`https://firestore.googleapis.com/v1/${base}:commit`, { method: 'POST', headers: { Authorization: 'Bearer ' + fbToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ writes: [{ update: { name: `${base}/rewardSaves/${owner}_${saver}`, fields: { owner: { stringValue: owner }, saver: { stringValue: saver }, at: { timestampValue: new Date().toISOString() } } }, currentDocument: { exists: false } }] }) });
+        if (!claim.ok) return json({ granted: false, reason: 'already' });
+        const st = creditState(u); st.base += SAVE_REWARD;
+        const w = statePatch(owner, st);
+        w.update.fields.rewardMonth = { stringValue: month }; w.update.fields.rewardCount = { integerValue: String(given + SAVE_REWARD) };
+        w.updateMask.fieldPaths.push('rewardMonth', 'rewardCount');
+        await commitWrites(fbToken, [w]);
+        return json({ granted: true, bonus: SAVE_REWARD });
+      }
+
       // ── 자동 명함 AI (로그인 없이 호출 — 입력 길이·출력 토큰을 작게 잘라 비용을 묶어둠) ──
       if (url.pathname === '/autocard/draft') return await autocardDraft(env, await request.json());
       if (url.pathname === '/autocard/translate') return await autocardTranslate(env, await request.json());
@@ -628,7 +708,8 @@ export default {
         const tData = await tRes.json();
         if (!tRes.ok) return json({ error: tData.message || '결제 승인 실패', code: tData.code }, 400);
         try {
-          await creditUser(env, uid, orderId, pack.n, { amount: pack.price, paymentKey, method: tData.method });
+          const exp = await creditUser(env, uid, orderId, pack.n, { amount: pack.price, paymentKey, method: tData.method });
+          return json({ ok: true, credits: pack.n, expiresAt: exp });
         } catch (e) {
           // 이미 처리된 주문(새로고침 등)이면 성공으로 간주
           if (/ALREADY_EXISTS|already exists/i.test(e.message)) return json({ ok: true, credits: pack.n, duplicate: true });

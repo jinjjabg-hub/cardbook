@@ -1611,6 +1611,7 @@ window.confirmDicaSave = async function() {
       showToast('✅ ' + d.name + '님 명함 업데이트됐어요!');
     } else {
       await upsertCard(cardData, 'dica');
+      sendSaveReward(d.url);   // 새로 저장한 경우에만 — 명함 주인에게 리워드
       document.getElementById('dicaPopup').style.display = 'none';
       showToast('✅ ' + d.name + '님 명함 저장됐어요!');
     }
@@ -2321,15 +2322,23 @@ async function _sha256(b64) {
 // ===== 스캔 장수(크레딧) =====
 // 장수 지급·차감은 전부 Worker(서버)가 처리한다. 클라이언트가 Firestore의 credits 필드를 직접 쓰지 않는 이유:
 // 브라우저 개발자도구로 누구나 자기 문서를 열어 값을 바꿀 수 있어서, 여기서 직접 늘리면 공짜로 무한정 스캔하는 구멍이 생긴다.
-const PACKS = [ { id:'p100', n:100, price:3000 }, { id:'p300', n:300, price:7000 }, { id:'p1000', n:1000, price:20000 } ];  // worker.js와 동일해야 함
+const PACKS = [ { id:'p30', n:30, price:1000 }, { id:'p100', n:100, price:3000 }, { id:'p300', n:300, price:7000 } ];  // worker.js와 동일해야 함
+const PAID_VALID_DAYS = 30, SAVE_REWARD = 5;  // 유료분은 구매일로부터 30일 뒤 소멸(이월 불가) · 내 명함이 저장되면 +5장(무상, 소멸 없음)
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500;  // 표시용(실제 지급·차감은 Worker가 계산). "장" 단위는 사진 촬영이 아니라 이미지 명함 파일 등록 기준으로 안내한다
 const TOSS_CLIENT_KEY = 'test_ck_PBal2vxj811KJW5OMqpR85RQgOAN';  // 송승훈 테스트 상점 클라이언트 키 → 심사 후 live_ck_로 교체
 async function _idToken() { return currentUser ? await currentUser.getIdToken() : null; }
-async function getCredits() {
-  const idToken = await _idToken(); if(!idToken) return 0;
+async function getCreditInfo() {
+  const idToken = await _idToken(); if(!idToken) return { credits: 0 };
   const res = await fetch(CB_WORKER_URL + '/credits/status', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken }) });
-  const d = await res.json();
-  return d.credits ?? 0;
+  return await res.json();
+}
+async function getCredits() { return (await getCreditInfo()).credits ?? 0; }
+// 내 명함이 아닌 비즈홈·디지털 명함을 저장하면 → 명함 주인에게 리워드(+5장). 주인 확인·중복·월 한도는 Worker가 처리
+async function sendSaveReward(url) {
+  try {
+    const idToken = await _idToken(); if(!idToken || !url) return;
+    fetch(CB_WORKER_URL + '/credits/save-reward', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken, url }) }).catch(() => {});
+  } catch(e) {}
 }
 // DiCA 소유 인증(본인 명함 등록) 시 1회 500장 지급 — 도메인 확인·중복 방지는 전부 Worker에서 처리
 async function grantDicaOwnerBonus(url) {
@@ -2359,7 +2368,8 @@ window.openPricingModal = function() {
           가입 시 <b>${FREE_SIGNUP}장</b> 지급 (소멸 없음)<br>
           매달 1일 <b>${FREE_MONTHLY}장</b> 자동 충전 (이번 달 안에 써야 해요)<br>
           <b>내 비즈홈 등록 시 이미지 명함 ${DICA_OWNER_BONUS}장</b> 추가 지급 (소멸 없음)<br>
-          <b>내 디지털 명함 등록 시 50장</b> 추가 지급 (1회, 소멸 없음)
+          <b>내 디지털 명함 등록 시 50장</b> 추가 지급 (1회, 소멸 없음)<br>
+          🎁 <b>내 명함이 다른 사람 카드북에 저장될 때마다 ${SAVE_REWARD}장</b> (한 달 최대 50장, 소멸 없음)
         </div>
       </div>
 
@@ -2367,7 +2377,7 @@ window.openPricingModal = function() {
       <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
         <div>
           <div style="font-size:15px;font-weight:800;color:#16305e;">${p.n}장</div>
-          <div style="font-size:11px;color:#5b7bb0;">장당 ${Math.round(p.price/p.n)}원 · 유효기간 없음</div>
+          <div style="font-size:11px;color:#5b7bb0;">장당 ${Math.round(p.price/p.n)}원 · 구매일로부터 ${PAID_VALID_DAYS}일 사용</div>
         </div>
         <div style="font-size:15px;font-weight:800;color:#16305e;">${p.price.toLocaleString()}원</div>
       </div>`).join('')}
@@ -2378,8 +2388,10 @@ window.openPricingModal = function() {
           ✔️ 명함 이미지를 <b>새로</b> 인식할 때만 1장<br>
           ✔️ 이미 저장된 것과 같은 이미지는 <b>0원</b>(자동 재사용)<br>
           ✔️ 인식이 실패하면 차감되지 않아요<br>
-          ✔️ 비즈홈·디지털 명함·링크·연락처 저장은 <b>무제한·무료</b> (장수 차감 없음)
+          ✔️ 비즈홈·디지털 명함·링크·연락처 저장은 <b>무제한·무료</b> (장수 차감 없음)<br>
+          ✔️ 차감 순서: 이번 달 무료분 → 유료 충전분(소멸 임박순) → 그 외 무료분
         </div>
+        <div style="font-size:11.5px;color:#C8102E;font-weight:700;line-height:1.7;margin-top:8px;">⚠️ 유료 충전분은 구매일로부터 ${PAID_VALID_DAYS}일 동안 쓸 수 있고, 남은 장수는 소멸돼요(다음 달 이월 불가). 무료로 받은 장수는 소멸되지 않아요.</div>
       </div>
 
       <button onclick="document.getElementById('pricingModal').remove();openChargeModal()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">충전하기</button>
@@ -2393,21 +2405,22 @@ window.openPricingModal = function() {
 window.openChargeModal = async function() {
   document.getElementById('accountModal')?.remove();
   if(document.getElementById('chargeModal')) return;
-  const credits = await getCredits();
+  const ci = await getCreditInfo(), credits = ci.credits ?? 0;
+  const paidNote = ci.paid ? ` · 유료 ${ci.paid}장은 ${new Date(ci.paidExp).toLocaleDateString('ko-KR')}부터 소멸 시작` : '';
   const modal = document.createElement('div');
   modal.id = 'chargeModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:650;display:flex;align-items:flex-end;justify-content:center;font-family:"Noto Sans KR",sans-serif;';
   modal.innerHTML = `
     <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:28px 24px 40px;">
       <div style="text-align:center;margin-bottom:6px;font-size:13px;font-weight:700;color:#16305e;">스캔 장수 충전</div>
-      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:18px;">남은 장수 <b style="font-size:16px;color:#16305e">${credits}</b>장 · 매월 ${FREE_MONTHLY}장 무료 적립 · 충전분은 소멸 없음</div>
+      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:18px;">남은 장수 <b style="font-size:16px;color:#16305e">${credits}</b>장 · 매월 ${FREE_MONTHLY}장 무료${paidNote}<br><b style="color:#C8102E">충전분은 구매일로부터 ${PAID_VALID_DAYS}일 사용 · 남은 장수 소멸(이월 불가)</b></div>
       ${PACKS.map(p => `
         <button onclick="startPayment('${p.id}')" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.2);background:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">
           <span style="font-size:15px;font-weight:800;color:#16305e">${p.n}장</span>
           <span style="font-size:11px;color:#5b7bb0">장당 ${Math.round(p.price/p.n)}원</span>
           <span style="font-size:14px;font-weight:700;color:#16305e">${p.price.toLocaleString()}원</span>
         </button>`).join('')}
-      <div style="font-size:10px;color:#889;line-height:1.6;margin:10px 2px 14px">이미지 스캔 1건 = 1장. 같은 이미지를 다시 넣거나 인식에 실패하면 차감되지 않아요. 비즈홈·디지털 명함·링크·연락처 저장은 무제한(장수 차감 없음).</div>
+      <div style="font-size:10px;color:#889;line-height:1.6;margin:10px 2px 14px">이미지 스캔 1건 = 1장. 같은 이미지를 다시 넣거나 인식에 실패하면 차감되지 않아요. 비즈홈·디지털 명함·링크·연락처 저장은 무제한(장수 차감 없음). 충전 전 <a href="terms.html" target="_blank" style="color:inherit">이용약관 제6조·제7조</a>를 확인해 주세요.</div>
       <button onclick="document.getElementById('chargeModal').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#aaa;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
@@ -2440,7 +2453,7 @@ async function handlePaymentReturn() {
       body: JSON.stringify({ paymentKey: q.get('paymentKey'), orderId: q.get('orderId'), amount: Number(q.get('amount')) }) });
     const d = await res.json();
     if(d.error) throw new Error(d.error);
-    showToast('✅ ' + d.credits + '장 충전됐어요! 남은 장수 ' + (await getCredits()) + '장');
+    showToast('✅ ' + d.credits + '장 충전됐어요' + (d.expiresAt ? ' (' + new Date(d.expiresAt).toLocaleDateString('ko-KR') + '까지 사용)' : '') + ' · 남은 장수 ' + (await getCredits()) + '장');
   } catch(e) { showToast('❌ 충전 처리 실패: ' + e.message + ' — 결제는 됐다면 문의해 주세요'); }
 }
 

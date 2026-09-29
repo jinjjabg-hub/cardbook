@@ -9,10 +9,10 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create: if request.auth != null && request.auth.uid == uid
-        && !request.resource.data.keys().hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted']);
+        && !request.resource.data.keys().hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted','paidLots','creditsV2','rewardMonth','rewardCount']);
       allow update: if request.auth != null && request.auth.uid == uid
         && !request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted']);
+             .hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted','paidLots','creditsV2','rewardMonth','rewardCount']);
 
       // 명함첩 — 본인 것만 읽고 쓸 수 있다.
       match /cards/{cardId} {
