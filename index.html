@@ -622,6 +622,7 @@ window.openAccountModal = function() {
         <button onclick="openChargeModal()" style="padding:10px 16px;border-radius:10px;border:none;background:#16305e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">충전</button>
       </div>
       <button onclick="openPricingModal()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📋 요금제 자세히 보기</button>
+      <button id="installSettingBtn" onclick="document.getElementById('accountModal').remove();doAddToHome();" style="display:none;width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📲 홈화면에 추가하기</button>
       <button onclick="refreshDicaCards()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">🔄 DiCA 카드 새로고침</button>
       <div style="text-align:center;margin-bottom:12px;">
         <a href="./terms.html" target="_blank" style="color:#5b7bb0;text-decoration:underline;font-size:11px;">이용약관</a>
@@ -644,6 +645,7 @@ window.openAccountModal = function() {
   `;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
+  if(!_isInstalled()) { const ib = document.getElementById('installSettingBtn'); if(ib) ib.style.display = 'block'; }
   getCredits().then(c => { const el = document.getElementById('creditNum'); if(el) el.textContent = c; }).catch(()=>{});
 };
 
@@ -1629,11 +1631,27 @@ window.confirmDicaSave = async function() {
 // ===== 홈화면 추가 =====
 let _deferredInstall = null;
 
+// 설치 여부: 앱(standalone)으로 실행했거나 설치 완료 이벤트를 받은 기기는 '설치함'으로 기억
+function _isInstalled() {
+  try {
+    if(window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
+      localStorage.setItem('cbInstalled', '1');
+      return true;
+    }
+    return localStorage.getItem('cbInstalled') === '1';
+  } catch(e) { return false; }
+}
+// 배너는 설치 전이면 계속 보이고, ✕는 이번 접속에서만 숨긴다
+function _homeBannerHidden() {
+  try { return _isInstalled() || sessionStorage.getItem('addHomeDismissed') === '1'; }
+  catch(e) { return _isInstalled(); }
+}
+
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   _deferredInstall = e;
   // 배너 표시 (이미 닫은 적 없으면)
-  if(!localStorage.getItem('addHomeDismissed')) {
+  if(!_homeBannerHidden()) {
     const b = document.getElementById('addHomeBanner');
     if(b) b.style.display = 'block';
   }
@@ -1658,13 +1676,14 @@ if(_cbInstallIntent) {
 (function() {
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
-  if(!isIOS || isStandalone || CB_INAPP || localStorage.getItem('addHomeDismissed')) return;
+  if(!isIOS || isStandalone || CB_INAPP || _homeBannerHidden()) return;
   const show = () => { const b = document.getElementById('addHomeBanner'); if(!b) return setTimeout(show, 500);
     b.style.display = 'block'; const btn = b.querySelector('.add-home-btn'); if(btn) { btn.textContent = '방법 보기'; btn.onclick = showInstallGuide; } };
   setTimeout(show, 1500);
 })();
 
 window.addEventListener('appinstalled', () => {
+  try { localStorage.setItem('cbInstalled', '1'); } catch(e) {}
   const b = document.getElementById('addHomeBanner');
   if(b) b.style.display = 'none';
   showToast('✅ 홈화면에 추가됐어요!');
@@ -1675,7 +1694,7 @@ window.doAddToHome = async function() {
     // 크롬/안드로이드 — 네이티브 설치 프롬프트
     _deferredInstall.prompt();
     const { outcome } = await _deferredInstall.userChoice;
-    if(outcome === 'accepted') showToast('✅ 홈화면에 추가됐어요!');
+    if(outcome === 'accepted') { try { localStorage.setItem('cbInstalled', '1'); } catch(e) {} showToast('✅ 홈화면에 추가됐어요!'); }
     _deferredInstall = null;
     dismissBanner();
   } else {
@@ -1687,7 +1706,7 @@ window.doAddToHome = async function() {
 window.dismissBanner = function() {
   const b = document.getElementById('addHomeBanner');
   if(b) b.style.display = 'none';
-  localStorage.setItem('addHomeDismissed', '1');
+  try { sessionStorage.setItem('addHomeDismissed', '1'); } catch(e) {}
 };
 
 function showInstallGuide() {
@@ -1807,9 +1826,9 @@ auth.onAuthStateChanged(async user => {
     try { await loadCards(); } catch(e) { console.error('명함 로드 실패', e); showToast('명함을 불러오지 못했어요'); }
     try { checkDicaParams(); } catch(e) { console.error('디카 파라미터 처리 실패', e); }
     try { checkSharedContent(); } catch(e) { console.error('공유 처리 실패', e); }
-    // 홈화면 추가 배너 — 닫은 적 없으면 항상 표시
+    // 홈화면 추가 배너 — 설치 전이고 이번 접속에서 ✕를 안 눌렀으면 표시
     try {
-      if(!localStorage.getItem("addHomeDismissed")) {
+      if(!_homeBannerHidden()) {
         const b = document.getElementById("addHomeBanner");
         if(b) b.style.display = "block";
       }
