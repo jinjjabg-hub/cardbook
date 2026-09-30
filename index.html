@@ -1226,7 +1226,7 @@ window.showView = function(v) {
 // 이미 내 명함이 있는 사람은 '추천하기' → 자동 명함 주소를 카톡 등으로 공유(공유창이 없으면 복사)
 window.shareAutocard = function() {
   const url = 'https://jinjjabg-hub.github.io/autocard/';
-  const text = '명함 사진 한 장이면 5분 만에 디지털 명함이 만들어져요 (5,900원)';
+  const text = '완전 무료로 5분 만에 디지털 명함을 만들어보세요';
   if(navigator.share) navigator.share({ title: '디지털 명함', text, url }).catch(() => {});
   else navigator.clipboard?.writeText(url).then(() => showToast('🔗 디지털 명함 만들기 주소를 복사했어요'), () => window.open(url, '_blank'));
   return false;
@@ -1280,7 +1280,7 @@ function renderHome() {
     ${!myDicaUrl ? `    <div class="home-ac">
       <a class="home-ac-main" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener">
         <span class="home-ac-ico">✨</span>
-        <span class="home-ac-txt"><b>${myDicaUrl ? '디지털 명함 만들기' : '내 디지털 명함 만들기'}</b><small>명함 사진 한 장이면 5분 · 5,900원 · 받은 사람은 카드북에 저장</small></span>
+        <span class="home-ac-txt"><b>${myDicaUrl ? '디지털 명함 만들기' : '내 디지털 명함 만들기'}</b><small>완전 무료 · 5분 완성 · 받은 사람은 카드북에 저장</small></span>
       </a>
       <button type="button" class="home-ac-share" onclick="shareAutocard()">📤<span>추천</span></button>
     </div>
@@ -1923,7 +1923,7 @@ function showDicaRegisterModal() {
       <button onclick="saveDicaUrl()" style="width:100%;background:#16305e;color:#f6f8fc;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">등록하기</button>
       <div style="margin:6px 0 12px;padding:14px;border-radius:14px;background:#fff;border:1.5px dashed rgba(37,99,235,0.35);text-align:center;">
         <div style="font-size:13px;font-weight:800;color:#16305e;margin-bottom:4px;">아직 디지털 명함이 없나요?</div>
-        <div style="font-size:12px;color:#5b7bb0;line-height:1.6;margin-bottom:10px;">명함 사진 한 장이면 5분 만에 만들어져요 · 5,900원<br>만든 뒤 버튼 한 번으로 여기 내 명함에 등록돼요</div>
+        <div style="font-size:12px;color:#5b7bb0;line-height:1.6;margin-bottom:10px;">완전 무료로 5분 만에 만들어져요<br>만든 뒤 버튼 한 번으로 여기 내 명함에 등록돼요</div>
         <a href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener" style="display:block;background:linear-gradient(135deg,#2563eb,#60a5fa);color:#fff;border-radius:12px;padding:13px;font-size:14px;font-weight:700;text-decoration:none;">✨ 내 디지털 명함 만들기</a>
       </div>
       <button onclick="skipDicaRegister()" style="width:100%;background:none;border:none;color:#a0a0a0;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;padding:8px;">나중에 하기</button>
