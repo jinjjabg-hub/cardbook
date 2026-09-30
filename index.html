@@ -327,6 +327,16 @@ let currentChapter = '전체';
 let searchTimer = null;
 let authMode = 'login';
 let myDicaUrl = null; // 내 DiCA 링크 (Firestore에서 로드)
+
+// 내 링크가 비즈홈인지 판별: 비즈홈은 아래 저장소(자이언츠·파이오니어·네임카드)에 있고, 오토카드 명함은 /autocard/ 아래에 있다
+const CB_BIZHOME_REPOS = ['bni-giants', 'bni-pioneer-cards', 'namecard'];
+function _hasBizhome(url) {
+  try {
+    const u = new URL(url);
+    if(u.hostname !== 'jinjjabg-hub.github.io') return false;
+    return CB_BIZHOME_REPOS.includes(u.pathname.split('/').filter(Boolean)[0]?.toLowerCase());
+  } catch(e) { return false; }
+}
 // 자동 명함 발행 화면의 "카드북에 내 명함으로 등록" → ?mycard=<명함 주소>. 로그인 전에 들어와도 잃지 않게 먼저 보관
 try { const _mc = new URLSearchParams(location.search).get('mycard'); if(_mc) sessionStorage.setItem('cbMyCard', _mc); } catch(e) {}
 // ===== 챕터: 고정 목록 없음. 데이터에 있는 챕터명이 곧 목록 =====
@@ -1267,18 +1277,19 @@ function renderHome() {
       </div>
       <button class="home-hero-btn" onclick="goMyCard()">${myDicaUrl ? '📇 내 명함 · QR' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
     </div>
-    <div class="home-ac">
+    ${!myDicaUrl ? `    <div class="home-ac">
       <a class="home-ac-main" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener">
         <span class="home-ac-ico">✨</span>
         <span class="home-ac-txt"><b>${myDicaUrl ? '디지털 명함 만들기' : '내 디지털 명함 만들기'}</b><small>명함 사진 한 장이면 5분 · 5,900원 · 받은 사람은 카드북에 저장</small></span>
       </a>
       <button type="button" class="home-ac-share" onclick="shareAutocard()">📤<span>추천</span></button>
     </div>
-    <a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/T.M-LINK/#pricing" target="_blank" rel="noopener">
+    ` : ''}
+    ${myDicaUrl && !_hasBizhome(myDicaUrl) ? `<a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/T.M-LINK/#pricing" target="_blank" rel="noopener">
       <span class="home-ac-ico">🏠</span>
       <span class="home-ac-txt"><b>비즈홈 — 나만의 작은 홈페이지</b><small>경력·사례·서비스·영상까지 · 15만 원부터 · BNI 특별가</small></span>
       <span class="home-ac-go">›</span>
-    </a>
+    </a>` : ''}
     <div class="home-section">
       <div class="home-sec-title">📣 새 소식</div>
       ${updHtml}
