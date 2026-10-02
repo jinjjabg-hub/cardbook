@@ -193,6 +193,42 @@ async function cardOwner(token, cardUrl) {
   if (!r.ok) return null;
   return (await r.json()).fields?.uid?.stringValue || null;
 }
+
+// ===== 만두 연결: 만두에서 "카드북에서 나를 찾아도 좋다"고 동의한 회원만 =====
+// 만두는 카드북과 다른 Firebase 프로젝트(mandutok)라서, 읽기 전용으로 익명 로그인해 users 문서를 조회한다.
+// 돌려주는 건 만두 ID뿐 — 이메일·이름 등은 절대 내보내지 않는다. cardbookConsent가 true인 회원만 대상이다.
+const MANDU_PROJECT = 'mandutok';
+const MANDU_API_KEY = 'AIzaSyAmebb0FQ4MxywQlMGgm8zrL2Ta97eskbo';
+let _manduTok = { token: '', exp: 0 };
+async function manduToken() {
+  if (_manduTok.exp > Date.now() + 60000) return _manduTok.token;
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${MANDU_API_KEY}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true }),
+  });
+  const d = await res.json();
+  if (!d.idToken) throw new Error('만두 연결 실패');
+  _manduTok = { token: d.idToken, exp: Date.now() + (Number(d.expiresIn) || 3600) * 1000 };
+  return d.idToken;
+}
+// 이메일(소문자) 목록 → { 이메일: 만두ID } (동의한 회원만)
+async function manduLookup(emails) {
+  const out = {};
+  if (!emails.length) return out;
+  const token = await manduToken();
+  for (let i = 0; i < emails.length; i += 30) {   // Firestore in 조건은 한 번에 30개까지
+    const res = await fetch(`https://firestore.googleapis.com/v1/projects/${MANDU_PROJECT}/databases/(default)/documents:runQuery`, {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'users' }], where: { fieldFilter: { field: { fieldPath: 'emailLower' }, op: 'IN', value: { arrayValue: { values: emails.slice(i, i + 30).map(e => ({ stringValue: e })) } } } }, limit: 100 } }),
+    });
+    if (!res.ok) throw new Error('만두 조회 실패');
+    for (const row of await res.json()) {
+      const f = row.document?.fields;
+      if (f && f.cardbookConsent?.booleanValue === true && f.emailLower?.stringValue && f.manduid?.stringValue) out[f.emailLower.stringValue] = f.manduid.stringValue;
+    }
+  }
+  return out;
+}
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 async function creditUser(env, uid, orderId, n, meta) {
   const token = await firebaseAccessToken(env);
   const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
@@ -617,6 +653,35 @@ export default {
           { transform: { document: `${base_}/users/${uid}`, fieldTransforms: [ { fieldPath: 'scanTotal', increment: { integerValue: '1' } } ] } },
         ]).catch(() => {});
         return json({ ...result, creditsLeft: st.total });
+      }
+
+      // ── 만두 연결: 카드마다 "만두로 연락하기"를 보여줄 수 있는지 (카드 주인 계정 이메일 → 없으면 명함에 적힌 이메일) ──
+      if (url.pathname === '/mandu/match') {
+        const { idToken, items } = await request.json();
+        await verifyIdToken(idToken);
+        const list = (Array.isArray(items) ? items : []).slice(0, 300).filter(it => it && typeof it.k === 'string' && it.k.length <= 80);
+        const fbToken = await firebaseAccessToken(env);
+        const cand = {};   // k → [이메일…] (우선순위 순)
+        for (let i = 0; i < list.length; i += 10) {
+          await Promise.all(list.slice(i, i + 10).map(async it => {
+            const emails = [];
+            if (typeof it.url === 'string' && it.url) {
+              try {
+                const owner = await cardOwner(fbToken, it.url);
+                if (owner) { const e = String((await getUserDoc(fbToken, owner)).email || '').toLowerCase(); if (EMAIL_RE.test(e)) emails.push(e); }
+              } catch (e) {}
+            }
+            const ce = String(it.email || '').trim().toLowerCase();
+            if (EMAIL_RE.test(ce)) emails.push(ce);
+            if (emails.length) cand[it.k] = emails;
+          }));
+        }
+        const all = [...new Set(Object.values(cand).flat())];
+        let found = {};
+        try { found = await manduLookup(all); } catch (e) { return json({ matches: {}, error: e.message }); }
+        const matches = {};
+        for (const [k, emails] of Object.entries(cand)) { const hit = emails.find(e => found[e]); if (hit) matches[k] = found[hit]; }
+        return json({ matches });
       }
 
       // ── 로그인 시 잔여 장수 조회 (가입/월간 무료분 반영) ──
