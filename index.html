@@ -84,6 +84,7 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .act-view{background:rgba(255,255,255,0.5);border:1px solid rgba(37,99,235,0.2);color:#16305e;}
 .act-del{background:rgba(200,16,46,0.12);border:1px solid rgba(200,16,46,0.3);color:#C8102E;padding:9px 6px;}
 .act-btn:hover{opacity:.75;transform:scale(0.97);}
+.act-mandu{flex-basis:100%;background:rgba(107,56,212,0.1);border:1px solid rgba(107,56,212,0.35);color:#5a2fb8;}
 .act-share{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;padding:9px 6px;}
 .act-vcf{background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.25);color:#16305e;padding:9px 6px;}
 
@@ -1123,6 +1124,7 @@ function renderCards(cards) {
         <button class="upd-ok" onclick="ackCardUpdate('${card.docId}','${_upd.updatedAt}')">확인</button>
       </div>`:''}
       <div class="card-actions">
+        ${card._mandu?`<a href="${CB_MANDU_BASE}${encodeURIComponent(card._mandu)}" target="_blank" rel="noopener" class="act-btn act-mandu">🥟 만두로 연락하기</a>`:''}
         ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 전화하기</a>`:''}
         ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇 연락처 저장</button>`:''}
         ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 비즈홈</a>`:''}
@@ -1474,8 +1476,38 @@ async function loadCards() {
     await loadCardUpdates();
     renderChapterUI();
     applyFilter();
+    matchMandu();
     if(!window._sharedHandled) { window._sharedHandled = true; handleSharedImages(); handlePaymentReturn(); }
   } catch(e) { showToast('❌ 불러오기 실패'); }
+}
+
+// ===== 만두로 연락하기 =====
+// 만두에서 "카드북에서 나를 찾아도 좋다"고 동의한 회원의 카드에만 버튼이 뜬다.
+// 서버(Worker)가 카드 주인 계정 이메일(없으면 명함 이메일)로 만두 회원을 찾아 만두 ID만 돌려준다. 결과는 12시간 캐시.
+const CB_MANDU_BASE = 'https://jinjjabg-hub.github.io/MANDU/?u=';
+async function matchMandu() {
+  try {
+    if(!currentUser || !allCards.length) return;
+    const key = 'cbManduMatch_' + currentUser.uid, now = Date.now(), TTL = 12 * 3600 * 1000;
+    let cache = {}; try { cache = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
+    const todo = [];
+    allCards.forEach(c => {
+      const hit = cache[c.docId];
+      if(hit && now - hit.t < TTL) { c._mandu = hit.m || ''; return; }
+      const email = Array.isArray(c.email) ? c.email[0] : c.email;
+      if(c.url || email) todo.push({ k: c.docId, url: c.url || '', email: email || '' });
+    });
+    let changed = allCards.some(c => c._mandu);
+    for(let i = 0; i < todo.length; i += 300) {
+      const part = todo.slice(i, i + 300);
+      const res = await fetch(CB_WORKER_URL + '/mandu/match', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ idToken: await currentUser.getIdToken(), items: part }) });
+      const data = await res.json();
+      if(!res.ok || data.error) return;   // 실패하면 캐시하지 않고 다음에 다시 시도
+      part.forEach(it => { const m = data.matches?.[it.k] || ''; cache[it.k] = { m, t: now }; const c = allCards.find(x => x.docId === it.k); if(c) { c._mandu = m; if(m) changed = true; } });
+    }
+    try { localStorage.setItem(key, JSON.stringify(cache)); } catch(e) {}
+    if(changed) applyFilter();
+  } catch(e) {}
 }
 
 // ===== 공유 =====
@@ -1931,6 +1963,7 @@ async function loadUserProfile(uid) {
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     }
+    try { const em = (currentUser.email || '').toLowerCase(); if(em && (!doc.exists || doc.data().email !== em)) db.collection('users').doc(uid).set({ email: em }, { merge: true }).catch(() => {}); } catch(e) {}
     const el = document.getElementById('userName');
     if(el) {
       const display = [name, title, company].filter(Boolean).join(' · ');
