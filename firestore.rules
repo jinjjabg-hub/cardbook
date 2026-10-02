@@ -82,6 +82,15 @@ service cloud.firestore {
     // 자동 명함 결제 기록 — Worker(서비스 계정)만 쓰고 읽음
     match /autocardPayments/{orderId} { allow read: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com'; allow write: if false; }
 
+    // 홈 배너 클릭 수 — 로그인한 사람은 "본인 문서"에만, 한 번에 1씩만 올릴 수 있다. 읽기는 관리자만(통계 화면).
+    match /bannerClicks/{bannerId}/byUser/{uid} {
+      function bcOk() { return request.auth != null && request.auth.uid == uid && bannerId in ['dica', 'bizhome', 'mandu']; }
+      allow create: if bcOk() && request.resource.data.keys().hasOnly(['clicks', 'first', 'last']) && request.resource.data.clicks == 1;
+      allow update: if bcOk() && request.resource.data.keys().hasOnly(['clicks', 'first', 'last'])
+        && request.resource.data.clicks == resource.data.clicks + 1 && request.resource.data.first == resource.data.first;
+      allow read: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com' && request.auth.token.email_verified == true;
+    }
+
     // 예전 코드가 쓰다 만 최상위 컬렉션 — 지금은 아무도 안 쓰지만 혹시 남아있는 호출을 막아둔다.
     match /cards/{cardId} { allow read, write: if false; }
 

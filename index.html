@@ -643,6 +643,7 @@ window.openAccountModal = function() {
         <button onclick="openChargeModal()" style="padding:10px 16px;border-radius:10px;border:none;background:#16305e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">충전</button>
       </div>
       <button onclick="openPricingModal()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📋 요금제 자세히 보기</button>
+      ${isAdmin() ? `<button onclick="openBannerStats()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📊 배너 클릭 통계 (관리자)</button>` : ''}
       <button id="installSettingBtn" onclick="document.getElementById('accountModal').remove();doAddToHome();" style="display:none;width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📲 홈화면에 추가하기</button>
       <button onclick="refreshDicaCards()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">🔄 DiCA 카드 새로고침</button>
       <div style="text-align:center;margin-bottom:12px;">
@@ -1221,6 +1222,49 @@ function applyFilter() {
   renderHome();
 }
 
+// ===== 홈 배너 클릭 수 =====
+// bannerClicks/{배너}/byUser/{uid} 에 사람별 클릭 수를 쌓는다 → 총 클릭 수와 누른 사람 수(중복 제외)를 모두 알 수 있다.
+// 기록이 실패해도 배너 이동에는 영향이 없어야 하므로 결과를 기다리지 않고 오류는 조용히 무시한다.
+const CB_BANNERS = { dica:'디지털 명함 만들기', bizhome:'비즈홈', mandu:'만두' };
+window.trackBanner = function(id) {
+  try {
+    if(!currentUser || !CB_BANNERS[id]) return;
+    const ref = db.collection('bannerClicks').doc(id).collection('byUser').doc(currentUser.uid);
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if(snap.exists) tx.update(ref, { clicks: (snap.data().clicks || 0) + 1, last: now });
+      else tx.set(ref, { clicks: 1, first: now, last: now });
+    }).catch(() => {});
+  } catch(e) {}
+};
+
+// 관리자 전용: 배너별 총 클릭 수 · 누른 사람 수
+window.openBannerStats = async function() {
+  if(!isAdmin()) { showToast('❌ 권한 없음'); return; }
+  document.getElementById('accountModal')?.remove();
+  showToast('📊 불러오는 중…');
+  try {
+    const rows = await Promise.all(Object.keys(CB_BANNERS).map(async id => {
+      const qs = await db.collection('bannerClicks').doc(id).collection('byUser').get();
+      let total = 0; qs.forEach(d => total += d.data().clicks || 0);
+      return { name: CB_BANNERS[id], total, people: qs.size };
+    }));
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:700;display:flex;align-items:center;justify-content:center;padding:24px;font-family:"Noto Sans KR",sans-serif;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:20px;padding:24px 20px;width:100%;max-width:360px;">'
+      + '<div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">📊 배너 클릭 통계</div>'
+      + '<div style="font-size:11px;color:#64748b;margin-bottom:14px;">집계 시작 이후 · 로그인한 사용자 기준</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:13px;color:#16305e;">'
+      + '<tr style="color:#64748b;font-size:11px;"><td></td><td style="text-align:right;padding:4px 0;">총 클릭</td><td style="text-align:right;">누른 사람</td></tr>'
+      + rows.map(r => '<tr style="border-top:1px solid #e5ebf7;"><td style="padding:10px 0;font-weight:700;">' + r.name + '</td><td style="text-align:right;">' + r.total + '회</td><td style="text-align:right;">' + r.people + '명</td></tr>').join('')
+      + '</table>'
+      + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="width:100%;margin-top:16px;padding:12px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">닫기</button></div>';
+    modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+  } catch(e) { showToast('❌ 통계를 불러오지 못했어요'); }
+};
+
 // ===== 홈 뷰 =====
 window.showView = function(v) {
   const home = document.getElementById('homeView');
@@ -1289,19 +1333,19 @@ function renderHome() {
       <button class="home-hero-btn" onclick="goMyCard()">${myDicaUrl ? '📇 내 명함 · QR' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
     </div>
     ${!myDicaUrl ? `    <div class="home-ac">
-      <a class="home-ac-main" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener">
+      <a class="home-ac-main" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener" onclick="trackBanner('dica')">
         <span class="home-ac-ico">✨</span>
         <span class="home-ac-txt"><b>${myDicaUrl ? '디지털 명함 만들기' : '내 디지털 명함 만들기'}</b><small>완전 무료 · 5분 완성 · 받은 사람은 카드북에 저장</small></span>
       </a>
       <button type="button" class="home-ac-share" onclick="shareAutocard()">📤<span>추천</span></button>
     </div>
     ` : ''}
-    ${myDicaUrl && !_hasBizhome(myDicaUrl) ? `<a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/T.M-LINK/#pricing" target="_blank" rel="noopener">
+    ${myDicaUrl && !_hasBizhome(myDicaUrl) ? `<a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/T.M-LINK/#pricing" target="_blank" rel="noopener" onclick="trackBanner('bizhome')">
       <span class="home-ac-ico">🏠</span>
       <span class="home-ac-txt"><b>비즈홈 — 나만의 작은 홈페이지</b><small>경력·사례·서비스·영상까지 · 15만 원부터 · BNI 특별가</small></span>
       <span class="home-ac-go">›</span>
     </a>` : ''}
-    <a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/MANDU/" target="_blank" rel="noopener">
+    <a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/MANDU/" target="_blank" rel="noopener" onclick="trackBanner('mandu')">
       <span class="home-ac-ico" style="background:none;overflow:hidden"><img src="mandu-icon.png" alt="만두" style="width:100%;height:100%;object-fit:contain;transform:scale(1.25)"></span>
       <span class="home-ac-txt"><b>외국인 손님이 많은 매장·병원이라면</b><small>해외 바이어와 계속 소통해야 한다면 · 각자 모국어로 자동번역 채팅 '만두'</small></span>
       <span class="home-ac-go">›</span>
