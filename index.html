@@ -58,6 +58,7 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 /* COUNT */
 .count-bar{padding:8px 16px 4px;display:flex;align-items:center;justify-content:space-between;}
 .count-label{font-size:10px;color:var(--muted);letter-spacing:.1em;}
+.sort-btn{border:1px solid var(--border);background:rgba(255,255,255,0.7);color:#16305e;font-size:11px;font-weight:700;border-radius:10px;padding:4px 10px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;}
 .count-num{font-family:'Playfair Display',serif;font-size:13px;color:var(--gold);}
 
 /* CARD LIST */
@@ -336,6 +337,10 @@ function initKakao() {
 let currentUser = null;
 let allCards = [];
 let currentChapter = '전체';
+// 이름 정렬 방향(오름 asc / 내림 desc). 저장소를 못 쓰는 환경에서도 앱이 멈추지 않게 try로 감쌈
+let nameSortDir = 'asc';
+try { if(localStorage.getItem('cbNameSort') === 'desc') nameSortDir = 'desc'; } catch(e) {}
+
 let searchTimer = null;
 let authMode = 'login';
 let myDicaUrl = null; // 내 DiCA 링크 (Firestore에서 로드)
@@ -766,7 +771,7 @@ function renderApp() {
     <div id="homeView" style="display:none"></div>
     <div id="cardsView">
     <div class="chapter-tabs" id="chapterTabs"></div>
-    <div class="count-bar"><span class="count-label">CARDS</span><span class="count-num" id="countNum">0</span></div>
+    <div class="count-bar"><span><span class="count-label">CARDS</span> <span class="count-num" id="countNum">0</span></span><button class="sort-btn" id="nameSortBtn" onclick="toggleNameSort()">가나다순 ▲</button></div>
     <div class="card-wrap">
       <div id="alphaIndex" class="alpha-index"></div>
       <div class="card-list" id="cardList"></div>
@@ -1165,7 +1170,8 @@ function renderAlphaIndex(cards) {
     return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
   };
   const existing = new Set(cards.map(c => getChosung(c.name)));
-  idx.innerHTML = CHOSUNG.map(ch => 
+  const order = nameSortDir === 'desc' ? [...CHOSUNG].reverse() : CHOSUNG;
+  idx.innerHTML = order.map(ch => 
     existing.has(ch)
       ? `<a class="alpha-btn active" onclick="scrollToAlpha('${ch}')">${ch}</a>`
       : `<span class="alpha-btn disabled">${ch}</span>`
@@ -1213,13 +1219,36 @@ window.filterChapter = function(chapter) {
   applyFilter();
 };
 
+// ===== 이름순 정렬 =====
+// 한글 → 영문 → 그 밖(일본어·중국어 등) 순으로 묶고, 묶음 안에서 가나다/ABC순. 이름이 비어 있으면 방향과 상관없이 맨 뒤.
+function cbNameGroup(name) {
+  const c = (name||'').trim().charCodeAt(0);
+  if(!c) return 3;
+  if((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x3131 && c <= 0x318E)) return 0;
+  if((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) return 1;
+  return 2;
+}
+function cbNameCompare(a, b) {
+  const ga = cbNameGroup(a.name), gb = cbNameGroup(b.name);
+  if(ga === 3 || gb === 3) return ga - gb;
+  const dir = nameSortDir === 'desc' ? -1 : 1;
+  if(ga !== gb) return (ga - gb) * dir;
+  return (a.name||'').trim().localeCompare((b.name||'').trim(), 'ko', { sensitivity: 'base' }) * dir;
+}
+window.toggleNameSort = function() {
+  nameSortDir = nameSortDir === 'asc' ? 'desc' : 'asc';
+  try { localStorage.setItem('cbNameSort', nameSortDir); } catch(e) {}
+  applyFilter();
+};
+
 function applyFilter() {
   let cards = [...allCards];
   if(currentChapter !== '전체') {
     cards = cards.filter(c => (c.chapter||'기타') === currentChapter);
   }
-  // 가나다순 정렬
-  cards.sort((a, b) => (a.name||'').localeCompare(b.name||'', 'ko'));
+  cards.sort(cbNameCompare);
+  const sb = document.getElementById('nameSortBtn');
+  if(sb) sb.textContent = nameSortDir === 'asc' ? '가나다순 ▲' : '가나다순 ▼';
   renderCards(cards);
   renderAlphaIndex(cards);
   renderHome();
