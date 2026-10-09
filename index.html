@@ -340,6 +340,9 @@ let currentChapter = '전체';
 // 이름 정렬 방향(오름 asc / 내림 desc). 저장소를 못 쓰는 환경에서도 앱이 멈추지 않게 try로 감쌈
 let nameSortDir = 'asc';
 try { if(localStorage.getItem('cbNameSort') === 'desc') nameSortDir = 'desc'; } catch(e) {}
+// 이름 정렬 기준: full(이름 전체, 기존 방식) / family(성 기준) / given(이름 기준)
+let nameBasis = 'full';
+try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb === 'given') nameBasis = nb; } catch(e) {}
 
 let searchTimer = null;
 let authMode = 'login';
@@ -771,7 +774,7 @@ function renderApp() {
     <div id="homeView" style="display:none"></div>
     <div id="cardsView">
     <div class="chapter-tabs" id="chapterTabs"></div>
-    <div class="count-bar"><span><span class="count-label">CARDS</span> <span class="count-num" id="countNum">0</span></span><button class="sort-btn" id="nameSortBtn" onclick="toggleNameSort()">가나다순 ▲</button></div>
+    <div class="count-bar"><span><span class="count-label">CARDS</span> <span class="count-num" id="countNum">0</span></span><span style="display:flex;gap:6px"><button class="sort-btn" id="nameBasisBtn" onclick="toggleNameBasis()">기준: 전체</button><button class="sort-btn" id="nameSortBtn" onclick="toggleNameSort()">가나다순 ▲</button></span></div>
     <div class="card-wrap">
       <div id="alphaIndex" class="alpha-index"></div>
       <div class="card-list" id="cardList"></div>
@@ -1090,7 +1093,7 @@ function renderCards(cards) {
 
   cards.forEach((card, i) => {
     const _upd = getCardUpdate(card);
-    const ch = getChosung(card.name);
+    const ch = getChosung(cbNameKey(card.name));
     const isFirstOfCh = !seenCh.has(ch);
     if(isFirstOfCh) seenCh.add(ch);
 
@@ -1169,7 +1172,7 @@ function renderAlphaIndex(cards) {
     if(c < 0xAC00 || c > 0xD7A3) return str[0].toUpperCase();
     return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
   };
-  const existing = new Set(cards.map(c => getChosung(c.name)));
+  const existing = new Set(cards.map(c => getChosung(cbNameKey(c.name))));
   const order = nameSortDir === 'desc' ? [...CHOSUNG].reverse() : CHOSUNG;
   idx.innerHTML = order.map(ch => 
     existing.has(ch)
@@ -1228,13 +1231,46 @@ function cbNameGroup(name) {
   if((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) return 1;
   return 2;
 }
+// 이름을 성/이름으로 나눈다. 한글: 앞 1글자가 성(남궁·황보 같은 두 글자 성은 따로 확인).
+// 영문: 마지막 단어가 성("Kim, Alice" 처럼 쉼표가 있으면 쉼표 앞이 성). 일본어·중국어: 앞이 성.
+const CB_DOUBLE_SURNAMES = ['남궁','독고','황보','제갈','선우','사공','서문','동방'];
+function cbSplitName(name) {
+  const n = (name||'').trim();
+  if(!n) return { family:'', given:'' };
+  const g = cbNameGroup(n);
+  if(g === 0) {
+    const fl = (n.length >= 3 && CB_DOUBLE_SURNAMES.includes(n.slice(0,2))) ? 2 : 1;
+    return { family:n.slice(0,fl), given:n.slice(fl) };
+  }
+  if(g === 1) {
+    if(n.includes(',')) { const [f, ...r] = n.split(','); return { family:f.trim(), given:r.join(' ').trim() }; }
+    const w = n.split(/\s+/);
+    if(w.length === 1) return { family:n, given:n };
+    return { family:w[w.length-1], given:w.slice(0,-1).join(' ') };
+  }
+  const w = n.split(/\s+/);
+  if(w.length > 1) return { family:w[0], given:w.slice(1).join(' ') };
+  return { family:n.slice(0,1), given:n.slice(1) };
+}
+// 정렬(과 가나다 묶음)에 쓰는 글자: 기준에 따라 성 먼저 / 이름 먼저
+function cbNameKey(name) {
+  if(nameBasis === 'full') return (name||'').trim();
+  const p = cbSplitName(name);
+  return (nameBasis === 'family' ? p.family + ' ' + p.given : p.given + ' ' + p.family).trim();
+}
 function cbNameCompare(a, b) {
-  const ga = cbNameGroup(a.name), gb = cbNameGroup(b.name);
+  const ka = cbNameKey(a.name), kb = cbNameKey(b.name);
+  const ga = cbNameGroup(ka), gb = cbNameGroup(kb);
   if(ga === 3 || gb === 3) return ga - gb;
   const dir = nameSortDir === 'desc' ? -1 : 1;
   if(ga !== gb) return (ga - gb) * dir;
-  return (a.name||'').trim().localeCompare((b.name||'').trim(), 'ko', { sensitivity: 'base' }) * dir;
+  return ka.localeCompare(kb, 'ko', { sensitivity: 'base' }) * dir;
 }
+window.toggleNameBasis = function() {
+  nameBasis = nameBasis === 'full' ? 'family' : nameBasis === 'family' ? 'given' : 'full';
+  try { localStorage.setItem('cbNameBasis', nameBasis); } catch(e) {}
+  applyFilter();
+};
 window.toggleNameSort = function() {
   nameSortDir = nameSortDir === 'asc' ? 'desc' : 'asc';
   try { localStorage.setItem('cbNameSort', nameSortDir); } catch(e) {}
@@ -1249,6 +1285,8 @@ function applyFilter() {
   cards.sort(cbNameCompare);
   const sb = document.getElementById('nameSortBtn');
   if(sb) sb.textContent = nameSortDir === 'asc' ? '가나다순 ▲' : '가나다순 ▼';
+  const bb = document.getElementById('nameBasisBtn');
+  if(bb) bb.textContent = '기준: ' + ({ full:'전체', family:'성', given:'이름' })[nameBasis];
   renderCards(cards);
   renderAlphaIndex(cards);
   renderHome();
