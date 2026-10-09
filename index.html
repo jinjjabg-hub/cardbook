@@ -342,6 +342,9 @@ let nameSortDir = 'asc';
 try { if(localStorage.getItem('cbNameSort') === 'desc') nameSortDir = 'desc'; } catch(e) {}
 // 이름 정렬 기준: full(이름 전체, 기존 방식) / family(성 기준) / given(이름 기준)
 let nameBasis = 'full';
+// 정렬 종류: name(이름) / company(회사명) / recent(저장일)
+let sortMode = 'name';
+try { const sm = localStorage.getItem('cbSortMode'); if(sm === 'company' || sm === 'recent') sortMode = sm; } catch(e) {}
 try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb === 'given') nameBasis = nb; } catch(e) {}
 
 let searchTimer = null;
@@ -774,7 +777,7 @@ function renderApp() {
     <div id="homeView" style="display:none"></div>
     <div id="cardsView">
     <div class="chapter-tabs" id="chapterTabs"></div>
-    <div class="count-bar"><span><span class="count-label">CARDS</span> <span class="count-num" id="countNum">0</span></span><span style="display:flex;gap:6px"><button class="sort-btn" id="nameBasisBtn" onclick="toggleNameBasis()">기준: 전체</button><button class="sort-btn" id="nameSortBtn" onclick="toggleNameSort()">가나다순 ▲</button></span></div>
+    <div class="count-bar"><span><span class="count-label">CARDS</span> <span class="count-num" id="countNum">0</span></span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="sort-btn" id="sortModeBtn" onclick="toggleSortMode()">정렬: 이름</button><button class="sort-btn" id="nameBasisBtn" onclick="toggleNameBasis()">기준: 전체</button><button class="sort-btn" id="nameSortBtn" onclick="toggleNameSort()">가나다순 ▲</button></span></div>
     <div class="card-wrap">
       <div id="alphaIndex" class="alpha-index"></div>
       <div class="card-list" id="cardList"></div>
@@ -1085,8 +1088,8 @@ function renderCards(cards) {
 
   cards.forEach((card, i) => {
     const _upd = getCardUpdate(card);
-    const ch = cbGroupKey(cbNameKey(card.name));
-    const gk = cbNameGroup(cbNameKey(card.name)) === 1 ? 1 : 0;
+    const ch = sortMode === 'recent' ? cbMonthLabel(card) : cbGroupKey(cbCardKey(card));
+    const gk = sortMode !== 'recent' && cbNameGroup(cbCardKey(card)) === 1 ? 1 : 0;
     const isFirstOfCh = !seenCh.has(ch);
     if(isFirstOfCh) seenCh.add(ch);
 
@@ -1158,7 +1161,9 @@ function renderCards(cards) {
 function renderAlphaIndex(cards) {
   const idx = document.getElementById('alphaIndex');
   if(!idx) return;
-  const keys = cards.map(c => cbNameKey(c.name));
+  if(sortMode === 'recent') { idx.innerHTML = ''; idx.style.display = 'none'; return; }
+  idx.style.display = '';
+  const keys = cards.map(c => cbCardKey(c));
   const has = new Set(keys.map(k => cbGroupKey(k)));
   const hasLatin = keys.some(k => cbNameGroup(k) === 1);
   const items = CB_INDEX_HANGUL.map(ch => ({ id:ch, label:ch, on:has.has(ch) }))
@@ -1263,14 +1268,44 @@ function cbGroupKey(key) {
   if(g === 1) return k[0].toUpperCase();
   return '#';
 }
+// 정렬 종류에 맞는 카드의 정렬 글자
+function cbCardKey(card) {
+  return sortMode === 'company' ? (card.company||'').trim() : cbNameKey(card.name);
+}
+// 저장 시각(밀리초). Firestore 시각값·ISO 문자열 모두 처리, 없으면 0
+function cbSavedTime(card) {
+  const v = card.savedAt;
+  if(!v) return 0;
+  if(typeof v.toMillis === 'function') return v.toMillis();
+  if(typeof v.seconds === 'number') return v.seconds * 1000;
+  const t = Date.parse(v);
+  return isNaN(t) ? 0 : t;
+}
+function cbMonthLabel(card) {
+  const t = cbSavedTime(card);
+  if(!t) return '저장일 없음';
+  const d = new Date(t);
+  return d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0');
+}
 function cbNameCompare(a, b) {
-  const ka = cbNameKey(a.name), kb = cbNameKey(b.name);
+  const dir = nameSortDir === 'desc' ? -1 : 1;
+  if(sortMode === 'recent') {
+    const ta = cbSavedTime(a), tb = cbSavedTime(b);
+    if(!ta || !tb) return (ta ? 0 : 1) - (tb ? 0 : 1);
+    return (tb - ta) * dir;
+  }
+  const ka = cbCardKey(a), kb = cbCardKey(b);
   const ga = cbNameGroup(ka), gb = cbNameGroup(kb);
   if(ga === 3 || gb === 3) return ga - gb;
-  const dir = nameSortDir === 'desc' ? -1 : 1;
   if(ga !== gb) return (ga - gb) * dir;
   return ka.localeCompare(kb, 'ko', { sensitivity: 'base' }) * dir;
 }
+window.toggleSortMode = function() {
+  sortMode = sortMode === 'name' ? 'company' : sortMode === 'company' ? 'recent' : 'name';
+  nameSortDir = 'asc';
+  try { localStorage.setItem('cbSortMode', sortMode); localStorage.setItem('cbNameSort', 'asc'); } catch(e) {}
+  applyFilter();
+};
 window.toggleNameBasis = function() {
   nameBasis = nameBasis === 'full' ? 'family' : nameBasis === 'family' ? 'given' : 'full';
   try { localStorage.setItem('cbNameBasis', nameBasis); } catch(e) {}
@@ -1289,9 +1324,11 @@ function applyFilter() {
   }
   cards.sort(cbNameCompare);
   const sb = document.getElementById('nameSortBtn');
-  if(sb) sb.textContent = nameSortDir === 'asc' ? '가나다순 ▲' : '가나다순 ▼';
+  if(sb) sb.textContent = sortMode === 'recent' ? (nameSortDir === 'asc' ? '최신순 ▼' : '오래된순 ▲') : (nameSortDir === 'asc' ? '가나다순 ▲' : '가나다순 ▼');
+  const mb = document.getElementById('sortModeBtn');
+  if(mb) mb.textContent = '정렬: ' + ({ name:'이름', company:'회사', recent:'저장일' })[sortMode];
   const bb = document.getElementById('nameBasisBtn');
-  if(bb) bb.textContent = '기준: ' + ({ full:'전체', family:'성', given:'이름' })[nameBasis];
+  if(bb) { bb.textContent = '기준: ' + ({ full:'전체', family:'성', given:'이름' })[nameBasis]; bb.style.display = sortMode === 'name' ? '' : 'none'; }
   renderCards(cards);
   renderAlphaIndex(cards);
   renderHome();
