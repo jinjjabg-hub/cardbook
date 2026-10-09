@@ -345,6 +345,7 @@ const CB_BIZHOME_REPOS = ['bni-giants', 'bni-pioneer-cards', 'namecard'];
 function _hasBizhome(url) {
   try {
     const u = new URL(url);
+    if(u.hostname === 'bizhome.bizmy.net') return true; // 맞춤 주소 비즈홈
     if(u.hostname !== 'jinjjabg-hub.github.io') return false;
     return CB_BIZHOME_REPOS.includes(u.pathname.split('/').filter(Boolean)[0]?.toLowerCase());
   } catch(e) { return false; }
@@ -2045,6 +2046,14 @@ window.saveDicaUrl = async function() {
   }
 };
 
+// 이미 등록된 내 명함 주소를 새 주소(예: 맞춤 주소 bizhome.bizmy.net/이름)로 교체
+window.replaceMyCard = function() {
+  document.getElementById('myCardSheet')?.remove();
+  showDicaRegisterModal();
+  const inp = document.getElementById('dicaUrlInput');
+  if(inp) { inp.value = myDicaUrl || ''; inp.placeholder = 'https://bizhome.bizmy.net/이름/'; inp.focus(); inp.select(); }
+};
+
 window.skipDicaRegister = function() {
   document.getElementById('dicaRegisterModal')?.remove();
   showToast('💡 내 명함은 나중에 설정에서 등록할 수 있어요');
@@ -2103,6 +2112,7 @@ window.goMyCard = function() {
     <div class="mycard-sheet-box">
       <div style="font-size:15px;font-weight:800;color:#16305e;margin-bottom:14px;">📇 내 명함</div>
       <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;" onclick="window.open(myDicaUrl,'_blank');document.getElementById('myCardSheet').remove();">🔗 내 명함 열기</button>
+      <button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="replaceMyCard()">🔄 내 명함 주소 교체하기</button>
       <button class="mycard-sheet-btn" style="background:linear-gradient(135deg,#2563eb,#60a5fa);color:#16305e;" onclick="openNotifyUpdate()">📣 업데이트 알리기</button>
       <button class="mycard-sheet-btn" style="background:#f0f0f0;color:#666;margin-bottom:0;" onclick="document.getElementById('myCardSheet').remove()">취소</button>
     </div>`;
@@ -2218,7 +2228,7 @@ window.switchScanTab = function(tab) {
 };
 
 // ===== 링크 명함: 우리 DiCA 링크면 페이지에서 바로 읽어오고, 아니면 붙여넣은 텍스트에서 추출 =====
-const CB_DICA_DOMAINS = ['jinjjabg-hub.github.io']; // Worker의 DICA_DOMAINS와 동일 목록 — 명함 저장 500장 인증과 별개로, 여기선 그냥 "우리 명함이니 자동으로 읽어도 되는 도메인" 판단용
+const CB_DICA_DOMAINS = ['jinjjabg-hub.github.io', 'bizhome.bizmy.net']; // Worker의 DICA_DOMAINS와 동일 목록 — 명함 저장 500장 인증과 별개로, 여기선 그냥 "우리 명함이니 자동으로 읽어도 되는 도메인" 판단용
 
 // jinjjabg-hub.github.io/저장소/사람이름/ 형태의 명함 링크를 raw.githubusercontent.com 원본 HTML 주소로 변환
 function _dicaRawUrl(pageUrl) {
@@ -2227,8 +2237,10 @@ function _dicaRawUrl(pageUrl) {
     if(!CB_DICA_DOMAINS.includes(u.hostname)) return null;
     const parts = u.pathname.replace(/^\/|\/$/g, '').split('/').filter(Boolean);
     if(!parts.length) return null;
-    const repo = parts[0];
-    let rest = parts.slice(1).join('/');
+    // bizhome.bizmy.net/<이름>/ → 저장소 bizhome 의 <이름>/ 폴더
+    const isBH = u.hostname === 'bizhome.bizmy.net';
+    const repo = isBH ? 'bizhome' : parts[0];
+    let rest = (isBH ? parts : parts.slice(1)).join('/');
     if(!rest) rest = 'index.html';
     else if(!/\.html?$/i.test(rest)) rest += '/index.html';
     return `https://raw.githubusercontent.com/jinjjabg-hub/${repo}/main/${rest}`;

@@ -10,7 +10,7 @@ const PAID_VALID_DAYS = 30, SAVE_REWARD = 5, SAVE_REWARD_MONTHLY_CAP = 50;
 const FIREBASE_PROJECT = 'mandu-e7c3c';
 const FIREBASE_WEB_API_KEY = 'AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0';
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500, AUTOCARD_OWNER_BONUS = 50;
-const DICA_DOMAINS = ['jinjjabg-hub.github.io'];
+const DICA_DOMAINS = ['jinjjabg-hub.github.io', 'bizhome.bizmy.net'];
 // 자동 명함은 DiCA와 같은 도메인이라 경로로 구분한다: 자동 명함 경로 → 50장, 그 외 DiCA 링크 → 500장
 // (지금은 카드북 레포 안 /cardbook/autocard/, 나중에 autocard 레포로 옮겨도 되게 /autocard/도 인정)
 const AUTOCARD_PATHS = ['/cardbook/autocard/', '/autocard/'];
