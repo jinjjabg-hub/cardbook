@@ -1073,14 +1073,6 @@ function renderCards(cards) {
     return;
   }
 
-  const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-  const getChosung = (str) => {
-    if(!str) return '';
-    const c = str.charCodeAt(0);
-    if(c < 0xAC00 || c > 0xD7A3) return str[0].toUpperCase();
-    return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
-  };
-
   // 📣 새 소식 있는 명함은 맨 위로 (최신 업데이트 순)
   const updCards = cards.filter(c => getCardUpdate(c));
   const restCards = cards.filter(c => !getCardUpdate(c));
@@ -1093,7 +1085,8 @@ function renderCards(cards) {
 
   cards.forEach((card, i) => {
     const _upd = getCardUpdate(card);
-    const ch = getChosung(cbNameKey(card.name));
+    const ch = cbGroupKey(cbNameKey(card.name));
+    const gk = cbNameGroup(cbNameKey(card.name)) === 1 ? 1 : 0;
     const isFirstOfCh = !seenCh.has(ch);
     if(isFirstOfCh) seenCh.add(ch);
 
@@ -1103,9 +1096,9 @@ function renderCards(cards) {
         updHeaderDone = true;
       }
       // 이 자음의 명함이 전부 "새 소식"이라 아래쪽엔 안 나오는 경우, 여기라도 목적지를 심어둠
-      if(isFirstOfCh) html += `<span id="alpha-${ch}" style="display:none"></span>`;
+      if(isFirstOfCh) html += `<span id="alpha-${ch}" data-g="${gk}" style="display:none"></span>`;
     } else if(isFirstOfCh) {
-      html += `<div class="alpha-divider" id="alpha-${ch}">${ch}</div>`;
+      html += `<div class="alpha-divider" id="alpha-${ch}" data-g="${gk}">${ch}</div>`;
     }
 
     const avatarHtml = card.avatar
@@ -1165,24 +1158,21 @@ function renderCards(cards) {
 function renderAlphaIndex(cards) {
   const idx = document.getElementById('alphaIndex');
   if(!idx) return;
-  const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-  const getChosung = (str) => {
-    if(!str) return '';
-    const c = str.charCodeAt(0);
-    if(c < 0xAC00 || c > 0xD7A3) return str[0].toUpperCase();
-    return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
-  };
-  const existing = new Set(cards.map(c => getChosung(cbNameKey(c.name))));
-  const order = nameSortDir === 'desc' ? [...CHOSUNG].reverse() : CHOSUNG;
-  idx.innerHTML = order.map(ch => 
-    existing.has(ch)
-      ? `<a class="alpha-btn active" onclick="scrollToAlpha('${ch}')">${ch}</a>`
-      : `<span class="alpha-btn disabled">${ch}</span>`
+  const keys = cards.map(c => cbNameKey(c.name));
+  const has = new Set(keys.map(k => cbGroupKey(k)));
+  const hasLatin = keys.some(k => cbNameGroup(k) === 1);
+  const items = CB_INDEX_HANGUL.map(ch => ({ id:ch, label:ch, on:has.has(ch) }))
+    .concat([{ id:'A-Z', label:'A-Z', on:hasLatin }, { id:'#', label:'#', on:has.has('#') }]);
+  if(nameSortDir === 'desc') items.reverse();
+  idx.innerHTML = items.map(it =>
+    it.on
+      ? `<a class="alpha-btn active" onclick="scrollToAlpha('${it.id}')">${it.label}</a>`
+      : `<span class="alpha-btn disabled">${it.label}</span>`
   ).join('');
 }
 
 window.scrollToAlpha = function(ch) {
-  const el = document.getElementById('alpha-' + ch);
+  const el = ch === 'A-Z' ? document.querySelector('[id^="alpha-"][data-g="1"]') : document.getElementById('alpha-' + ch);
   if(el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
@@ -1257,6 +1247,21 @@ function cbNameKey(name) {
   if(nameBasis === 'full') return (name||'').trim();
   const p = cbSplitName(name);
   return (nameBasis === 'family' ? p.family + ' ' + p.given : p.given + ' ' + p.family).trim();
+}
+// 가나다 묶음 글자: 한글은 기본 자음(ㄲ→ㄱ 처럼 쌍자음은 합침), 영문은 대문자 한 글자, 그 밖·빈 이름은 '#'
+const CB_INDEX_HANGUL = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const CB_CHOSUNG_ALL = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const CB_DOUBLE_TO_BASE = { 'ㄲ':'ㄱ','ㄸ':'ㄷ','ㅃ':'ㅂ','ㅆ':'ㅅ','ㅉ':'ㅈ' };
+function cbGroupKey(key) {
+  const k = (key||'').trim();
+  const g = cbNameGroup(k);
+  if(g === 0) {
+    const c = k.charCodeAt(0);
+    const ch = (c >= 0xAC00 && c <= 0xD7A3) ? CB_CHOSUNG_ALL[Math.floor((c - 0xAC00) / 588)] : k[0];
+    return CB_DOUBLE_TO_BASE[ch] || ch;
+  }
+  if(g === 1) return k[0].toUpperCase();
+  return '#';
 }
 function cbNameCompare(a, b) {
   const ka = cbNameKey(a.name), kb = cbNameKey(b.name);
