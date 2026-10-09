@@ -2860,6 +2860,8 @@ function _impField(h) {
   if(/(직책|직함|직위|jobtitle|^title$|position)/.test(k)) return 'title';
   if(/(회사|소속|기업|업체|company|organization|^org$)/.test(k) && !/(전화|tel|주소|팩스|fax)/.test(k)) return 'company';
   if(/(챕터|chapter)/.test(k)) return 'chapter';
+  if(/(부서|department|^dept$)/.test(k)) return 'dept';
+  if(/(메모|비고|memo|note)/.test(k)) return 'memo';
   if(/(전화|연락처|tel|phone)/.test(k) && !/(팩스|fax)/.test(k)) return 'phone2';
   return '';
 }
@@ -2877,6 +2879,7 @@ function _impRowsFromTable(rows) {
     });
     if(!c.phone && c.phone2) c.phone = c.phone2;
     delete c.phone2;
+    if(c.dept) { c.memo = '부서: ' + c.dept + (c.memo ? '\n' + c.memo : ''); delete c.dept; }   // 부서 칸이 없어 메모에 함께 저장
     if(c.name) out.push(c);
   }
   return out;
@@ -2892,7 +2895,8 @@ function _impParseVcf(text) {
       title: get(/^TITLE[^:\r\n]*:(.+)$/im),
       phone: get(/^TEL[^:\r\n]*CELL[^:\r\n]*:(.+)$/im) || get(/^TEL[^:\r\n]*:(.+)$/im),
       email: get(/^EMAIL[^:\r\n]*:(.+)$/im),
-      address: get(/^ADR[^:\r\n]*:(.+)$/im).replace(/;+/g, ' ').trim()
+      address: get(/^ADR[^:\r\n]*:(.+)$/im).replace(/;+/g, ' ').trim(),
+      memo: get(/^NOTE[^:\r\n]*:(.+)$/im)
     };
     Object.keys(c).forEach(k => { if(!c[k]) delete c[k]; });
     if(c.name) out.push(c);
