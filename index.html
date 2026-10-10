@@ -254,15 +254,15 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
   <meta property="og:site_name" content="카드북">
   <meta property="og:title" content="카드북 · 명함·카드 보관함">
   <meta property="og:description" content="받은 명함과 카드를 한곳에 모으고, 기억나는 단어로 바로 찾는 카드북">
-  <meta property="og:url" content="https://jinjjabg-hub.github.io/cardbook/">
-  <meta property="og:image" content="https://jinjjabg-hub.github.io/cardbook/og-image.png">
+  <meta property="og:url" content="https://cardbook.bizmy.net/">
+  <meta property="og:image" content="https://cardbook.bizmy.net/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://jinjjabg-hub.github.io/cardbook/og-image.png">
-  <link rel="apple-touch-icon" href="https://jinjjabg-hub.github.io/cardbook/icon-192.png">
-  <link rel="apple-touch-icon" sizes="192x192" href="https://jinjjabg-hub.github.io/cardbook/icon-192.png">
-  <link rel="apple-touch-icon" sizes="512x512" href="https://jinjjabg-hub.github.io/cardbook/icon-512.png">
+  <meta name="twitter:image" content="https://cardbook.bizmy.net/og-image.png">
+  <link rel="apple-touch-icon" href="https://cardbook.bizmy.net/icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="https://cardbook.bizmy.net/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="https://cardbook.bizmy.net/icon-512.png">
 
   <script>
   // manifest.json 없을 때 대비 인라인 등록 (manifest.json이 있으면 그것을 씀 — 공유 대상 설정이 들어 있음)
@@ -275,8 +275,8 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
       background_color: '#f6f8fc',
       theme_color: '#f6f8fc',
       icons: [
-        { src: 'https://jinjjabg-hub.github.io/cardbook/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { src: 'https://jinjjabg-hub.github.io/cardbook/icon-512.png', sizes: '512x512', type: 'image/png' }
+        { src: 'https://cardbook.bizmy.net/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: 'https://cardbook.bizmy.net/icon-512.png', sizes: '512x512', type: 'image/png' }
       ]
     };
     const blob = new Blob([JSON.stringify(manifestData)], {type:'application/json'});
@@ -767,6 +767,16 @@ function renderApp() {
         <span class="search-icon">🔍</span>
       </div>
       <div id="refineChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px"></div>
+    </div>
+    <div id="movedBanner" style="display:none">
+      <div class="add-home-banner">
+        <div>
+          <b>📢 카드북 주소가 바뀌었어요</b>
+          예전 아이콘은 지우고 새로 추가해 주세요. 명함은 그대로예요
+        </div>
+        <button class="add-home-btn" onclick="doAddToHome()">새로 추가</button>
+        <button class="add-home-dismiss" onclick="dismissMovedBanner()">✕</button>
+      </div>
     </div>
     <div id="addHomeBanner" style="display:none">
       <div class="add-home-banner">
@@ -1921,6 +1931,19 @@ window.confirmDicaSave = async function() {
   }
 };
 
+// ===== 주소 변경 안내: 예전 설치 앱(github.io)에서 새 주소로 넘어온 사용자에게 한 번만 안내 =====
+function dismissMovedBanner() {
+  try { localStorage.setItem('cbMoveNoticeSeen', '1'); } catch(e) {}
+  const b = document.getElementById('movedBanner'); if(b) b.style.display = 'none';
+}
+(function() {
+  if(location.hostname !== 'cardbook.bizmy.net') return;
+  if(window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) return; // 새 앱으로 이미 설치
+  try { if(localStorage.getItem('cbMoveNoticeSeen') === '1') return; } catch(e) {}
+  const show = () => { const b = document.getElementById('movedBanner'); if(!b) return setTimeout(show, 500); b.style.display = 'block'; };
+  setTimeout(show, 1000);
+})();
+
 // ===== 홈화면 추가 =====
 let _deferredInstall = null;
 
@@ -1977,6 +2000,7 @@ if(_cbInstallIntent) {
 
 window.addEventListener('appinstalled', () => {
   try { localStorage.setItem('cbInstalled', '1'); } catch(e) {}
+  dismissMovedBanner();
   const b = document.getElementById('addHomeBanner');
   if(b) b.style.display = 'none';
   showToast('✅ 홈화면에 추가됐어요!');

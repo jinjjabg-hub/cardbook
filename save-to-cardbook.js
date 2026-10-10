@@ -1,4 +1,4 @@
-// ===== BNI 명함첩 저장 공통 스크립트 =====
+// ===== 카드북 저장 공통 스크립트 =====
 
 // 카카오톡 안드로이드 → 크롬으로 즉시 이동
 if(/KAKAOTALK/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent)) {
@@ -129,7 +129,7 @@ function initFirebase(tries) {
   }
 }
 
-const CARDBOOK_BASE = 'https://jinjjabg-hub.github.io/cardbook/';
+const CARDBOOK_BASE = 'https://cardbook.bizmy.net/';
 
 async function saveToCardbook(cardData) {
   if(!cardData) cardData = collectCardData();
@@ -273,7 +273,7 @@ function showLoginModal(cardData) {
         <input type="checkbox" id="_cb_consent" style="margin-top:2px;width:15px;height:15px;flex-shrink:0;accent-color:#c9a84c;cursor:pointer;">
         <span style="font-size:11px;color:rgba(240,232,216,0.75);line-height:1.6;">
           <b style="color:#c9a84c;">[필수]</b> 개인정보 수집·이용에 동의합니다.
-          <a href="https://jinjjabg-hub.github.io/cardbook/privacy.html" target="_blank" style="color:#c9a84c;text-decoration:underline;">방침 보기</a>
+          <a href="https://cardbook.bizmy.net/privacy.html" target="_blank" style="color:#c9a84c;text-decoration:underline;">방침 보기</a>
         </span>
       </label>
       <div id="_cb_consent_err" style="font-size:11px;color:#ff9e8f;min-height:14px;margin-bottom:6px;padding-left:4px;"></div>
@@ -534,9 +534,9 @@ function _showSaveSuccess(cardData) {
     <div style="font-size:24px;">✅</div>
     <div style="flex:1;min-width:0;">
       <div style="font-size:13px;font-weight:700;color:#fff;">${cardData.name || ''}님 명함이 저장됐어요</div>
-      <div style="font-size:11px;color:rgba(240,250,244,0.55);margin-top:2px;">내 명함첩에서 언제든 확인할 수 있어요</div>
+      <div style="font-size:11px;color:rgba(240,250,244,0.55);margin-top:2px;">내 카드북에서 언제든 확인할 수 있어요</div>
     </div>
-    <button onclick="window.location.href='https://jinjjabg-hub.github.io/cardbook/?install=1'" style="flex-shrink:0;padding:9px 14px;border-radius:10px;border:none;background:#a07820;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">명함첩 보기</button>
+    <button onclick="window.location.href='https://cardbook.bizmy.net/?install=1'" style="flex-shrink:0;padding:9px 14px;border-radius:10px;border:none;background:#a07820;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">명함첩 보기</button>
   `;
   document.body.appendChild(sheet);
   setTimeout(() => { if(sheet.parentNode) sheet.remove(); }, 6000);
