@@ -369,7 +369,25 @@ try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb =
 
 let searchTimer = null;
 let authMode = 'login';
-let myDicaUrl = null; // 내 DiCA 링크 (Firestore에서 로드)
+let myDicaUrl = null; // 화면에 쓰는 대표 내 명함 링크 (비즈홈 우선, 없으면 오토명함)
+let myCards = { bizhome: null, autocard: null };  // 계정당 종류별 1개만 — 한 번 등록하면 바꿀 수 없다 (규칙: firestore.rules)
+const CB_MYCARD_FIELD = { bizhome: 'bizhomeUrl', autocard: 'autocardUrl' };
+const CB_MYCARD_LABEL = { bizhome: '비즈홈', autocard: '오토명함' };
+function cbMyCardType(url) { try { return /\/autocard\//i.test(new URL(url).pathname) ? 'autocard' : 'bizhome'; } catch(e) { return 'bizhome'; } }
+function cbSetMyCards(d) {
+  myCards = { bizhome: d.bizhomeUrl || null, autocard: d.autocardUrl || null };
+  // 예전 단일 필드(dicaUrl)는 종류를 판별해 빈 칸에 넣는다
+  if(d.dicaUrl) { const t = cbMyCardType(d.dicaUrl); if(!myCards[t]) myCards[t] = d.dicaUrl; }
+  myDicaUrl = myCards.bizhome || myCards.autocard;
+}
+// 내 명함 등록 — 종류별 1회. 이미 있으면 막고, 처음이면 저장 후 서비스 이미지(장수) 지급을 Worker에 요청
+async function cbRegisterMyCard(url) {
+  const t = cbMyCardType(url);
+  if(myCards[t]) { showToast(`❌ ${CB_MYCARD_LABEL[t]}은 한 계정에 1번만 등록할 수 있어요`); return false; }
+  await db.collection('users').doc(currentUser.uid).set({ [CB_MYCARD_FIELD[t]]: url }, { merge: true });
+  myCards[t] = url; myDicaUrl = myCards.bizhome || myCards.autocard;
+  return true;
+}
 
 // 내 링크가 비즈홈인지 판별: 비즈홈은 아래 저장소(자이언츠·파이오니어·네임카드)에 있고, 오토카드 명함은 /autocard/ 아래에 있다
 const CB_BIZHOME_REPOS = ['bni-giants', 'bni-pioneer-cards', 'namecard'];
@@ -2281,7 +2299,7 @@ async function loadUserProfile(uid) {
       name    = d.name    || name;
       title   = d.title   || '';
       company = d.company || '';
-      myDicaUrl = d.dicaUrl || null;
+      cbSetMyCards(d);
     } else {
       isNew = true;
       await db.collection('users').doc(uid).set({
@@ -2312,10 +2330,8 @@ async function applyMyCardParam() {
   let url = null;
   try { url = sessionStorage.getItem('cbMyCard'); sessionStorage.removeItem('cbMyCard'); } catch(e) {}
   if(!url || !/^https:\/\/jinjjabg-hub\.github\.io\/autocard\/c\/\?id=[A-Za-z0-9_-]{6,40}$/.test(url)) return false;
-  if(myDicaUrl === url) { showToast('✅ 이미 내 명함으로 등록돼 있어요'); generateMyQR(); return true; }
-  if(myDicaUrl && !confirm('내 명함을 방금 만든 디지털 명함으로 바꿀까요?')) { generateMyQR(); return true; }
-  await db.collection('users').doc(currentUser.uid).set({ dicaUrl: url }, { merge: true });
-  myDicaUrl = url;
+  if(myCards.autocard === url) { showToast('✅ 이미 내 명함으로 등록돼 있어요'); generateMyQR(); return true; }
+  if(!(await cbRegisterMyCard(url))) { generateMyQR(); return true; }
   showToast('✅ 내 명함으로 등록됐어요!');
   generateMyQR();
   await grantDicaOwnerBonus(url);
@@ -2360,8 +2376,7 @@ window.saveDicaUrl = async function() {
     return;
   }
   try {
-    await db.collection('users').doc(currentUser.uid).set({ dicaUrl: url }, { merge: true });
-    myDicaUrl = url;
+    if(!(await cbRegisterMyCard(url))) return;
     document.getElementById('dicaRegisterModal')?.remove();
     showToast('✅ 내 명함이 등록됐어요!');
     generateMyQR();
@@ -2369,14 +2384,6 @@ window.saveDicaUrl = async function() {
   } catch(e) {
     showToast('저장 실패. 다시 시도해주세요.');
   }
-};
-
-// 이미 등록된 내 명함 주소를 새 주소(예: 맞춤 주소 bizhome.bizmy.net/이름)로 교체
-window.replaceMyCard = function() {
-  document.getElementById('myCardSheet')?.remove();
-  showDicaRegisterModal();
-  const inp = document.getElementById('dicaUrlInput');
-  if(inp) { inp.value = myDicaUrl || ''; inp.placeholder = 'https://bizhome.bizmy.net/이름/'; inp.focus(); inp.select(); }
 };
 
 window.skipDicaRegister = function() {
@@ -2437,7 +2444,7 @@ window.goMyCard = function() {
     <div class="mycard-sheet-box">
       <div style="font-size:15px;font-weight:800;color:#16305e;margin-bottom:14px;">📇 내 명함</div>
       <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;" onclick="window.open(myDicaUrl,'_blank');document.getElementById('myCardSheet').remove();">🔗 내 명함 열기</button>
-      <button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="replaceMyCard()">🔄 내 명함 주소 교체하기</button>
+      ${!myCards.bizhome || !myCards.autocard ? `<button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="document.getElementById('myCardSheet').remove();showDicaRegisterModal()">➕ ${!myCards.bizhome ? '비즈홈' : '오토명함'} 등록하기</button>` : ''}
       <button class="mycard-sheet-btn" style="background:linear-gradient(135deg,#2563eb,#60a5fa);color:#16305e;" onclick="openNotifyUpdate()">📣 업데이트 알리기</button>
       <button class="mycard-sheet-btn" style="background:#f0f0f0;color:#666;margin-bottom:0;" onclick="document.getElementById('myCardSheet').remove()">취소</button>
     </div>`;
