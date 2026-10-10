@@ -58,6 +58,7 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 /* COUNT */
 .count-bar{padding:8px 16px 4px;display:flex;align-items:center;justify-content:space-between;}
 .count-label{font-size:10px;color:var(--muted);letter-spacing:.1em;}
+.sort-btn{border:1px solid var(--border);background:rgba(255,255,255,0.7);color:#16305e;font-size:11px;font-weight:700;border-radius:10px;padding:4px 10px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;}
 .count-num{font-family:'Playfair Display',serif;font-size:13px;color:var(--gold);}
 
 /* CARD LIST */
@@ -70,6 +71,8 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .card-avatar{width:48px;height:48px;border-radius:12px;flex-shrink:0;background:#16305e;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:20px;color:#f6f8fc;overflow:hidden;}
 .card-avatar img{width:100%;height:100%;object-fit:cover;}
 .card-info{flex:1;min-width:0;}
+.fav-btn{flex-shrink:0;border:none;background:none;font-size:22px;line-height:1;color:#b8c4d9;cursor:pointer;padding:2px 4px;margin:-2px -4px 0 0;}
+.fav-btn.on{color:#f5a623;}
 .card-name{font-family:'Nanum Gothic',sans-serif;font-size:16px;font-weight:800;color:#0b1c3d;margin-bottom:2px;}
 .card-name-en{font-family:'Playfair Display',serif;font-size:11px;color:var(--gold);font-style:italic;margin-bottom:4px;}
 .card-company{font-size:12px;color:#3b4a63;margin-bottom:2px;font-weight:500;}
@@ -336,6 +339,16 @@ function initKakao() {
 let currentUser = null;
 let allCards = [];
 let currentChapter = '전체';
+// 이름 정렬 방향(오름 asc / 내림 desc). 저장소를 못 쓰는 환경에서도 앱이 멈추지 않게 try로 감쌈
+let nameSortDir = 'asc';
+try { if(localStorage.getItem('cbNameSort') === 'desc') nameSortDir = 'desc'; } catch(e) {}
+// 이름 정렬 기준: full(이름 전체, 기존 방식) / family(성 기준) / given(이름 기준)
+let nameBasis = 'full';
+// 정렬 종류: name(이름) / company(회사명) / recent(저장일) / contact(마지막 연락일)
+let sortMode = 'name';
+try { const sm = localStorage.getItem('cbSortMode'); if(sm === 'company' || sm === 'recent' || sm === 'contact') sortMode = sm; } catch(e) {}
+try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb === 'given') nameBasis = nb; } catch(e) {}
+
 let searchTimer = null;
 let authMode = 'login';
 let myDicaUrl = null; // 내 DiCA 링크 (Firestore에서 로드)
@@ -766,7 +779,7 @@ function renderApp() {
     <div id="homeView" style="display:none"></div>
     <div id="cardsView">
     <div class="chapter-tabs" id="chapterTabs"></div>
-    <div class="count-bar"><span class="count-label">CARDS</span><span class="count-num" id="countNum">0</span></div>
+    <div class="count-bar"><span><span class="count-label">CARDS</span> <span class="count-num" id="countNum">0</span></span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="sort-btn" id="sortModeBtn" onclick="toggleSortMode()">정렬: 이름</button><button class="sort-btn" id="nameBasisBtn" onclick="toggleNameBasis()">기준: 전체</button><button class="sort-btn" id="nameSortBtn" onclick="toggleNameSort()">가나다순 ▲</button></span></div>
     <div class="card-wrap">
       <div id="alphaIndex" class="alpha-index"></div>
       <div class="card-list" id="cardList"></div>
@@ -1065,39 +1078,42 @@ function renderCards(cards) {
     return;
   }
 
-  const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-  const getChosung = (str) => {
-    if(!str) return '';
-    const c = str.charCodeAt(0);
-    if(c < 0xAC00 || c > 0xD7A3) return str[0].toUpperCase();
-    return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
-  };
-
   // 📣 새 소식 있는 명함은 맨 위로 (최신 업데이트 순)
   const updCards = cards.filter(c => getCardUpdate(c));
   const restCards = cards.filter(c => !getCardUpdate(c));
   updCards.sort((a, b) => (getCardUpdate(b).updatedAt || '').localeCompare(getCardUpdate(a).updatedAt || ''));
-  cards = [...updCards, ...restCards];
+  // ⭐ 즐겨찾기는 정렬과 상관없이 새 소식 다음에 모아서 보여줌 (검색 중에는 검색 결과 순서를 그대로 둠)
+  const pinFav = !(window._searchTerms||[]).length;
+  const favCards = pinFav ? restCards.filter(c => c.favorite) : [];
+  cards = [...updCards, ...favCards, ...(pinFav ? restCards.filter(c => !c.favorite) : restCards)];
 
   let html = '';
   let updHeaderDone = false;
+  let favHeaderDone = false;
   const seenCh = new Set(); // 자음별로 인덱스 목적지(id="alpha-ㄱ" 등)를 딱 한 번만 만들기 위한 기록
 
   cards.forEach((card, i) => {
     const _upd = getCardUpdate(card);
-    const ch = getChosung(card.name);
-    const isFirstOfCh = !seenCh.has(ch);
+    const ch = cbIsTimeMode() ? cbMonthLabel(card) : cbGroupKey(cbCardKey(card));
+    const gk = !cbIsTimeMode() && cbNameGroup(cbCardKey(card)) === 1 ? 1 : 0;
+    const isFav = pinFav && !_upd && !!card.favorite;
+    const isFirstOfCh = !isFav && !seenCh.has(ch);
     if(isFirstOfCh) seenCh.add(ch);
 
-    if(_upd) {
+    if(isFav) {
+      if(!favHeaderDone) {
+        html += `<div class="alpha-divider">⭐ 즐겨찾기</div>`;
+        favHeaderDone = true;
+      }
+    } else if(_upd) {
       if(!updHeaderDone) {
         html += `<div class="alpha-divider upd-divider">📣 새 소식</div>`;
         updHeaderDone = true;
       }
       // 이 자음의 명함이 전부 "새 소식"이라 아래쪽엔 안 나오는 경우, 여기라도 목적지를 심어둠
-      if(isFirstOfCh) html += `<span id="alpha-${ch}" style="display:none"></span>`;
+      if(isFirstOfCh) html += `<span id="alpha-${ch}" data-g="${gk}" style="display:none"></span>`;
     } else if(isFirstOfCh) {
-      html += `<div class="alpha-divider" id="alpha-${ch}">${ch}</div>`;
+      html += `<div class="alpha-divider" id="alpha-${ch}" data-g="${gk}">${ch}</div>`;
     }
 
     const avatarHtml = card.avatar
@@ -1118,6 +1134,7 @@ function renderCards(cards) {
           ${card.chapter?`<div class="card-chapter">📍 ${card.chapter}</div>`:''}
           ${bniHtml}
         </div>
+        <button class="fav-btn${card.favorite?' on':''}" onclick="toggleFavorite('${card.docId}')" aria-label="${card.favorite?'즐겨찾기 해제':'즐겨찾기 추가'}" aria-pressed="${card.favorite?'true':'false'}">${card.favorite?'★':'☆'}</button>
       </div>
       ${(window._searchTerms||[]).length ? (() => { const sn = _matchSnippet(card, window._searchTerms); return sn ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;padding:6px 0 0;border-top:1px dashed var(--border);margin-top:8px">🔎 ${sn}</div>` : ''; })() : ''}
       ${_upd?`<div class="upd-banner">
@@ -1157,23 +1174,23 @@ function renderCards(cards) {
 function renderAlphaIndex(cards) {
   const idx = document.getElementById('alphaIndex');
   if(!idx) return;
-  const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-  const getChosung = (str) => {
-    if(!str) return '';
-    const c = str.charCodeAt(0);
-    if(c < 0xAC00 || c > 0xD7A3) return str[0].toUpperCase();
-    return CHOSUNG[Math.floor((c - 0xAC00) / 588)];
-  };
-  const existing = new Set(cards.map(c => getChosung(c.name)));
-  idx.innerHTML = CHOSUNG.map(ch => 
-    existing.has(ch)
-      ? `<a class="alpha-btn active" onclick="scrollToAlpha('${ch}')">${ch}</a>`
-      : `<span class="alpha-btn disabled">${ch}</span>`
+  if(cbIsTimeMode()) { idx.innerHTML = ''; idx.style.display = 'none'; return; }
+  idx.style.display = '';
+  const keys = cards.map(c => cbCardKey(c));
+  const has = new Set(keys.map(k => cbGroupKey(k)));
+  const hasLatin = keys.some(k => cbNameGroup(k) === 1);
+  const items = CB_INDEX_HANGUL.map(ch => ({ id:ch, label:ch, on:has.has(ch) }))
+    .concat([{ id:'A-Z', label:'A-Z', on:hasLatin }, { id:'#', label:'#', on:has.has('#') }]);
+  if(nameSortDir === 'desc') items.reverse();
+  idx.innerHTML = items.map(it =>
+    it.on
+      ? `<a class="alpha-btn active" onclick="scrollToAlpha('${it.id}')">${it.label}</a>`
+      : `<span class="alpha-btn disabled">${it.label}</span>`
   ).join('');
 }
 
 window.scrollToAlpha = function(ch) {
-  const el = document.getElementById('alpha-' + ch);
+  const el = ch === 'A-Z' ? document.querySelector('[id^="alpha-"][data-g="1"]') : document.getElementById('alpha-' + ch);
   if(el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
@@ -1198,6 +1215,40 @@ window.saveMemo = async function(docId) {
   } catch(e) { showToast('❌ ' + e.message); }
 };
 
+// ===== 즐겨찾기 =====
+// 화면에 먼저 반영하고 저장은 뒤에서 한다. 저장이 실패하면 원래대로 되돌린다.
+// 검색 중에는 결과 목록을 다시 만들지 않고 별 모양만 바꾼다 (검색 결과가 사라지지 않도록)
+function cbRefreshFavorite(card) {
+  if((window._searchTerms||[]).length) {
+    document.querySelectorAll('.fav-btn').forEach(b => {
+      if(b.getAttribute('onclick') === `toggleFavorite('${card.docId}')`) {
+        b.textContent = card.favorite ? '★' : '☆';
+        b.classList.toggle('on', !!card.favorite);
+        b.setAttribute('aria-pressed', card.favorite ? 'true' : 'false');
+        b.setAttribute('aria-label', card.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가');
+      }
+    });
+  } else {
+    const y = window.scrollY;
+    applyFilter();
+    window.scrollTo(0, y);
+  }
+}
+window.toggleFavorite = async function(docId) {
+  const card = allCards.find(c => c.docId === docId);
+  if(!card) return;
+  const next = !card.favorite;
+  card.favorite = next;
+  cbRefreshFavorite(card);
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).update({ favorite: next });
+  } catch(e) {
+    card.favorite = !next;
+    cbRefreshFavorite(card);
+    showToast('❌ 즐겨찾기를 저장하지 못했어요');
+  }
+};
+
 // ===== 마지막 연락일 =====
 window.updateLastContact = async function(docId) {
   try {
@@ -1213,13 +1264,125 @@ window.filterChapter = function(chapter) {
   applyFilter();
 };
 
+// ===== 이름순 정렬 =====
+// 한글 → 영문 → 그 밖(일본어·중국어 등) 순으로 묶고, 묶음 안에서 가나다/ABC순. 이름이 비어 있으면 방향과 상관없이 맨 뒤.
+function cbNameGroup(name) {
+  const c = (name||'').trim().charCodeAt(0);
+  if(!c) return 3;
+  if((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x3131 && c <= 0x318E)) return 0;
+  if((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) return 1;
+  return 2;
+}
+// 이름을 성/이름으로 나눈다. 한글: 앞 1글자가 성(남궁·황보 같은 두 글자 성은 따로 확인).
+// 영문: 마지막 단어가 성("Kim, Alice" 처럼 쉼표가 있으면 쉼표 앞이 성). 일본어·중국어: 앞이 성.
+const CB_DOUBLE_SURNAMES = ['남궁','독고','황보','제갈','선우','사공','서문','동방'];
+function cbSplitName(name) {
+  const n = (name||'').trim();
+  if(!n) return { family:'', given:'' };
+  const g = cbNameGroup(n);
+  if(g === 0) {
+    const fl = (n.length >= 3 && CB_DOUBLE_SURNAMES.includes(n.slice(0,2))) ? 2 : 1;
+    return { family:n.slice(0,fl), given:n.slice(fl) };
+  }
+  if(g === 1) {
+    if(n.includes(',')) { const [f, ...r] = n.split(','); return { family:f.trim(), given:r.join(' ').trim() }; }
+    const w = n.split(/\s+/);
+    if(w.length === 1) return { family:n, given:n };
+    return { family:w[w.length-1], given:w.slice(0,-1).join(' ') };
+  }
+  const w = n.split(/\s+/);
+  if(w.length > 1) return { family:w[0], given:w.slice(1).join(' ') };
+  return { family:n.slice(0,1), given:n.slice(1) };
+}
+// 정렬(과 가나다 묶음)에 쓰는 글자: 기준에 따라 성 먼저 / 이름 먼저
+function cbNameKey(name) {
+  if(nameBasis === 'full') return (name||'').trim();
+  const p = cbSplitName(name);
+  return (nameBasis === 'family' ? p.family + ' ' + p.given : p.given + ' ' + p.family).trim();
+}
+// 가나다 묶음 글자: 한글은 기본 자음(ㄲ→ㄱ 처럼 쌍자음은 합침), 영문은 대문자 한 글자, 그 밖·빈 이름은 '#'
+const CB_INDEX_HANGUL = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const CB_CHOSUNG_ALL = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const CB_DOUBLE_TO_BASE = { 'ㄲ':'ㄱ','ㄸ':'ㄷ','ㅃ':'ㅂ','ㅆ':'ㅅ','ㅉ':'ㅈ' };
+function cbGroupKey(key) {
+  const k = (key||'').trim();
+  const g = cbNameGroup(k);
+  if(g === 0) {
+    const c = k.charCodeAt(0);
+    const ch = (c >= 0xAC00 && c <= 0xD7A3) ? CB_CHOSUNG_ALL[Math.floor((c - 0xAC00) / 588)] : k[0];
+    return CB_DOUBLE_TO_BASE[ch] || ch;
+  }
+  if(g === 1) return k[0].toUpperCase();
+  return '#';
+}
+// 정렬 종류에 맞는 카드의 정렬 글자
+function cbCardKey(card) {
+  return sortMode === 'company' ? (card.company||'').trim() : cbNameKey(card.name);
+}
+// 저장 시각(밀리초). Firestore 시각값·ISO 문자열 모두 처리, 없으면 0
+function cbSavedTime(card) {
+  const v = card.savedAt;
+  if(!v) return 0;
+  if(typeof v.toMillis === 'function') return v.toMillis();
+  if(typeof v.seconds === 'number') return v.seconds * 1000;
+  const t = Date.parse(v);
+  return isNaN(t) ? 0 : t;
+}
+// 마지막 연락 시각(전화하기를 누른 때). 없으면 0
+function cbContactTime(card) {
+  const t = card.lastContact ? Date.parse(card.lastContact) : 0;
+  return isNaN(t) ? 0 : t;
+}
+const cbIsTimeMode = () => sortMode === 'recent' || sortMode === 'contact';
+function cbSortTime(card) { return sortMode === 'contact' ? cbContactTime(card) : cbSavedTime(card); }
+function cbMonthLabel(card) {
+  const t = cbSortTime(card);
+  if(!t) return sortMode === 'contact' ? '연락 기록 없음' : '저장일 없음';
+  const d = new Date(t);
+  return d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0');
+}
+function cbNameCompare(a, b) {
+  const dir = nameSortDir === 'desc' ? -1 : 1;
+  if(cbIsTimeMode()) {
+    const ta = cbSortTime(a), tb = cbSortTime(b);
+    if(!ta || !tb) return (ta ? 0 : 1) - (tb ? 0 : 1);
+    return (tb - ta) * dir;
+  }
+  const ka = cbCardKey(a), kb = cbCardKey(b);
+  const ga = cbNameGroup(ka), gb = cbNameGroup(kb);
+  if(ga === 3 || gb === 3) return ga - gb;
+  if(ga !== gb) return (ga - gb) * dir;
+  return ka.localeCompare(kb, 'ko', { sensitivity: 'base' }) * dir;
+}
+window.toggleSortMode = function() {
+  sortMode = sortMode === 'name' ? 'company' : sortMode === 'company' ? 'recent' : sortMode === 'recent' ? 'contact' : 'name';
+  nameSortDir = 'asc';
+  try { localStorage.setItem('cbSortMode', sortMode); localStorage.setItem('cbNameSort', 'asc'); } catch(e) {}
+  applyFilter();
+};
+window.toggleNameBasis = function() {
+  nameBasis = nameBasis === 'full' ? 'family' : nameBasis === 'family' ? 'given' : 'full';
+  try { localStorage.setItem('cbNameBasis', nameBasis); } catch(e) {}
+  applyFilter();
+};
+window.toggleNameSort = function() {
+  nameSortDir = nameSortDir === 'asc' ? 'desc' : 'asc';
+  try { localStorage.setItem('cbNameSort', nameSortDir); } catch(e) {}
+  applyFilter();
+};
+
 function applyFilter() {
   let cards = [...allCards];
   if(currentChapter !== '전체') {
     cards = cards.filter(c => (c.chapter||'기타') === currentChapter);
   }
-  // 가나다순 정렬
-  cards.sort((a, b) => (a.name||'').localeCompare(b.name||'', 'ko'));
+  cards.sort(cbNameCompare);
+  const sb = document.getElementById('nameSortBtn');
+  if(sb) sb.textContent = cbIsTimeMode() ? (nameSortDir === 'asc' ? '최신순 ▼' : '오래된순 ▲') : (nameSortDir === 'asc' ? '가나다순 ▲' : '가나다순 ▼');
+  const mb = document.getElementById('sortModeBtn');
+  if(mb) mb.textContent = '정렬: ' + ({ name:'이름', company:'회사', recent:'저장일', contact:'연락일' })[sortMode];
+  const bb = document.getElementById('nameBasisBtn');
+  if(bb) { bb.textContent = '기준: ' + ({ full:'전체', family:'성', given:'이름' })[nameBasis]; bb.style.display = sortMode === 'name' ? '' : 'none'; }
   renderCards(cards);
   renderAlphaIndex(cards);
   renderHome();
