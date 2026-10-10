@@ -356,6 +356,7 @@ let nameBasis = 'full';
 // 정렬 종류: name(이름) / company(회사) / chapter(챕터·모임) / recent(저장일) / contact(마지막 연락일)
 const CB_SORT_MODE_IDS = ['name','company','chapter','recent','contact'];
 let sortMode = 'name';
+let favOnly = false; // 하단 '즐겨찾기' 탭: 즐겨찾기한 카드만 보기
 try { const sm = localStorage.getItem('cbSortMode'); if(CB_SORT_MODE_IDS.includes(sm)) sortMode = sm; } catch(e) {}
 try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb === 'given') nameBasis = nb; } catch(e) {}
 
@@ -791,6 +792,7 @@ function renderApp() {
     <div class="bottom-nav">
       <button class="nav-btn" id="navHome" onclick="showView('home')"><span class="icon">🏠</span><span>홈</span></button>
       <button class="nav-btn" id="navCards" onclick="showView('cards')"><span class="icon">🗂️</span><span>카드</span></button>
+      <button class="nav-btn" id="navFav" onclick="showView('fav')"><span class="icon">⭐</span><span>즐겨찾기</span></button>
       <button class="nav-btn" onclick="openScanModal()"><span class="icon">➕</span><span>추가</span></button>
       <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
     </div>
@@ -1076,6 +1078,7 @@ function renderCards(cards) {
 
   if(cards.length === 0) {
     if((window._searchTerms||[]).length) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">검색 결과가 없어요</div><div class="empty-desc">단어를 하나 빼거나 짧게 줄여보세요<br>예: "인테리어 해운대" → "인테리어"</div></div>`; return; }
+    if(favOnly) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">⭐</div><div class="empty-title">즐겨찾기한 카드가 없어요</div><div class="empty-desc">카드 오른쪽 위의 ☆를 누르면<br>여기에 모여요.</div></div>`; return; }
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂️</div><div class="empty-title">저장된 명함이 없어요</div><div class="empty-desc">명함 페이지에서<br>"명함 저장하기" 버튼을 눌러 추가하세요.</div></div>`;
     return;
   }
@@ -1085,7 +1088,7 @@ function renderCards(cards) {
   const restCards = cards.filter(c => !getCardUpdate(c));
   updCards.sort((a, b) => (getCardUpdate(b).updatedAt || '').localeCompare(getCardUpdate(a).updatedAt || ''));
   // ⭐ 즐겨찾기는 정렬과 상관없이 새 소식 다음에 모아서 보여줌 (검색 중에는 검색 결과 순서를 그대로 둠)
-  const pinFav = !(window._searchTerms||[]).length;
+  const pinFav = !favOnly && !(window._searchTerms||[]).length;
   const favCards = pinFav ? restCards.filter(c => c.favorite) : [];
   cards = [...updCards, ...favCards, ...(pinFav ? restCards.filter(c => !c.favorite) : restCards)];
 
@@ -1424,7 +1427,7 @@ window.setSortDir = function(d) { nameSortDir = d === 'desc' ? 'desc' : 'asc'; c
 window.setNameBasis = function(b) { nameBasis = (b === 'family' || b === 'given') ? b : 'full'; cbSaveSort(); };
 
 function applyFilter() {
-  const cards = [...allCards];
+  const cards = allCards.filter(c => !favOnly || c.favorite);
   cards.sort(cbNameCompare);
   const pl = document.getElementById('sortPickLabel');
   if(pl) pl.textContent = cbSortSummary();
@@ -1481,11 +1484,16 @@ window.showView = function(v) {
   const home = document.getElementById('homeView');
   const cardsV = document.getElementById('cardsView');
   if(!home || !cardsV) return;
+  const wasFav = favOnly;
+  favOnly = v === 'fav';
+  const showCards = v === 'cards' || v === 'fav';
   home.style.display = v === 'home' ? 'block' : 'none';
-  cardsV.style.display = v === 'cards' ? 'block' : 'none';
-  const nh = document.getElementById('navHome'), nc = document.getElementById('navCards');
+  cardsV.style.display = showCards ? 'block' : 'none';
+  const nh = document.getElementById('navHome'), nc = document.getElementById('navCards'), nf = document.getElementById('navFav');
   if(nh) nh.classList.toggle('active', v === 'home');
   if(nc) nc.classList.toggle('active', v === 'cards');
+  if(nf) nf.classList.toggle('active', v === 'fav');
+  if(favOnly !== wasFav) applyFilter();
   if(v === 'home') renderHome();
 };
 
@@ -2386,6 +2394,9 @@ window.openScanModal = function() {
   // 카메라 촬영은 가이드 틀 붙기 전까진 관리자(테스트용) 계정에서만 노출
   const camBtn = document.getElementById('camScanBtn');
   if(camBtn) camBtn.style.display = isAdmin() ? 'flex' : 'none';
+  // 멤버 명부는 등록·관리를 하는 관리자에게만 보인다
+  const rosterTab = document.getElementById('tabRoster');
+  if(rosterTab) rosterTab.style.display = isAdmin() ? '' : 'none';
 };
 
 window.closeScanModal = function(e) {
