@@ -86,6 +86,13 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .card-name{font-family:'Nanum Gothic',sans-serif;font-size:16px;font-weight:800;color:#0b1c3d;margin-bottom:2px;}
 .card-name-en{font-family:'Playfair Display',serif;font-size:11px;color:var(--gold);font-style:italic;margin-bottom:4px;}
 .card-company{font-size:12px;color:#3b4a63;margin-bottom:2px;font-weight:500;}
+.info-edit-btn{border:none;background:none;font-size:11px;color:#8896b0;cursor:pointer;padding:0 4px;margin-left:4px;vertical-align:middle;}
+.info-edit{margin:4px 0 6px;display:none;}
+.info-edit.open{display:block;}
+.info-edit input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;margin-bottom:4px;font-family:'Noto Sans KR',sans-serif;background:#fff;}
+.info-edit .row{display:flex;gap:6px;}
+.info-edit button{flex:1;border:1px solid var(--border);border-radius:8px;padding:6px;font-size:12px;cursor:pointer;background:#fff;}
+.info-edit .ok{background:#16305e;color:#fff;border-color:#16305e;}
 .card-chapter{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:#16305e;background:rgba(255,255,255,0.4);border-radius:6px;padding:2px 7px;}
 .bni-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(200,16,46,0.1);border:1px solid rgba(200,16,46,0.3);border-radius:8px;padding:2px 8px;font-size:10px;color:#C8102E;font-weight:600;margin-top:5px;}
 .bni-dot{width:4px;height:4px;background:var(--red);border-radius:50%;flex-shrink:0;}
@@ -362,7 +369,25 @@ try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb =
 
 let searchTimer = null;
 let authMode = 'login';
-let myDicaUrl = null; // 내 DiCA 링크 (Firestore에서 로드)
+let myDicaUrl = null; // 화면에 쓰는 대표 내 명함 링크 (비즈홈 우선, 없으면 오토명함)
+let myCards = { bizhome: null, autocard: null };  // 계정당 종류별 1개만 — 한 번 등록하면 바꿀 수 없다 (규칙: firestore.rules)
+const CB_MYCARD_FIELD = { bizhome: 'bizhomeUrl', autocard: 'autocardUrl' };
+const CB_MYCARD_LABEL = { bizhome: '비즈홈', autocard: '오토명함' };
+function cbMyCardType(url) { try { return /\/autocard\//i.test(new URL(url).pathname) ? 'autocard' : 'bizhome'; } catch(e) { return 'bizhome'; } }
+function cbSetMyCards(d) {
+  myCards = { bizhome: d.bizhomeUrl || null, autocard: d.autocardUrl || null };
+  // 예전 단일 필드(dicaUrl)는 종류를 판별해 빈 칸에 넣는다
+  if(d.dicaUrl) { const t = cbMyCardType(d.dicaUrl); if(!myCards[t]) myCards[t] = d.dicaUrl; }
+  myDicaUrl = myCards.bizhome || myCards.autocard;
+}
+// 내 명함 등록 — 종류별 1회. 이미 있으면 막고, 처음이면 저장 후 서비스 이미지(장수) 지급을 Worker에 요청
+async function cbRegisterMyCard(url) {
+  const t = cbMyCardType(url);
+  if(myCards[t]) { showToast(`❌ ${CB_MYCARD_LABEL[t]}은 한 계정에 1번만 등록할 수 있어요`); return false; }
+  await db.collection('users').doc(currentUser.uid).set({ [CB_MYCARD_FIELD[t]]: url }, { merge: true });
+  myCards[t] = url; myDicaUrl = myCards.bizhome || myCards.autocard;
+  return true;
+}
 
 // 내 링크가 비즈홈인지 판별: 비즈홈은 아래 저장소(자이언츠·파이오니어·네임카드)에 있고, 오토카드 명함은 /autocard/ 아래에 있다
 const CB_BIZHOME_REPOS = ['bni-giants', 'bni-pioneer-cards', 'namecard'];
@@ -1161,7 +1186,15 @@ function renderCards(cards) {
       <div class="card-main">
         <div class="card-avatar">${avatarHtml}</div>
         <div class="card-info">
-          <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}</div>
+          <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}<button class="info-edit-btn" onclick="toggleInfoEdit(this)" aria-label="명함 정보 수정">✏️</button></div>
+          <div class="info-edit" data-doc="${card.docId}">
+            <input class="ie-en" value="${_cbEsc(card.nameEn)}" placeholder="영문 이름" maxlength="60">
+            <input class="ie-co" value="${_cbEsc(card.company)}" placeholder="소속·회사" maxlength="60">
+            <input class="ie-ti" value="${_cbEsc(card.title)}" placeholder="직함" maxlength="60">
+            <input class="ie-in" value="${_cbEsc(card.industry)}" placeholder="업종" maxlength="60">
+            <input class="ie-ch" list="chapterList" value="${_cbEsc(card.chapter)}" placeholder="챕터·모임" maxlength="60" autocomplete="off">
+            <div class="row"><button class="ok" onclick="saveInfoEdit('${card.docId}',this)">저장</button><button onclick="toggleInfoEdit(this)">취소</button></div>
+          </div>
           ${card.nameEn?`<div class="card-name-en">${card.nameEn}</div>`:''}
           ${card.company?`<div class="card-company">${card.company}</div>`:''}
           ${card.industry?`<div class="card-company" style="opacity:.75">${card.industry}</div>`:''}
@@ -1234,6 +1267,32 @@ window.toggleCRM = function(btn) {
   const arrow = btn.querySelector('.crm-arrow');
   crm.classList.toggle('open');
   arrow.textContent = crm.classList.contains('open') ? '▼' : '▶';
+};
+
+// ===== 이름 아래 정보(영문 이름·소속) 직접 수정 =====
+// 영문 이름·소속·직함·업종·챕터. 고친 항목은 editedFields에 기록해, DiCA 갱신이 사용자가 고친 값을 덮어쓰지 않게 한다.
+window.toggleInfoEdit = function(btn) {
+  const info = btn.closest('.card-info');
+  if(info) info.querySelector('.info-edit').classList.toggle('open');
+};
+window.saveInfoEdit = async function(docId, btn) {
+  const box = btn.closest('.info-edit');
+  const card = allCards.find(c => c.docId === docId);
+  if(!card) return;
+  const val = { nameEn:'.ie-en', company:'.ie-co', title:'.ie-ti', industry:'.ie-in', chapter:'.ie-ch' };
+  const patch = {};
+  const edited = new Set(card.editedFields || []);
+  for(const [k,sel] of Object.entries(val)) {
+    patch[k] = box.querySelector(sel).value.trim();
+    if(patch[k] !== (card[k]||'')) edited.add(k);
+  }
+  patch.editedFields = [...edited];
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).update(patch);
+    Object.assign(card, patch);
+    showToast('✅ 수정됨');
+    applyFilter();
+  } catch(e) { showToast('❌ ' + e.message); }
 };
 
 // ===== 메모 저장 =====
@@ -2240,7 +2299,7 @@ async function loadUserProfile(uid) {
       name    = d.name    || name;
       title   = d.title   || '';
       company = d.company || '';
-      myDicaUrl = d.dicaUrl || null;
+      cbSetMyCards(d);
     } else {
       isNew = true;
       await db.collection('users').doc(uid).set({
@@ -2271,10 +2330,8 @@ async function applyMyCardParam() {
   let url = null;
   try { url = sessionStorage.getItem('cbMyCard'); sessionStorage.removeItem('cbMyCard'); } catch(e) {}
   if(!url || !/^https:\/\/jinjjabg-hub\.github\.io\/autocard\/c\/\?id=[A-Za-z0-9_-]{6,40}$/.test(url)) return false;
-  if(myDicaUrl === url) { showToast('✅ 이미 내 명함으로 등록돼 있어요'); generateMyQR(); return true; }
-  if(myDicaUrl && !confirm('내 명함을 방금 만든 디지털 명함으로 바꿀까요?')) { generateMyQR(); return true; }
-  await db.collection('users').doc(currentUser.uid).set({ dicaUrl: url }, { merge: true });
-  myDicaUrl = url;
+  if(myCards.autocard === url) { showToast('✅ 이미 내 명함으로 등록돼 있어요'); generateMyQR(); return true; }
+  if(!(await cbRegisterMyCard(url))) { generateMyQR(); return true; }
   showToast('✅ 내 명함으로 등록됐어요!');
   generateMyQR();
   await grantDicaOwnerBonus(url);
@@ -2319,8 +2376,7 @@ window.saveDicaUrl = async function() {
     return;
   }
   try {
-    await db.collection('users').doc(currentUser.uid).set({ dicaUrl: url }, { merge: true });
-    myDicaUrl = url;
+    if(!(await cbRegisterMyCard(url))) return;
     document.getElementById('dicaRegisterModal')?.remove();
     showToast('✅ 내 명함이 등록됐어요!');
     generateMyQR();
@@ -2328,14 +2384,6 @@ window.saveDicaUrl = async function() {
   } catch(e) {
     showToast('저장 실패. 다시 시도해주세요.');
   }
-};
-
-// 이미 등록된 내 명함 주소를 새 주소(예: 맞춤 주소 bizhome.bizmy.net/이름)로 교체
-window.replaceMyCard = function() {
-  document.getElementById('myCardSheet')?.remove();
-  showDicaRegisterModal();
-  const inp = document.getElementById('dicaUrlInput');
-  if(inp) { inp.value = myDicaUrl || ''; inp.placeholder = 'https://bizhome.bizmy.net/이름/'; inp.focus(); inp.select(); }
 };
 
 window.skipDicaRegister = function() {
@@ -2396,7 +2444,7 @@ window.goMyCard = function() {
     <div class="mycard-sheet-box">
       <div style="font-size:15px;font-weight:800;color:#16305e;margin-bottom:14px;">📇 내 명함</div>
       <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;" onclick="window.open(myDicaUrl,'_blank');document.getElementById('myCardSheet').remove();">🔗 내 명함 열기</button>
-      <button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="replaceMyCard()">🔄 내 명함 주소 교체하기</button>
+      ${!myCards.bizhome || !myCards.autocard ? `<button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="document.getElementById('myCardSheet').remove();showDicaRegisterModal()">➕ ${!myCards.bizhome ? '비즈홈' : '오토명함'} 등록하기</button>` : ''}
       <button class="mycard-sheet-btn" style="background:linear-gradient(135deg,#2563eb,#60a5fa);color:#16305e;" onclick="openNotifyUpdate()">📣 업데이트 알리기</button>
       <button class="mycard-sheet-btn" style="background:#f0f0f0;color:#666;margin-bottom:0;" onclick="document.getElementById('myCardSheet').remove()">취소</button>
     </div>`;
@@ -2644,8 +2692,8 @@ window.refreshDicaCards = async function() {
       // 이름·회사 등은 DiCA 쪽이 최신본이니 덮어쓰고, chapter·memo처럼 사용자가 직접 손댔을 수 있는 값은 안 건드린다.
       const patch = {};
       if(d.name) patch.name = d.name;
-      if(d.title) patch.title = d.title;
-      if(d.company) patch.company = d.company;
+      if(d.title && !(c.editedFields||[]).includes('title')) patch.title = d.title;
+      if(d.company && !(c.editedFields||[]).includes('company')) patch.company = d.company;
       if(d.phone) patch.phone = d.phone;
       if(d.email) patch.email = d.email;
       if(d._multilangText) patch.fullText = d._multilangText;
@@ -2676,6 +2724,7 @@ async function upsertCard(card, prefix) {
     const patch = {};
     for(const [k,v] of Object.entries(card)) {
       if(k === 'savedAt' || k === 'referrer' || k === 'avatar' || !v) continue;
+      if((dup.editedFields||[]).includes(k)) continue;   // 사용자가 직접 고친 값은 유지
       if(isDica || !dup[k]) patch[k] = v;
     }
     if(Object.keys(patch).length) await ref.doc(dup.docId).update(patch);
