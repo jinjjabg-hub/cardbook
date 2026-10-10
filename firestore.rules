@@ -10,7 +10,10 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create: if request.auth != null && request.auth.uid == uid
         && !request.resource.data.keys().hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted','paidLots','creditsV2','rewardMonth','rewardCount']);
+      // 내 명함 링크(비즈홈 bizhomeUrl · 오토명함 autocardUrl · 예전 dicaUrl)는 한 번 등록하면 바꾸거나 지울 수 없다 (계정당 종류별 1회)
+      function keepOnce(f) { return !(f in resource.data) || (f in request.resource.data && request.resource.data[f] == resource.data[f]); }
       allow update: if request.auth != null && request.auth.uid == uid
+        && keepOnce('bizhomeUrl') && keepOnce('autocardUrl') && keepOnce('dicaUrl')
         && !request.resource.data.diff(resource.data).affectedKeys()
              .hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted','paidLots','creditsV2','rewardMonth','rewardCount']);
 
