@@ -86,6 +86,13 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .card-name{font-family:'Nanum Gothic',sans-serif;font-size:16px;font-weight:800;color:#0b1c3d;margin-bottom:2px;}
 .card-name-en{font-family:'Playfair Display',serif;font-size:11px;color:var(--gold);font-style:italic;margin-bottom:4px;}
 .card-company{font-size:12px;color:#3b4a63;margin-bottom:2px;font-weight:500;}
+.info-edit-btn{border:none;background:none;font-size:11px;color:#8896b0;cursor:pointer;padding:0 4px;margin-left:4px;vertical-align:middle;}
+.info-edit{margin:4px 0 6px;display:none;}
+.info-edit.open{display:block;}
+.info-edit input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:12px;margin-bottom:4px;font-family:'Noto Sans KR',sans-serif;background:#fff;}
+.info-edit .row{display:flex;gap:6px;}
+.info-edit button{flex:1;border:1px solid var(--border);border-radius:8px;padding:6px;font-size:12px;cursor:pointer;background:#fff;}
+.info-edit .ok{background:#16305e;color:#fff;border-color:#16305e;}
 .card-chapter{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:#16305e;background:rgba(255,255,255,0.4);border-radius:6px;padding:2px 7px;}
 .bni-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(200,16,46,0.1);border:1px solid rgba(200,16,46,0.3);border-radius:8px;padding:2px 8px;font-size:10px;color:#C8102E;font-weight:600;margin-top:5px;}
 .bni-dot{width:4px;height:4px;background:var(--red);border-radius:50%;flex-shrink:0;}
@@ -1161,7 +1168,15 @@ function renderCards(cards) {
       <div class="card-main">
         <div class="card-avatar">${avatarHtml}</div>
         <div class="card-info">
-          <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}</div>
+          <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}<button class="info-edit-btn" onclick="toggleInfoEdit(this)" aria-label="명함 정보 수정">✏️</button></div>
+          <div class="info-edit" data-doc="${card.docId}">
+            <input class="ie-en" value="${_cbEsc(card.nameEn)}" placeholder="영문 이름" maxlength="60">
+            <input class="ie-co" value="${_cbEsc(card.company)}" placeholder="소속·회사" maxlength="60">
+            <input class="ie-ti" value="${_cbEsc(card.title)}" placeholder="직함" maxlength="60">
+            <input class="ie-in" value="${_cbEsc(card.industry)}" placeholder="업종" maxlength="60">
+            <input class="ie-ch" list="chapterList" value="${_cbEsc(card.chapter)}" placeholder="챕터·모임" maxlength="60" autocomplete="off">
+            <div class="row"><button class="ok" onclick="saveInfoEdit('${card.docId}',this)">저장</button><button onclick="toggleInfoEdit(this)">취소</button></div>
+          </div>
           ${card.nameEn?`<div class="card-name-en">${card.nameEn}</div>`:''}
           ${card.company?`<div class="card-company">${card.company}</div>`:''}
           ${card.industry?`<div class="card-company" style="opacity:.75">${card.industry}</div>`:''}
@@ -1234,6 +1249,32 @@ window.toggleCRM = function(btn) {
   const arrow = btn.querySelector('.crm-arrow');
   crm.classList.toggle('open');
   arrow.textContent = crm.classList.contains('open') ? '▼' : '▶';
+};
+
+// ===== 이름 아래 정보(영문 이름·소속) 직접 수정 =====
+// 영문 이름·소속·직함·업종·챕터. 고친 항목은 editedFields에 기록해, DiCA 갱신이 사용자가 고친 값을 덮어쓰지 않게 한다.
+window.toggleInfoEdit = function(btn) {
+  const info = btn.closest('.card-info');
+  if(info) info.querySelector('.info-edit').classList.toggle('open');
+};
+window.saveInfoEdit = async function(docId, btn) {
+  const box = btn.closest('.info-edit');
+  const card = allCards.find(c => c.docId === docId);
+  if(!card) return;
+  const val = { nameEn:'.ie-en', company:'.ie-co', title:'.ie-ti', industry:'.ie-in', chapter:'.ie-ch' };
+  const patch = {};
+  const edited = new Set(card.editedFields || []);
+  for(const [k,sel] of Object.entries(val)) {
+    patch[k] = box.querySelector(sel).value.trim();
+    if(patch[k] !== (card[k]||'')) edited.add(k);
+  }
+  patch.editedFields = [...edited];
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).update(patch);
+    Object.assign(card, patch);
+    showToast('✅ 수정됨');
+    applyFilter();
+  } catch(e) { showToast('❌ ' + e.message); }
 };
 
 // ===== 메모 저장 =====
@@ -2644,8 +2685,8 @@ window.refreshDicaCards = async function() {
       // 이름·회사 등은 DiCA 쪽이 최신본이니 덮어쓰고, chapter·memo처럼 사용자가 직접 손댔을 수 있는 값은 안 건드린다.
       const patch = {};
       if(d.name) patch.name = d.name;
-      if(d.title) patch.title = d.title;
-      if(d.company) patch.company = d.company;
+      if(d.title && !(c.editedFields||[]).includes('title')) patch.title = d.title;
+      if(d.company && !(c.editedFields||[]).includes('company')) patch.company = d.company;
       if(d.phone) patch.phone = d.phone;
       if(d.email) patch.email = d.email;
       if(d._multilangText) patch.fullText = d._multilangText;
@@ -2676,6 +2717,7 @@ async function upsertCard(card, prefix) {
     const patch = {};
     for(const [k,v] of Object.entries(card)) {
       if(k === 'savedAt' || k === 'referrer' || k === 'avatar' || !v) continue;
+      if((dup.editedFields||[]).includes(k)) continue;   // 사용자가 직접 고친 값은 유지
       if(isDica || !dup[k]) patch[k] = v;
     }
     if(Object.keys(patch).length) await ref.doc(dup.docId).update(patch);
