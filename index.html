@@ -656,7 +656,7 @@ window.openAccountModal = function() {
     <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:28px 24px 48px;">
       <div style="text-align:center;margin-bottom:24px;">
         <div style="font-size:13px;font-weight:700;color:#16305e;">계정 설정</div>
-        <div style="font-size:12px;color:#5b7bb0;margin-top:6px;">\${currentUser?.email || ''}</div>
+        <div style="font-size:12px;color:#5b7bb0;margin-top:6px;">${currentUser?.email || ''}</div>
       </div>
       <div id="creditBox" style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
         <div><div style="font-size:11px;color:#5b7bb0">남은 스캔 장수</div><div style="font-size:20px;font-weight:800;color:#16305e"><span id="creditNum">…</span>장</div></div>
@@ -666,6 +666,8 @@ window.openAccountModal = function() {
       ${isAdmin() ? `<button onclick="openBannerStats()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📊 배너 클릭 통계 (관리자)</button>` : ''}
       <button id="installSettingBtn" onclick="document.getElementById('accountModal').remove();doAddToHome();" style="display:none;width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📲 홈화면에 추가하기</button>
       <button onclick="refreshDicaCards()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">🔄 DiCA 카드 새로고침</button>
+      <button id="phoneAskToggle" onclick="togglePhoneAsk()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📱 저장할 때 폰 연락처에도 저장 묻기: <b>${_phoneAskOn() ? '켜짐' : '꺼짐'}</b></button>
+      <button onclick="sendAllToPhone()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📇 전화번호 있는 명함 전부 폰 연락처로 보내기</button>
       <div style="text-align:center;margin-bottom:12px;">
         <a href="./terms.html" target="_blank" style="color:#5b7bb0;text-decoration:underline;font-size:11px;">이용약관</a>
         <span style="color:#cbd5e1;margin:0 6px;">·</span>
@@ -689,6 +691,20 @@ window.openAccountModal = function() {
   document.body.appendChild(modal);
   if(!_isInstalled()) { const ib = document.getElementById('installSettingBtn'); if(ib) ib.style.display = 'block'; }
   getCredits().then(c => { const el = document.getElementById('creditNum'); if(el) el.textContent = c; }).catch(()=>{});
+};
+
+window.togglePhoneAsk = function() {
+  const on = !_phoneAskOn();
+  try { localStorage.setItem(CB_PHONE_ASK_KEY, on ? 'on' : 'off'); } catch(e) {}
+  const b = document.getElementById('phoneAskToggle');
+  if(b) b.innerHTML = '📱 저장할 때 폰 연락처에도 저장 묻기: <b>' + (on ? '켜짐' : '꺼짐') + '</b>';
+};
+// 예전에 저장한 명함도 한 번에 폰으로 (연락처 앱이 같은 번호를 합치거나 중복을 알려줌)
+window.sendAllToPhone = function() {
+  const list = allCards.filter(c => c.phone);
+  if(!list.length) { showToast('전화번호가 있는 명함이 없어요'); return; }
+  if(!confirm(list.length + '명을 폰 연락처로 보낼까요?\n이미 폰에 있는 사람은 연락처 앱에서 중복으로 보일 수 있어요.')) return;
+  _sendVcfToPhone(list);
 };
 
 // ===== 계정 삭제 확인 =====
@@ -1890,6 +1906,7 @@ window.confirmDicaSave = async function() {
     // 전화번호로 기존 카드 찾기
     const _dup = _findSamePerson(d);
     const existingDocId = _dup ? _dup.docId : null;
+    let _newDocId = null;
 
     const cardData = {
       name:    d.name,
@@ -1915,12 +1932,13 @@ window.confirmDicaSave = async function() {
       await db.collection('users').doc(currentUser.uid).collection('cards').doc(existingDocId).update(patch);
       showToast('✅ ' + d.name + '님 명함 업데이트됐어요!');
     } else {
-      await upsertCard(cardData, 'dica');
+      _newDocId = (await upsertCard(cardData, 'dica')).docId;
       sendSaveReward(d.url);   // 새로 저장한 경우에만 — 명함 주인에게 리워드
       document.getElementById('dicaPopup').style.display = 'none';
       showToast('✅ ' + d.name + '님 명함 저장됐어요!');
     }
     await loadCards();
+    if(_newDocId) await askPhoneSave([_newDocId]);
     // 이미 PWA 앱으로 실행 중이면 설치 팝업 스킵
     const isStandalone = window.matchMedia('(display-mode:standalone)').matches || !!navigator.standalone;
     if(!isStandalone) {
@@ -2085,16 +2103,18 @@ window.shareCard = async function(url, name, docId) {
   }
 };
 // ===== 폰 연락처에 원터치 저장 (vCard) =====
+// 왜: 카드북에만 있으면 전화 올 때 이름이 안 뜨고, 카톡 친구로도 안 잡힌다.
+// 웹앱은 연락처에 몰래 쓸 수 없어서(보안 정책) 한 번 누르면 폰 연락처 앱으로 넘겨준다.
+// 폰 연락처에 들어가면 카카오톡 '자동 친구 추가'가 켜진 사람은 카톡 친구에도 자동으로 뜬다.
 function _vcfEsc(s) {
-  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
 }
-window.saveToPhoneContacts = function(docId) {
-  const c = allCards.find(x => x.docId === docId);
-  if(!c) { showToast('❌ 명함 정보를 찾을 수 없어요'); return; }
+function _cardVcf(c) {
   const noteParts = [c.chapter, c.industry, c.bni].filter(Boolean);
-  const lines = [
+  return [
     'BEGIN:VCARD',
     'VERSION:3.0',
+    'N:;' + _vcfEsc(c.name || '이름 없음') + ';;;',
     'FN:' + _vcfEsc(c.name || '이름 없음'),
     c.company ? 'ORG:' + _vcfEsc(c.company) : '',
     c.title ? 'TITLE:' + _vcfEsc(c.title) : '',
@@ -2105,17 +2125,25 @@ window.saveToPhoneContacts = function(docId) {
     noteParts.length ? 'NOTE:' + _vcfEsc(noteParts.join(' · ')) : '',
     'END:VCARD'
   ].filter(Boolean).join('\r\n');
-
-  const fname = (c.name || 'contact').replace(/[\\/:*?"<>|]/g,'') + '.vcf';
-  const file = new File([lines], fname, { type: 'text/vcard' });
+}
+// 여러 명이면 한 파일에 이어 붙인다 (연락처 앱이 한 번에 N명 추가)
+function _sendVcfToPhone(cards) {
+  const text = cards.map(_cardVcf).join('\r\n');
+  const base = cards.length === 1 ? (cards[0].name || 'contact') : '카드북_' + cards.length + '명';
+  const file = new File([text], base.replace(/[\\/:*?"<>|]/g,'') + '.vcf', { type: 'text/vcard' });
   // 1순위: 공유창(아이폰·안드로이드 모두 "연락처" 앱을 고를 수 있음)
   if(navigator.canShare && navigator.canShare({ files:[file] })) {
-    navigator.share({ files:[file], title:c.name || '' })
+    navigator.share({ files:[file], title: base })
       .catch(e => { if(e.name !== 'AbortError') _downloadVcf(file); });
     return;
   }
   // 2순위: 파일 내려받기 (PC·공유창 미지원 브라우저)
   _downloadVcf(file);
+}
+window.saveToPhoneContacts = function(docId) {
+  const c = allCards.find(x => x.docId === docId);
+  if(!c) { showToast('❌ 명함 정보를 찾을 수 없어요'); return; }
+  _sendVcfToPhone([c]);
 };
 function _downloadVcf(file) {
   const url = URL.createObjectURL(file);
@@ -2127,6 +2155,49 @@ function _downloadVcf(file) {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
   showToast('📇 연락처 파일이 저장됐어요. 열어서 추가해 주세요');
+}
+
+// ===== 저장 직후 "폰 연락처에도 저장할까요?" =====
+// 공유창은 사용자가 직접 누른 순간에만 열 수 있어서, 저장이 끝나면 버튼 하나짜리 창을 띄운다.
+// '다시 묻지 않기'를 누르면 이 기기에서는 묻지 않는다(카드의 📇 버튼은 그대로 쓸 수 있음).
+const CB_PHONE_ASK_KEY = 'cbPhoneAsk';
+function _phoneAskOn() { try { return localStorage.getItem(CB_PHONE_ASK_KEY) !== 'off'; } catch(e) { return true; } }
+function askPhoneSave(docIds) {
+  return new Promise(resolve => {
+    const cards = (docIds||[]).map(id => allCards.find(c => c.docId === id)).filter(c => c && c.phone);
+    if(!cards.length || !_phoneAskOn()) { resolve(false); return; }
+    const who = cards.length === 1 ? _cbEsc(cards[0].name) + '님' : cards.length + '명';
+    const modal = document.createElement('div');
+    modal.id = 'phoneAskModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:500;display:flex;align-items:flex-end;justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:#f6f8fc;border-radius:20px 20px 0 0;padding:24px 20px calc(20px + env(safe-area-inset-bottom));width:100%;max-width:480px;text-align:center;font-family:'Noto Sans KR',sans-serif;">
+        <div style="font-size:32px;margin-bottom:8px;">📱</div>
+        <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:8px;">${who}을 폰 연락처에도 저장할까요?</div>
+        <div style="font-size:12.5px;color:#5b7bb0;line-height:1.7;margin-bottom:18px;">전화 올 때 이름이 뜨고,<br>카톡 <b>자동 친구 추가</b>가 켜져 있으면 카톡 친구에도 바로 떠요</div>
+        <button data-pa="save" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16305e;color:#f6f8fc;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px;">📇 폰 연락처에 저장</button>
+        <button data-pa="later" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.25);background:transparent;color:#5b7bb0;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">다음에</button>
+        <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:11.5px;">
+          <a data-pa="howto" style="color:#5b7bb0;text-decoration:underline;cursor:pointer;">카톡 자동 친구 추가 켜는 법</a>
+          <a data-pa="never" style="color:#94a3b8;text-decoration:underline;cursor:pointer;">다시 묻지 않기</a>
+        </div>
+        <div data-pa-howto style="display:none;margin-top:12px;padding:12px;border-radius:10px;background:#fff;text-align:left;font-size:12px;color:#334155;line-height:1.8;">
+          카카오톡 → 오른쪽 위 <b>⚙️ 설정</b> → <b>친구</b> → <b>자동 친구 추가</b> 켜기<br>
+          <span style="color:#64748b">상대가 카톡에 같은 번호로 가입돼 있어야 친구로 떠요. 이미 켜져 있으면 그대로 두면 돼요.</span>
+        </div>
+      </div>`;
+    const done = v => { modal.remove(); resolve(v); };
+    modal.querySelector('[data-pa="save"]').onclick = () => { _sendVcfToPhone(cards); done(true); };
+    modal.querySelector('[data-pa="later"]').onclick = () => done(false);
+    modal.querySelector('[data-pa="howto"]').onclick = () => { const h = modal.querySelector('[data-pa-howto]'); h.style.display = h.style.display === 'none' ? 'block' : 'none'; };
+    modal.querySelector('[data-pa="never"]').onclick = () => {
+      try { localStorage.setItem(CB_PHONE_ASK_KEY, 'off'); } catch(e) {}
+      showToast('이제 묻지 않아요. 카드의 📇 버튼으로 언제든 저장할 수 있어요', 3500);
+      done(false);
+    };
+    modal.onclick = e => { if(e.target === modal) done(false); };
+    document.body.appendChild(modal);
+  });
 }
 window.shareApp = function() {
   if(navigator.share) navigator.share({ title:'카드북', url: window.location.href });
@@ -2638,6 +2709,7 @@ window.saveLinkCard = async function() {
     document.getElementById('scanModal').style.display = 'none';
     _saveToast(r, card.name);
     await loadCards();
+    if(!r.merged) askPhoneSave([r.docId]);
     document.getElementById('lkUrl').value = '';
     document.getElementById('lkText').value = '';
     document.getElementById('linkStep1').style.display = 'block';
@@ -2973,7 +3045,7 @@ window.saveOcrBatch = async function() {
   const list = _ocrBatch.filter(p => p._ok && (p.name||'').trim());
   if(list.length === 0) { showToast('❌ 저장할 명함이 없어요'); return; }
   try {
-    let n = 0, m = 0;
+    let n = 0, m = 0; const newIds = [];
     for(const p of list) {
       const r = await upsertCard({
         name: p.name.trim(), nameEn: p.nameEn||'', title: p.title||'', company: (p.company||'').trim(),
@@ -2983,13 +3055,14 @@ window.saveOcrBatch = async function() {
       }, 'scan');
       const img = await _uploadCardImage(r.docId, p._jpeg);
       if(img) await db.collection('users').doc(currentUser.uid).collection('cards').doc(r.docId).update({ image: img });
-      if(r.merged) m++; else n++;
+      if(r.merged) m++; else { n++; newIds.push(r.docId); }
     }
     document.getElementById('scanModal').style.display = 'none';
     document.getElementById('scanStep4').style.display = 'none';
     document.getElementById('scanStep1').style.display = 'block';
     showToast('✅ ' + n + '장 저장' + (m ? ' · ' + m + '장은 기존 명함에 합침' : ''));
     await loadCards();
+    askPhoneSave(newIds);
   } catch(e) { showToast('❌ ' + e.message); }
 };
 
@@ -3019,6 +3092,7 @@ window.saveOcrCard = async function() {
     document.getElementById('scanModal').style.display = 'none';
     _saveToast(r, card.name, '명함 저장됐어요!');
     await loadCards();
+    if(!r.merged) askPhoneSave([r.docId]);
     // 단계 리셋
     document.getElementById('scanStep1').style.display = 'block';
     document.getElementById('scanStep2').style.display = 'none';
