@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>명함첩 · BNI Cardbook</title>
+<title>카드북 · 명함·카드 보관함</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
@@ -246,14 +246,14 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="명함첩">
+  <meta name="apple-mobile-web-app-title" content="카드북">
   <meta name="theme-color" content="#f6f8fc">
   <link rel="manifest" href="manifest.json">
-  <meta name="description" content="받은 명함을 한곳에 모으고, 기억나는 조각으로 바로 찾는 명함첩">
+  <meta name="description" content="받은 명함과 카드를 한곳에 모으고, 기억나는 단어로 바로 찾는 카드북">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="명함첩 · Cardbook">
-  <meta property="og:title" content="명함첩 · Cardbook">
-  <meta property="og:description" content="받은 명함을 한곳에 모으고, 기억나는 조각으로 바로 찾는 명함첩">
+  <meta property="og:site_name" content="카드북">
+  <meta property="og:title" content="카드북 · 명함·카드 보관함">
+  <meta property="og:description" content="받은 명함과 카드를 한곳에 모으고, 기억나는 단어로 바로 찾는 카드북">
   <meta property="og:url" content="https://cardbook.bizmy.net/">
   <meta property="og:image" content="https://cardbook.bizmy.net/og-image.png">
   <meta property="og:image:width" content="1200">
@@ -356,6 +356,7 @@ let nameBasis = 'full';
 // 정렬 종류: name(이름) / company(회사) / chapter(챕터·모임) / recent(저장일) / contact(마지막 연락일)
 const CB_SORT_MODE_IDS = ['name','company','chapter','recent','contact'];
 let sortMode = 'name';
+let favOnly = false; // 하단 '즐겨찾기' 탭: 즐겨찾기한 카드만 보기
 try { const sm = localStorage.getItem('cbSortMode'); if(CB_SORT_MODE_IDS.includes(sm)) sortMode = sm; } catch(e) {}
 try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb === 'given') nameBasis = nb; } catch(e) {}
 
@@ -424,8 +425,8 @@ function renderLogin() {
     <div class="login-screen">
       ${cardBanner}
       <div class="login-icon">🗂️</div>
-      <div class="login-title">BNI 명함첩</div>
-      <div class="login-desc">전문가 명함을 스마트하게 관리하세요<br><a href="javascript:void(0)" onclick="openPricingModal()" style="color:#2563eb;font-size:12px;text-decoration:underline;">가입 시 이미지 명함 50장 무료 · 요금제 보기</a></div>
+      <div class="login-title">카드북</div>
+      <div class="login-desc">명함·카드를 한곳에 모으고, 기억나는 단어로 바로 찾으세요<br><a href="javascript:void(0)" onclick="openPricingModal()" style="color:#2563eb;font-size:12px;text-decoration:underline;">가입 시 이미지 명함 50장 무료 · 요금제 보기</a></div>
       <div style="width:100%;max-width:300px;margin-bottom:4px;">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px 14px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.18);border-radius:12px;">
           <input type="checkbox" id="privacyAgree" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#2563eb;cursor:pointer;">
@@ -458,7 +459,7 @@ function renderLogin() {
     </div>
     <div class="bottom-nav">
       <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
-      <button class="nav-btn active"><span class="icon">🗂️</span><span>명함첩</span></button>
+      <button class="nav-btn active"><span class="icon">🗂️</span><span>카드</span></button>
       <button class="nav-btn" onclick="openScanModal()"><span class="icon">➕</span><span>명함 추가</span></button>
     </div>
   `;
@@ -753,7 +754,7 @@ function renderApp() {
   document.getElementById('appRoot').innerHTML = `
     <div class="top-bar">
       <div class="top-row">
-        <div class="top-title">🗂️ <span>명함첩</span></div>
+        <div class="top-title">🗂️ <span>카드북</span></div>
           <canvas id="myQRCanvas" width="80" height="80" style="border-radius:8px;flex-shrink:0;display:none"></canvas>
         <div class="user-row">
           <span class="user-name" id="userName"></span>
@@ -765,7 +766,6 @@ function renderApp() {
         <input class="search-input" id="searchInput" placeholder="기억나는 조각을 띄어쓰기로: 인테리어 해운대" oninput="onSearch(this.value)">
         <span class="search-icon">🔍</span>
       </div>
-      <div><span class="ai-badge">✨ AI 검색 지원</span></div>
       <div id="refineChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px"></div>
     </div>
     <div id="movedBanner" style="display:none">
@@ -801,9 +801,9 @@ function renderApp() {
     </div>
     <div class="bottom-nav">
       <button class="nav-btn" id="navHome" onclick="showView('home')"><span class="icon">🏠</span><span>홈</span></button>
-      <button class="nav-btn" id="navCards" onclick="showView('cards')"><span class="icon">🗂️</span><span>명함첩</span></button>
+      <button class="nav-btn" id="navCards" onclick="showView('cards')"><span class="icon">🗂️</span><span>카드</span></button>
+      <button class="nav-btn" id="navFav" onclick="showView('fav')"><span class="icon">⭐</span><span>즐겨찾기</span></button>
       <button class="nav-btn" onclick="openScanModal()"><span class="icon">➕</span><span>추가</span></button>
-      <button class="nav-btn" onclick="openMembersModal()"><span class="icon">🤝</span><span>BNI멤버</span></button>
       <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
     </div>
   `;
@@ -828,8 +828,8 @@ window.openMembersModal = async function() {
     <div style="padding:18px 20px 14px;border-bottom:1px solid rgba(37,99,235,0.12);display:flex;align-items:center;gap:12px;">
       <button onclick="document.getElementById('membersModal').remove()" style="border:none;background:none;font-size:22px;cursor:pointer;color:#16305e;">←</button>
       <div style="flex:1;">
-        <div style="font-size:16px;font-weight:800;color:#16305e;">🤝 BNI 멤버 추가하기</div>
-        <div style="font-size:11px;color:#64748b;margin-top:2px;">원하는 멤버를 골라 내 명함첩에 담으세요</div>
+        <div style="font-size:16px;font-weight:800;color:#16305e;">🤝 멤버 명부에서 추가</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">원하는 멤버를 골라 내 카드북에 담으세요</div>
       </div>
       ${isAdmin() ? '<button onclick="openMemberPicker()" style="border:none;background:#16305e;color:#fff;font-size:12px;font-weight:700;padding:8px 12px;border-radius:9px;cursor:pointer;">+ 등록</button>' : ''}
     </div>
@@ -894,7 +894,7 @@ window.saveMemberToMyCards = async function(memberId) {
   const m = _cbMembers.find(x => x.docId === memberId);
   if(!m || !currentUser) return;
   try {
-    // 같은 사람이 이미 명함첩에 있으면 새로 만들지 않고 챕터만 넣어줌
+    // 같은 사람이 이미 카드북에 있으면 새로 만들지 않고 챕터만 넣어줌
     const norm = v => (v||'').replace(/[^0-9]/g,'');
     const dup = allCards.find(c => c.name === m.name && (!m.phone || !c.phone || norm(c.phone) === norm(m.phone)));
     if(dup) {
@@ -913,13 +913,13 @@ window.saveMemberToMyCards = async function(memberId) {
       url: m.url||'', industry: m.industry||'', referrer: 'BNI 멤버 명부',
       savedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-    showToast('✅ ' + m.name + '님을 명함첩에 담았어요');
+    showToast('✅ ' + m.name + '님을 카드북에 담았어요');
     await loadCards();
     renderMembers(_cbMembers);
   } catch(e) { showToast('❌ ' + e.message); }
 };
 
-// ===== 관리자: 명함첩에서 골라 명부 등록 =====
+// ===== 관리자: 카드북에서 골라 명부 등록 =====
 window.openMemberPicker = function() {
   let modal = document.getElementById('memberPickModal');
   if(modal) modal.remove();
@@ -936,11 +936,11 @@ window.openMemberPicker = function() {
   modal.innerHTML = `
     <div style="background:#fff;border-radius:20px;padding:24px;width:100%;max-width:380px;max-height:88vh;display:flex;flex-direction:column;">
       <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">멤버 등록</div>
-      <div style="font-size:11px;color:#64748b;margin-bottom:12px;">명함첩에서 고르고 챕터만 지정하세요</div>
-      <input id="mpChapter" list="chapterList" placeholder="챕터 입력 (예: 파이오니어)" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:12px;outline:none;">
+      <div style="font-size:11px;color:#64748b;margin-bottom:12px;">카드북에서 고르고 챕터만 지정하세요</div>
+      <input id="mpChapter" list="chapterList" placeholder="모임·챕터 이름 (예: 동아리, 파이오니어)" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:12px;outline:none;">
       <div style="flex:1;overflow-y:auto;margin-bottom:12px;">${items || '<div style="text-align:center;color:#64748b;font-size:12px;padding:20px 0;">등록 가능한 명함이 없어요</div>'}</div>
       <button onclick="saveCardsToRoster()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">선택한 명함 명부에 등록</button>
-      <button onclick="document.getElementById('memberPickModal').remove();openMemberAdmin()" style="width:100%;padding:10px;border-radius:12px;border:none;background:transparent;color:#64748b;font-size:12px;cursor:pointer;">명함첩에 없는 멤버 직접 입력</button>
+      <button onclick="document.getElementById('memberPickModal').remove();openMemberAdmin()" style="width:100%;padding:10px;border-radius:12px;border:none;background:transparent;color:#64748b;font-size:12px;cursor:pointer;">카드북에 없는 멤버 직접 입력</button>
       <button onclick="document.getElementById('memberPickModal').remove()" style="width:100%;padding:10px;border-radius:12px;border:none;background:#eaf0f9;color:#16305e;font-size:13px;cursor:pointer;">닫기</button>
     </div>`;
   document.body.appendChild(modal);
@@ -960,7 +960,7 @@ window.saveCardsToRoster = async function() {
         phone: c.phone||'', email: c.email||'', url: c.url||'', chapter,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      // 내 명함첩의 그 명함에도 챕터 기록
+      // 내 카드북의 그 명함에도 챕터 기록
       await db.collection('users').doc(currentUser.uid).collection('cards').doc(id).update({ chapter });
     }
     showToast('✅ ' + ids.length + '명 명부 등록 완료');
@@ -988,7 +988,7 @@ window.openMemberAdmin = function() {
       <input id="maPhone" placeholder="전화번호" type="tel" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maEmail" placeholder="이메일" type="email" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
       <input id="maUrl" placeholder="비즈홈·디지털 명함 링크 (https://...)" type="url" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:9px;outline:none;">
-      <input id="maChapter" list="chapterList" placeholder="챕터 입력 (예: 파이오니어)" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:12px;outline:none;">
+      <input id="maChapter" list="chapterList" placeholder="모임·챕터 이름 (예: 동아리, 파이오니어)" autocomplete="off" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:12px;outline:none;">
       <button onclick="saveMemberToRoster()" style="width:100%;padding:13px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">명부에 등록</button>
       <button onclick="document.getElementById('memberAdminModal').remove()" style="width:100%;padding:11px;border-radius:12px;border:none;background:transparent;color:#64748b;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
     </div>
@@ -1088,6 +1088,7 @@ function renderCards(cards) {
 
   if(cards.length === 0) {
     if((window._searchTerms||[]).length) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">검색 결과가 없어요</div><div class="empty-desc">단어를 하나 빼거나 짧게 줄여보세요<br>예: "인테리어 해운대" → "인테리어"</div></div>`; return; }
+    if(favOnly) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">⭐</div><div class="empty-title">즐겨찾기한 카드가 없어요</div><div class="empty-desc">카드 오른쪽 위의 ☆를 누르면<br>여기에 모여요.</div></div>`; return; }
     list.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂️</div><div class="empty-title">저장된 명함이 없어요</div><div class="empty-desc">명함 페이지에서<br>"명함 저장하기" 버튼을 눌러 추가하세요.</div></div>`;
     return;
   }
@@ -1097,7 +1098,7 @@ function renderCards(cards) {
   const restCards = cards.filter(c => !getCardUpdate(c));
   updCards.sort((a, b) => (getCardUpdate(b).updatedAt || '').localeCompare(getCardUpdate(a).updatedAt || ''));
   // ⭐ 즐겨찾기는 정렬과 상관없이 새 소식 다음에 모아서 보여줌 (검색 중에는 검색 결과 순서를 그대로 둠)
-  const pinFav = !(window._searchTerms||[]).length;
+  const pinFav = !favOnly && !(window._searchTerms||[]).length;
   const favCards = pinFav ? restCards.filter(c => c.favorite) : [];
   cards = [...updCards, ...favCards, ...(pinFav ? restCards.filter(c => !c.favorite) : restCards)];
 
@@ -1374,7 +1375,7 @@ function cbNameCompare(a, b) {
 const CB_SORT_MODES = [
   { id:'name',    label:'이름',        sub:'가나다 · ABC순' },
   { id:'company', label:'회사',        sub:'같은 회사 사람끼리 모아서' },
-  { id:'chapter', label:'챕터 · 모임', sub:'BNI 챕터, 동아리 등 같은 모임끼리 모아서' },
+  { id:'chapter', label:'챕터 · 모임', sub:'챕터, 동아리 등 같은 모임끼리 모아서' },
   { id:'recent',  label:'저장일',      sub:'카드북에 저장한 날' },
   { id:'contact', label:'연락일',      sub:'마지막으로 전화한 날' }
 ];
@@ -1436,7 +1437,7 @@ window.setSortDir = function(d) { nameSortDir = d === 'desc' ? 'desc' : 'asc'; c
 window.setNameBasis = function(b) { nameBasis = (b === 'family' || b === 'given') ? b : 'full'; cbSaveSort(); };
 
 function applyFilter() {
-  const cards = [...allCards];
+  const cards = allCards.filter(c => !favOnly || c.favorite);
   cards.sort(cbNameCompare);
   const pl = document.getElementById('sortPickLabel');
   if(pl) pl.textContent = cbSortSummary();
@@ -1493,11 +1494,16 @@ window.showView = function(v) {
   const home = document.getElementById('homeView');
   const cardsV = document.getElementById('cardsView');
   if(!home || !cardsV) return;
+  const wasFav = favOnly;
+  favOnly = v === 'fav';
+  const showCards = v === 'cards' || v === 'fav';
   home.style.display = v === 'home' ? 'block' : 'none';
-  cardsV.style.display = v === 'cards' ? 'block' : 'none';
-  const nh = document.getElementById('navHome'), nc = document.getElementById('navCards');
+  cardsV.style.display = showCards ? 'block' : 'none';
+  const nh = document.getElementById('navHome'), nc = document.getElementById('navCards'), nf = document.getElementById('navFav');
   if(nh) nh.classList.toggle('active', v === 'home');
   if(nc) nc.classList.toggle('active', v === 'cards');
+  if(nf) nf.classList.toggle('active', v === 'fav');
+  if(favOnly !== wasFav) applyFilter();
   if(v === 'home') renderHome();
 };
 
@@ -1649,33 +1655,6 @@ window.refineSearch = function(word) {
   onSearch(inp.value);
 };
 
-async function aiSearch(query) {
-  if(allCards.length === 0) return;
-  const aiEl = document.getElementById('aiResult');
-  if(!aiEl) return;
-  aiEl.innerHTML = `<div class="ai-loading"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div><span style="font-size:11px;color:var(--muted);margin-left:4px">AI 검색 중...</span></div>`;
-
-  const summaries = allCards.map((c,i) =>
-    `[${i}] ${c.name}(${c.chapter||'기타'}) ${c.company||''} ${c.title||''} ${c.bni||''} ${(c.fullText||'').slice(0,200)}`
-  ).join('\n');
-
-  try {
-    const res = await fetch(CB_WORKER_URL + '/ai-search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, summaries })
-    });
-    const result = await res.json();
-    const matched = result.matched || [];
-    if(matched.length > 0) {
-      aiEl.innerHTML = `<div class="ai-result">✨ ${result.summary||''}</div>`;
-      renderCards(matched.map(i=>allCards[i]).filter(Boolean));
-    } else {
-      aiEl.innerHTML = `<div class="ai-result">검색 결과가 없어요.</div>`;
-      renderCards([]);
-    }
-  } catch(e) { console.error('AI 검색 실패', e); aiEl.innerHTML = ''; }
-}
 
 // ===== 카드 삭제 =====
 window.deleteCard = async function(docId, name) {
@@ -1992,7 +1971,7 @@ window.addEventListener('beforeinstallprompt', e => {
     const b = document.getElementById('addHomeBanner');
     if(b) b.style.display = 'block';
   }
-  // 디카에서 "명함첩 보기"로 방금 넘어온 경우 즉시 설치 창을 띄운다
+  // 디카에서 "카드북 보기"로 방금 넘어온 경우 즉시 설치 창을 띄운다
   if(_cbInstallIntent) { doAddToHome(); }
 });
 
@@ -2150,7 +2129,7 @@ function _downloadVcf(file) {
   showToast('📇 연락처 파일이 저장됐어요. 열어서 추가해 주세요');
 }
 window.shareApp = function() {
-  if(navigator.share) navigator.share({ title:'BNI 명함첩', url: window.location.href });
+  if(navigator.share) navigator.share({ title:'카드북', url: window.location.href });
   else { navigator.clipboard?.writeText(window.location.href); showToast('📋 링크 복사됨'); }
 };
 
@@ -2405,7 +2384,7 @@ window.openNotifyUpdate = function(){
   modal.innerHTML = `
     <div class="mycard-sheet-box" style="border-radius:20px;margin:0 16px;">
       <div style="font-size:15px;font-weight:800;color:#16305e;">📣 업데이트 알리기</div>
-      <p style="font-size:11.5px;color:#64748b;margin:6px 0 12px;line-height:1.6;">내 명함을 저장한 모든 분의 명함첩에<br><b>NEW 뱃지 + 아래 문구</b>가 표시됩니다.</p>
+      <p style="font-size:11.5px;color:#64748b;margin:6px 0 12px;line-height:1.6;">내 명함을 저장한 모든 분의 카드북에<br><b>NEW 뱃지 + 아래 문구</b>가 표시됩니다.</p>
       <textarea id="updNoticeInput" maxlength="80" placeholder="예: 4개국어 지원이 추가됐어요! 다시 한번 열어보세요 🙌" style="width:100%;box-sizing:border-box;height:74px;padding:11px 13px;border-radius:11px;border:1.5px solid rgba(37,99,235,0.2);font-size:13px;outline:none;resize:none;font-family:'Noto Sans KR',sans-serif;"></textarea>
       <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;margin-top:12px;" onclick="sendCardUpdate()">📣 알림 보내기</button>
       <button class="mycard-sheet-btn" style="background:#f0f0f0;color:#666;margin-bottom:0;" onclick="document.getElementById('notifyUpdModal').remove()">취소</button>
@@ -2439,6 +2418,9 @@ window.openScanModal = function() {
   // 카메라 촬영은 가이드 틀 붙기 전까진 관리자(테스트용) 계정에서만 노출
   const camBtn = document.getElementById('camScanBtn');
   if(camBtn) camBtn.style.display = isAdmin() ? 'flex' : 'none';
+  // 멤버 명부는 등록·관리를 하는 관리자에게만 보인다
+  const rosterTab = document.getElementById('tabRoster');
+  if(rosterTab) rosterTab.style.display = isAdmin() ? '' : 'none';
 };
 
 window.closeScanModal = function(e) {
@@ -3246,7 +3228,7 @@ window.saveContactCard = async function() {
   <div class="install-sheet">
     <div class="install-icon">📲</div>
     <div class="install-title">앱으로 설치하면 더 편해요!</div>
-    <div class="install-desc">홈화면에 추가하면 다음부턴<br>아이콘 하나로 바로 열려요<br><b style="color:#16305e">앱처럼 빠르게 명함첩을 불러올 수 있어요</b></div>
+    <div class="install-desc">홈화면에 추가하면 다음부턴<br>아이콘 하나로 바로 열려요<br><b style="color:#16305e">앱처럼 빠르게 카드북을 불러올 수 있어요</b></div>
     <div id="installSteps"></div>
     <button class="install-main-btn" id="installMainBtn" onclick="doInstall()">홈화면에 추가하기</button>
     <button class="install-skip-btn" onclick="closeInstallPopup()">나중에 할게요</button>
@@ -3260,7 +3242,7 @@ window.saveContactCard = async function() {
     <div class="dica-name" id="dicaName"></div>
     <div class="dica-sub" id="dicaSub"></div>
     <div class="dica-company" id="dicaCompany"></div>
-    <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:20px;line-height:1.6">이 명함을 명함첩에 저장할까요?</p>
+    <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:20px;line-height:1.6">이 명함을 카드북에 저장할까요?</p>
     <button class="dica-save-btn" onclick="confirmDicaSave()">💾 저장하기</button>
     <button class="dica-cancel-btn" onclick="document.getElementById('dicaPopup').style.display='none'">취소</button>
   </div>
@@ -3278,6 +3260,8 @@ window.saveContactCard = async function() {
         style="flex:1;padding:10px 4px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.2);font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#16305e;">📋 연락처</button>
       <button id="tabLink" onclick="switchScanTab('link')"
         style="flex:1;padding:10px 4px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.2);font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#16305e;">🔗 링크</button>
+      <button id="tabRoster" onclick="document.getElementById('scanModal').style.display='none';openMembersModal()"
+        style="flex:1;padding:10px 4px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.2);font-family:'Noto Sans KR',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#16305e;">🤝 명부</button>
     </div>
 
     <!-- ===== 이미지로 추가 탭 ===== -->
@@ -3319,7 +3303,7 @@ window.saveContactCard = async function() {
         <div class="ocr-field"><div class="ocr-label">취급 서비스 · 대상고객</div><textarea class="ocr-input" id="ocrServices" rows="4" placeholder="명함에 적힌 서비스, 제품, 대상고객 (검색에 사용)"></textarea></div>
         <div class="ocr-field">
           <div class="ocr-label">챕터</div>
-          <input class="ocr-input" id="ocrChapter" list="chapterList" placeholder="챕터 입력 (예: 파이오니어)" autocomplete="off"/>
+          <input class="ocr-input" id="ocrChapter" list="chapterList" placeholder="모임·챕터 이름 (예: 동아리, 파이오니어)" autocomplete="off"/>
         </div>
         <button class="ocr-save-btn" onclick="saveOcrCard()">💾 명함 저장</button>
       </div>
@@ -3347,7 +3331,7 @@ window.saveContactCard = async function() {
       <div style="border-top:1px solid #e2e8f0;margin-top:20px;padding-top:20px;">
         <div style="font-size:14px;font-weight:700;color:#16305e;margin-bottom:6px;">📥 엑셀·CSV·연락처 파일로 한 번에 가져오기</div>
         <div style="font-size:12px;color:#64748b;line-height:1.7;margin-bottom:12px;">리멤버 등 쓰던 명함 앱에서 <b>엑셀로 내려받은 파일</b>을 올리면<br>이름·회사·직함·전화·이메일이 한 번에 들어와요<br>아이폰·안드로이드 모두 가능해요 (.xlsx .csv .vcf)</div>
-        <input class="ocr-input" id="impChapter" list="chapterList" placeholder="챕터 (선택, 예: 파이오니어)" autocomplete="off" style="margin-bottom:10px;"/>
+        <input class="ocr-input" id="impChapter" list="chapterList" placeholder="모임·챕터 (선택, 예: 동아리)" autocomplete="off" style="margin-bottom:10px;"/>
         <button onclick="pickImportFile()"
           style="width:100%;padding:15px;border-radius:14px;border:none;background:#16305e;color:#f6f8fc;font-family:'Noto Sans KR',sans-serif;font-size:15px;font-weight:700;cursor:pointer;">
           📂 파일 선택
@@ -3366,7 +3350,7 @@ window.saveContactCard = async function() {
         <div class="ocr-field"><div class="ocr-label">직함</div><input class="ocr-input" id="ctTitle" placeholder="직함"/></div>
         <div class="ocr-field">
           <div class="ocr-label">챕터</div>
-          <input class="ocr-input" id="ctChapter" list="chapterList" placeholder="챕터 입력 (예: 파이오니어)" autocomplete="off"/>
+          <input class="ocr-input" id="ctChapter" list="chapterList" placeholder="모임·챕터 이름 (예: 동아리, 파이오니어)" autocomplete="off"/>
         </div>
         <button class="ocr-save-btn" onclick="saveContactCard()">💾 저장하기</button>
         <button onclick="document.getElementById('contactStep1').style.display='block';document.getElementById('contactStep2').style.display='none';"
@@ -3400,7 +3384,7 @@ window.saveContactCard = async function() {
         <div class="ocr-field"><div class="ocr-label">이메일</div><input class="ocr-input" id="lkEmail" placeholder="email@example.com" type="email"/></div>
         <div class="ocr-field">
           <div class="ocr-label">챕터</div>
-          <input class="ocr-input" id="lkChapter" list="chapterList" placeholder="챕터 입력 (예: 파이오니어)" autocomplete="off"/>
+          <input class="ocr-input" id="lkChapter" list="chapterList" placeholder="모임·챕터 이름 (예: 동아리, 파이오니어)" autocomplete="off"/>
         </div>
         <button class="ocr-save-btn" onclick="saveLinkCard()">💾 명함 저장</button>
         <button onclick="document.getElementById('linkStep1').style.display='block';document.getElementById('linkStep2').style.display='none';"

@@ -1,4 +1,4 @@
-// ===== BNI 명함첩 저장 공통 스크립트 =====
+// ===== 카드북 저장 공통 스크립트 =====
 
 // 카카오톡 안드로이드 → 크롬으로 즉시 이동
 if(/KAKAOTALK/i.test(navigator.userAgent) && /Android/i.test(navigator.userAgent)) {
@@ -534,7 +534,7 @@ function _showSaveSuccess(cardData) {
     <div style="font-size:24px;">✅</div>
     <div style="flex:1;min-width:0;">
       <div style="font-size:13px;font-weight:700;color:#fff;">${cardData.name || ''}님 명함이 저장됐어요</div>
-      <div style="font-size:11px;color:rgba(240,250,244,0.55);margin-top:2px;">내 명함첩에서 언제든 확인할 수 있어요</div>
+      <div style="font-size:11px;color:rgba(240,250,244,0.55);margin-top:2px;">내 카드북에서 언제든 확인할 수 있어요</div>
     </div>
     <button onclick="window.location.href='https://cardbook.bizmy.net/?install=1'" style="flex-shrink:0;padding:9px 14px;border-radius:10px;border:none;background:#a07820;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">명함첩 보기</button>
   `;
