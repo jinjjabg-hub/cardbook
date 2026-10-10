@@ -71,6 +71,8 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .card-avatar{width:48px;height:48px;border-radius:12px;flex-shrink:0;background:#16305e;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:20px;color:#f6f8fc;overflow:hidden;}
 .card-avatar img{width:100%;height:100%;object-fit:cover;}
 .card-info{flex:1;min-width:0;}
+.fav-btn{flex-shrink:0;border:none;background:none;font-size:22px;line-height:1;color:#b8c4d9;cursor:pointer;padding:2px 4px;margin:-2px -4px 0 0;}
+.fav-btn.on{color:#f5a623;}
 .card-name{font-family:'Nanum Gothic',sans-serif;font-size:16px;font-weight:800;color:#0b1c3d;margin-bottom:2px;}
 .card-name-en{font-family:'Playfair Display',serif;font-size:11px;color:var(--gold);font-style:italic;margin-bottom:4px;}
 .card-company{font-size:12px;color:#3b4a63;margin-bottom:2px;font-weight:500;}
@@ -1080,20 +1082,30 @@ function renderCards(cards) {
   const updCards = cards.filter(c => getCardUpdate(c));
   const restCards = cards.filter(c => !getCardUpdate(c));
   updCards.sort((a, b) => (getCardUpdate(b).updatedAt || '').localeCompare(getCardUpdate(a).updatedAt || ''));
-  cards = [...updCards, ...restCards];
+  // ⭐ 즐겨찾기는 정렬과 상관없이 새 소식 다음에 모아서 보여줌 (검색 중에는 검색 결과 순서를 그대로 둠)
+  const pinFav = !(window._searchTerms||[]).length;
+  const favCards = pinFav ? restCards.filter(c => c.favorite) : [];
+  cards = [...updCards, ...favCards, ...(pinFav ? restCards.filter(c => !c.favorite) : restCards)];
 
   let html = '';
   let updHeaderDone = false;
+  let favHeaderDone = false;
   const seenCh = new Set(); // 자음별로 인덱스 목적지(id="alpha-ㄱ" 등)를 딱 한 번만 만들기 위한 기록
 
   cards.forEach((card, i) => {
     const _upd = getCardUpdate(card);
     const ch = cbIsTimeMode() ? cbMonthLabel(card) : cbGroupKey(cbCardKey(card));
     const gk = !cbIsTimeMode() && cbNameGroup(cbCardKey(card)) === 1 ? 1 : 0;
-    const isFirstOfCh = !seenCh.has(ch);
+    const isFav = pinFav && !_upd && !!card.favorite;
+    const isFirstOfCh = !isFav && !seenCh.has(ch);
     if(isFirstOfCh) seenCh.add(ch);
 
-    if(_upd) {
+    if(isFav) {
+      if(!favHeaderDone) {
+        html += `<div class="alpha-divider">⭐ 즐겨찾기</div>`;
+        favHeaderDone = true;
+      }
+    } else if(_upd) {
       if(!updHeaderDone) {
         html += `<div class="alpha-divider upd-divider">📣 새 소식</div>`;
         updHeaderDone = true;
@@ -1122,6 +1134,7 @@ function renderCards(cards) {
           ${card.chapter?`<div class="card-chapter">📍 ${card.chapter}</div>`:''}
           ${bniHtml}
         </div>
+        <button class="fav-btn${card.favorite?' on':''}" onclick="toggleFavorite('${card.docId}')" aria-label="${card.favorite?'즐겨찾기 해제':'즐겨찾기 추가'}" aria-pressed="${card.favorite?'true':'false'}">${card.favorite?'★':'☆'}</button>
       </div>
       ${(window._searchTerms||[]).length ? (() => { const sn = _matchSnippet(card, window._searchTerms); return sn ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;padding:6px 0 0;border-top:1px dashed var(--border);margin-top:8px">🔎 ${sn}</div>` : ''; })() : ''}
       ${_upd?`<div class="upd-banner">
@@ -1200,6 +1213,40 @@ window.saveMemo = async function(docId) {
     if(card) card.memo = memo;
     showToast('✅ 메모 저장됨');
   } catch(e) { showToast('❌ ' + e.message); }
+};
+
+// ===== 즐겨찾기 =====
+// 화면에 먼저 반영하고 저장은 뒤에서 한다. 저장이 실패하면 원래대로 되돌린다.
+// 검색 중에는 결과 목록을 다시 만들지 않고 별 모양만 바꾼다 (검색 결과가 사라지지 않도록)
+function cbRefreshFavorite(card) {
+  if((window._searchTerms||[]).length) {
+    document.querySelectorAll('.fav-btn').forEach(b => {
+      if(b.getAttribute('onclick') === `toggleFavorite('${card.docId}')`) {
+        b.textContent = card.favorite ? '★' : '☆';
+        b.classList.toggle('on', !!card.favorite);
+        b.setAttribute('aria-pressed', card.favorite ? 'true' : 'false');
+        b.setAttribute('aria-label', card.favorite ? '즐겨찾기 해제' : '즐겨찾기 추가');
+      }
+    });
+  } else {
+    const y = window.scrollY;
+    applyFilter();
+    window.scrollTo(0, y);
+  }
+}
+window.toggleFavorite = async function(docId) {
+  const card = allCards.find(c => c.docId === docId);
+  if(!card) return;
+  const next = !card.favorite;
+  card.favorite = next;
+  cbRefreshFavorite(card);
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).update({ favorite: next });
+  } catch(e) {
+    card.favorite = !next;
+    cbRefreshFavorite(card);
+    showToast('❌ 즐겨찾기를 저장하지 못했어요');
+  }
 };
 
 // ===== 마지막 연락일 =====
