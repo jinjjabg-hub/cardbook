@@ -342,9 +342,9 @@ let nameSortDir = 'asc';
 try { if(localStorage.getItem('cbNameSort') === 'desc') nameSortDir = 'desc'; } catch(e) {}
 // 이름 정렬 기준: full(이름 전체, 기존 방식) / family(성 기준) / given(이름 기준)
 let nameBasis = 'full';
-// 정렬 종류: name(이름) / company(회사명) / recent(저장일)
+// 정렬 종류: name(이름) / company(회사명) / recent(저장일) / contact(마지막 연락일)
 let sortMode = 'name';
-try { const sm = localStorage.getItem('cbSortMode'); if(sm === 'company' || sm === 'recent') sortMode = sm; } catch(e) {}
+try { const sm = localStorage.getItem('cbSortMode'); if(sm === 'company' || sm === 'recent' || sm === 'contact') sortMode = sm; } catch(e) {}
 try { const nb = localStorage.getItem('cbNameBasis'); if(nb === 'family' || nb === 'given') nameBasis = nb; } catch(e) {}
 
 let searchTimer = null;
@@ -1088,8 +1088,8 @@ function renderCards(cards) {
 
   cards.forEach((card, i) => {
     const _upd = getCardUpdate(card);
-    const ch = sortMode === 'recent' ? cbMonthLabel(card) : cbGroupKey(cbCardKey(card));
-    const gk = sortMode !== 'recent' && cbNameGroup(cbCardKey(card)) === 1 ? 1 : 0;
+    const ch = cbIsTimeMode() ? cbMonthLabel(card) : cbGroupKey(cbCardKey(card));
+    const gk = !cbIsTimeMode() && cbNameGroup(cbCardKey(card)) === 1 ? 1 : 0;
     const isFirstOfCh = !seenCh.has(ch);
     if(isFirstOfCh) seenCh.add(ch);
 
@@ -1161,7 +1161,7 @@ function renderCards(cards) {
 function renderAlphaIndex(cards) {
   const idx = document.getElementById('alphaIndex');
   if(!idx) return;
-  if(sortMode === 'recent') { idx.innerHTML = ''; idx.style.display = 'none'; return; }
+  if(cbIsTimeMode()) { idx.innerHTML = ''; idx.style.display = 'none'; return; }
   idx.style.display = '';
   const keys = cards.map(c => cbCardKey(c));
   const has = new Set(keys.map(k => cbGroupKey(k)));
@@ -1281,16 +1281,23 @@ function cbSavedTime(card) {
   const t = Date.parse(v);
   return isNaN(t) ? 0 : t;
 }
+// 마지막 연락 시각(전화하기를 누른 때). 없으면 0
+function cbContactTime(card) {
+  const t = card.lastContact ? Date.parse(card.lastContact) : 0;
+  return isNaN(t) ? 0 : t;
+}
+const cbIsTimeMode = () => sortMode === 'recent' || sortMode === 'contact';
+function cbSortTime(card) { return sortMode === 'contact' ? cbContactTime(card) : cbSavedTime(card); }
 function cbMonthLabel(card) {
-  const t = cbSavedTime(card);
-  if(!t) return '저장일 없음';
+  const t = cbSortTime(card);
+  if(!t) return sortMode === 'contact' ? '연락 기록 없음' : '저장일 없음';
   const d = new Date(t);
   return d.getFullYear() + '.' + String(d.getMonth()+1).padStart(2,'0');
 }
 function cbNameCompare(a, b) {
   const dir = nameSortDir === 'desc' ? -1 : 1;
-  if(sortMode === 'recent') {
-    const ta = cbSavedTime(a), tb = cbSavedTime(b);
+  if(cbIsTimeMode()) {
+    const ta = cbSortTime(a), tb = cbSortTime(b);
     if(!ta || !tb) return (ta ? 0 : 1) - (tb ? 0 : 1);
     return (tb - ta) * dir;
   }
@@ -1301,7 +1308,7 @@ function cbNameCompare(a, b) {
   return ka.localeCompare(kb, 'ko', { sensitivity: 'base' }) * dir;
 }
 window.toggleSortMode = function() {
-  sortMode = sortMode === 'name' ? 'company' : sortMode === 'company' ? 'recent' : 'name';
+  sortMode = sortMode === 'name' ? 'company' : sortMode === 'company' ? 'recent' : sortMode === 'recent' ? 'contact' : 'name';
   nameSortDir = 'asc';
   try { localStorage.setItem('cbSortMode', sortMode); localStorage.setItem('cbNameSort', 'asc'); } catch(e) {}
   applyFilter();
@@ -1324,9 +1331,9 @@ function applyFilter() {
   }
   cards.sort(cbNameCompare);
   const sb = document.getElementById('nameSortBtn');
-  if(sb) sb.textContent = sortMode === 'recent' ? (nameSortDir === 'asc' ? '최신순 ▼' : '오래된순 ▲') : (nameSortDir === 'asc' ? '가나다순 ▲' : '가나다순 ▼');
+  if(sb) sb.textContent = cbIsTimeMode() ? (nameSortDir === 'asc' ? '최신순 ▼' : '오래된순 ▲') : (nameSortDir === 'asc' ? '가나다순 ▲' : '가나다순 ▼');
   const mb = document.getElementById('sortModeBtn');
-  if(mb) mb.textContent = '정렬: ' + ({ name:'이름', company:'회사', recent:'저장일' })[sortMode];
+  if(mb) mb.textContent = '정렬: ' + ({ name:'이름', company:'회사', recent:'저장일', contact:'연락일' })[sortMode];
   const bb = document.getElementById('nameBasisBtn');
   if(bb) { bb.textContent = '기준: ' + ({ full:'전체', family:'성', given:'이름' })[nameBasis]; bb.style.display = sortMode === 'name' ? '' : 'none'; }
   renderCards(cards);
