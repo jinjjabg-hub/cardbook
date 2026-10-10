@@ -1168,10 +1168,13 @@ function renderCards(cards) {
       <div class="card-main">
         <div class="card-avatar">${avatarHtml}</div>
         <div class="card-info">
-          <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}<button class="info-edit-btn" onclick="toggleInfoEdit(this)" aria-label="영문 이름·소속 수정">✏️</button></div>
+          <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}<button class="info-edit-btn" onclick="toggleInfoEdit(this)" aria-label="명함 정보 수정">✏️</button></div>
           <div class="info-edit" data-doc="${card.docId}">
             <input class="ie-en" value="${_cbEsc(card.nameEn)}" placeholder="영문 이름" maxlength="60">
             <input class="ie-co" value="${_cbEsc(card.company)}" placeholder="소속·회사" maxlength="60">
+            <input class="ie-ti" value="${_cbEsc(card.title)}" placeholder="직함" maxlength="60">
+            <input class="ie-in" value="${_cbEsc(card.industry)}" placeholder="업종" maxlength="60">
+            <input class="ie-ch" list="chapterList" value="${_cbEsc(card.chapter)}" placeholder="챕터·모임" maxlength="60" autocomplete="off">
             <div class="row"><button class="ok" onclick="saveInfoEdit('${card.docId}',this)">저장</button><button onclick="toggleInfoEdit(this)">취소</button></div>
           </div>
           ${card.nameEn?`<div class="card-name-en">${card.nameEn}</div>`:''}
@@ -1249,21 +1252,23 @@ window.toggleCRM = function(btn) {
 };
 
 // ===== 이름 아래 정보(영문 이름·소속) 직접 수정 =====
-// 고친 항목은 editedFields에 기록해, DiCA 갱신이 사용자가 고친 값을 덮어쓰지 않게 한다.
+// 영문 이름·소속·직함·업종·챕터. 고친 항목은 editedFields에 기록해, DiCA 갱신이 사용자가 고친 값을 덮어쓰지 않게 한다.
 window.toggleInfoEdit = function(btn) {
   const info = btn.closest('.card-info');
   if(info) info.querySelector('.info-edit').classList.toggle('open');
 };
 window.saveInfoEdit = async function(docId, btn) {
   const box = btn.closest('.info-edit');
-  const nameEn = box.querySelector('.ie-en').value.trim();
-  const company = box.querySelector('.ie-co').value.trim();
   const card = allCards.find(c => c.docId === docId);
   if(!card) return;
+  const val = { nameEn:'.ie-en', company:'.ie-co', title:'.ie-ti', industry:'.ie-in', chapter:'.ie-ch' };
+  const patch = {};
   const edited = new Set(card.editedFields || []);
-  if(nameEn !== (card.nameEn||'')) edited.add('nameEn');
-  if(company !== (card.company||'')) edited.add('company');
-  const patch = { nameEn, company, editedFields: [...edited] };
+  for(const [k,sel] of Object.entries(val)) {
+    patch[k] = box.querySelector(sel).value.trim();
+    if(patch[k] !== (card[k]||'')) edited.add(k);
+  }
+  patch.editedFields = [...edited];
   try {
     await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId).update(patch);
     Object.assign(card, patch);
@@ -2680,7 +2685,7 @@ window.refreshDicaCards = async function() {
       // 이름·회사 등은 DiCA 쪽이 최신본이니 덮어쓰고, chapter·memo처럼 사용자가 직접 손댔을 수 있는 값은 안 건드린다.
       const patch = {};
       if(d.name) patch.name = d.name;
-      if(d.title) patch.title = d.title;
+      if(d.title && !(c.editedFields||[]).includes('title')) patch.title = d.title;
       if(d.company && !(c.editedFields||[]).includes('company')) patch.company = d.company;
       if(d.phone) patch.phone = d.phone;
       if(d.email) patch.email = d.email;
