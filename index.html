@@ -768,6 +768,16 @@ function renderApp() {
       <div><span class="ai-badge">✨ AI 검색 지원</span></div>
       <div id="refineChips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px"></div>
     </div>
+    <div id="movedBanner" style="display:none">
+      <div class="add-home-banner">
+        <div>
+          <b>📢 카드북 주소가 바뀌었어요</b>
+          예전 아이콘은 지우고 새로 추가해 주세요. 명함은 그대로예요
+        </div>
+        <button class="add-home-btn" onclick="doAddToHome()">새로 추가</button>
+        <button class="add-home-dismiss" onclick="dismissMovedBanner()">✕</button>
+      </div>
+    </div>
     <div id="addHomeBanner" style="display:none">
       <div class="add-home-banner">
         <div>
@@ -1942,6 +1952,19 @@ window.confirmDicaSave = async function() {
   }
 };
 
+// ===== 주소 변경 안내: 예전 설치 앱(github.io)에서 새 주소로 넘어온 사용자에게 한 번만 안내 =====
+function dismissMovedBanner() {
+  try { localStorage.setItem('cbMoveNoticeSeen', '1'); } catch(e) {}
+  const b = document.getElementById('movedBanner'); if(b) b.style.display = 'none';
+}
+(function() {
+  if(location.hostname !== 'cardbook.bizmy.net') return;
+  if(window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) return; // 새 앱으로 이미 설치
+  try { if(localStorage.getItem('cbMoveNoticeSeen') === '1') return; } catch(e) {}
+  const show = () => { const b = document.getElementById('movedBanner'); if(!b) return setTimeout(show, 500); b.style.display = 'block'; };
+  setTimeout(show, 1000);
+})();
+
 // ===== 홈화면 추가 =====
 let _deferredInstall = null;
 
@@ -1998,6 +2021,7 @@ if(_cbInstallIntent) {
 
 window.addEventListener('appinstalled', () => {
   try { localStorage.setItem('cbInstalled', '1'); } catch(e) {}
+  dismissMovedBanner();
   const b = document.getElementById('addHomeBanner');
   if(b) b.style.display = 'none';
   showToast('✅ 홈화면에 추가됐어요!');
