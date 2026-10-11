@@ -23,6 +23,12 @@ service cloud.firestore {
       }
     }
 
+    // 개인정보 수집·이용 동의 기록 — 본인 것만 쓰고 읽는다(탈퇴 시 삭제 포함).
+    // 이 규칙이 없어서 그동안 앱·명함 저장 창의 동의 기록이 모두 거부되고 있었다(오류는 화면에 안 보임).
+    match /consents/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
     // BNI 멤버 명부 — 로그인한 사람은 누구나 읽지만(챕터 명부 조회), 등록/수정/삭제는 관리자만.
     // 앱의 isAdmin()은 클라이언트 체크라 우회 가능하므로 여기서 이메일로 다시 확인한다.
     match /bni_members/{memberId} {
