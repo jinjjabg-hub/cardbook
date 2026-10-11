@@ -609,12 +609,53 @@ function collectCardData() {
   };
 }
 
+// ===== 연락처 저장 (모든 명함 공통) =====
+// 웹페이지는 폰 연락처에 직접 쓸 수 없다(아이폰·안드로이드 보안 정책). 그래서
+//  - 안드로이드: 연락처 파일(이름.vcf)을 받고 → 그 파일을 눌러 → 연락처 앱에서 [저장]  (단계 안내를 띄움)
+//  - 아이폰: 연락처 카드를 바로 열어 → [새로운 연락처 생성]
+//  - PC: 파일 내려받기
+// 명함 페이지는 연락처 내용(vCard 글자)만 넘기면 된다. opts.iosUrl: 아이폰용으로 올려둔 .vcf 주소(있으면 우선 사용)
+function cbSaveContact(vcf, opts) {
+  opts = opts || {};
+  vcf = String(vcf || '').replace(/\r?\n/g, '\r\n').replace(/(\r\n)*$/, '\r\n');
+  const fnLine = vcf.match(/^FN[^:\r\n]*:(.*)$/m);
+  const name = ((fnLine && fnLine[1]) || '연락처').trim();
+  const fileName = name.replace(/[\\/:*?"<>|]/g, '') + '.vcf';
+  const url = URL.createObjectURL(new Blob([vcf], { type: 'text/x-vcard;charset=utf-8' }));
+  const ua = navigator.userAgent;
+  if(/iPhone|iPad|iPod/i.test(ua)) {
+    _cbToast('📞 연락처 카드가 열리면\n[새로운 연락처 생성]을 눌러주세요', 'ok', 8000);
+    setTimeout(() => { location.href = opts.iosUrl || url; }, 300);
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  if(/Android/i.test(ua)) _cbContactSteps(fileName);
+  else _cbToast('📞 내려받은 ' + fileName + ' 파일을 열어 연락처에 추가해주세요', 'ok', 8000);
+}
+
+// 안드로이드용: 누를 때까지 남아 있는 단계 안내
+function _cbContactSteps(fileName) {
+  const old = document.getElementById('_cb_contact_steps');
+  if(old) old.remove();
+  const f = fileName.replace(/[<>&"]/g, '');
+  const m = document.createElement('div');
+  m.id = '_cb_contact_steps';
+  m.style.cssText = "position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;font-family:'Noto Sans KR',sans-serif;";
+  m.innerHTML = '<div style="background:#fff;color:#222;width:100%;max-width:430px;border-radius:20px 20px 0 0;padding:24px 22px 32px;text-align:left;">'
+    + '<div style="font-size:17px;font-weight:800;margin-bottom:14px;">📞 연락처 저장 2단계</div>'
+    + '<div style="font-size:15px;line-height:1.9;">'
+    + '<b>①</b> <b style="color:#b8540c;">' + f + '</b> 를 누르세요<br>'
+    + '<span style="font-size:13px;color:#777;line-height:1.7;display:block;margin:2px 0 6px 22px;">"파일을 다시 다운로드?" 창이 뜨면 → 창 안의 파란 글씨 <b>' + f + '</b><br>창이 안 뜨면 → 화면 아래·위 알림의 <b>' + f + '</b></span>'
+    + '<b>②</b> 연락처 앱이 열리면 <b style="color:#b8540c;">[저장]</b></div>'
+    + '<button style="margin-top:18px;width:100%;padding:13px;border:none;border-radius:12px;background:#b8540c;color:#fff;font-size:15px;font-weight:700;">확인</button></div>';
+  m.onclick = e => { if(e.target === m || e.target.tagName === 'BUTTON') m.remove(); };
+  document.body.appendChild(m);
+}
+
 function savePhone(cardData) {
   const vcf = `BEGIN:VCARD\nVERSION:3.0\nFN:${cardData.name||''}\nORG:${cardData.company||''}\nTITLE:${cardData.title||''}\nTEL;TYPE=CELL:${cardData.phone||''}\nEMAIL:${cardData.email||''}\nURL:${cardData.url||window.location.href}\nNOTE:${cardData.bni||''}\nEND:VCARD`;
-  const blob = new Blob([vcf], {type:'text/vcard;charset=utf-8'});
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = (cardData.name||'contact') + '.vcf';
-  link.click();
-  URL.revokeObjectURL(link.href);
+  cbSaveContact(vcf);
 }
