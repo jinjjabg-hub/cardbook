@@ -128,7 +128,8 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 
 /* LOGIN */
 .login-screen{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-height:80vh;padding:32px 24px 120px;text-align:center;}
-.login-icon{font-size:56px;margin-bottom:20px;}
+.login-icon{font-size:56px;margin-bottom:20px;line-height:0;}
+.login-icon .ci{width:96px;height:96px;}
 .login-title{font-family:'Nanum Gothic',sans-serif;font-size:22px;font-weight:800;color:#16305e;margin-bottom:10px;}
 .login-desc{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:24px;}
 .auth-tabs{display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
@@ -153,14 +154,21 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-text{font-size:12px;color:var(--muted);}
 .empty-state{display:flex;flex-direction:column;align-items:center;padding:60px 28px;text-align:center;}
-.empty-icon{font-size:48px;margin-bottom:16px;opacity:.5;}
-.empty-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:6px;}
+.empty-icon{font-size:48px;margin-bottom:16px;line-height:0;}
+.empty-icon .ci{width:76px;height:76px;}
+.empty-title{font-size:15px;font-weight:700;color:#16305e;margin-bottom:6px;}
 .empty-desc{font-size:12px;color:var(--muted);line-height:1.75;}
 .ai-result{margin:0 12px 8px;padding:10px 14px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:10px;font-size:12px;color:rgba(240,232,216,0.7);line-height:1.6;}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;max-width:430px;margin:0 auto;background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);border-top:1px solid rgba(37,99,235,0.15);z-index:200;display:flex;}
 .nav-btn{flex:1;padding:13px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--muted);text-decoration:none;background:none;border:none;cursor:pointer;transition:all .3s;font-family:'Noto Sans KR',sans-serif;}
 .nav-btn .icon{font-size:20px;line-height:1;}
 .nav-btn:hover,.nav-btn.active{color:var(--gold);}
+/* 아이콘 세트 (body 아래 #ci-* 심볼, ci() 로 그림) */
+.ci{width:22px;height:22px;display:inline-block;vertical-align:middle;flex-shrink:0;}
+.nav-btn .ci{width:24px;height:24px;filter:grayscale(1);opacity:.45;transition:filter .3s,opacity .3s;}
+.nav-btn:hover .ci,.nav-btn.active .ci{filter:none;opacity:1;}
+.nav-btn.nav-add .ci{width:46px;height:46px;margin:-24px 0 -1px;filter:drop-shadow(0 6px 10px rgba(37,99,235,.35));opacity:1;}
+.ci-lg{width:72px;height:72px;}
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:rgba(20,18,9,0.97);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 18px;font-size:12px;color:#fdfaf3;z-index:500;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;max-width:88vw;overflow:hidden;text-overflow:ellipsis;}
 .toast.show{opacity:1;}
 
@@ -267,6 +275,7 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="https://cardbook.bizmy.net/og-image.png">
+  <link rel="icon" type="image/png" href="icon-192.png">
   <link rel="apple-touch-icon" href="https://cardbook.bizmy.net/icon-192.png">
   <link rel="apple-touch-icon" sizes="192x192" href="https://cardbook.bizmy.net/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="https://cardbook.bizmy.net/icon-512.png">
@@ -293,6 +302,79 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
   </script>
 </head>
 <body>
+<!-- 카드북 아이콘 세트 (Stitch 디자인을 SVG로 다시 그림, 좌표 0~240) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="ciG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>
+    <linearGradient id="ciL" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9cc5fb"/><stop offset="1" stop-color="#7aa5f5"/></linearGradient>
+    <linearGradient id="ciT" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eef5fe"/><stop offset="1" stop-color="#dbe9fe"/></linearGradient>
+    <symbol id="ci-tile" viewBox="0 0 240 240"><rect x="16" y="16" width="208" height="208" rx="46" fill="url(#ciT)"/></symbol>
+    <symbol id="ci-cards" viewBox="0 0 240 240">
+      <rect x="88" y="62" width="98" height="74" rx="12" fill="url(#ciL)" transform="rotate(6 137 99)"/>
+      <rect x="56" y="88" width="112" height="80" rx="13" fill="url(#ciG)"/>
+      <circle cx="84" cy="116" r="10" fill="#fff"/>
+      <rect x="104" y="110" width="44" height="6" rx="3" fill="#fff"/>
+      <rect x="104" y="124" width="28" height="5" rx="2.5" fill="#fff" opacity=".5"/>
+      <rect x="72" y="146" width="76" height="5" rx="2.5" fill="#fff" opacity=".4"/>
+    </symbol>
+    <symbol id="ci-scan" viewBox="0 0 240 240">
+      <path d="M58 82V68a10 10 0 0 1 10-10h14M158 58h14a10 10 0 0 1 10 10v14M182 156v14a10 10 0 0 1-10 10h-14M82 180H68a10 10 0 0 1-10-10v-14" fill="none" stroke="#60a5fa" stroke-width="6" stroke-linecap="round"/>
+      <rect x="78" y="80" width="92" height="68" rx="11" fill="url(#ciG)"/>
+      <circle cx="97" cy="100" r="8" fill="#fff"/>
+      <rect x="110" y="97" width="32" height="6" rx="3" fill="#fff"/>
+      <rect x="96" y="121" width="60" height="4" rx="2" fill="#fff" opacity=".6"/>
+      <rect x="96" y="131" width="38" height="4" rx="2" fill="#fff" opacity=".4"/>
+      <rect x="56" y="111" width="128" height="4" rx="2" fill="#93c5fd"/>
+    </symbol>
+    <symbol id="ci-star" viewBox="0 0 240 240">
+      <path d="M120 58l17.6 38.8 42.4 4.6-31.7 28.6 8.8 41.7L120 150.6l-37.1 21.1 8.8-41.7L60 101.4l42.4-4.6z" fill="url(#ciG)" stroke="url(#ciG)" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M120 58l17.6 38.8 42.4 4.6-31.7 28.6L120 150.6z" fill="#fff" opacity=".22"/>
+    </symbol>
+    <symbol id="ci-bell" viewBox="0 0 240 240">
+      <circle cx="120" cy="66" r="7" fill="url(#ciG)"/>
+      <path d="M120 70c-24 0-40 19-40 44v26l-10 14h100l-10-14v-26c0-25-16-44-40-44z" fill="url(#ciG)" stroke="url(#ciG)" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M107 164a13 13 0 0 0 26 0" fill="none" stroke="url(#ciG)" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="160" cy="76" r="16" fill="#fff"/><circle cx="160" cy="76" r="8" fill="#3b82f6"/>
+    </symbol>
+    <symbol id="ci-home" viewBox="0 0 240 240">
+      <path d="M120 74l46 38v54a10 10 0 0 1-10 10H84a10 10 0 0 1-10-10v-54z" fill="url(#ciG)" stroke="url(#ciG)" stroke-width="6" stroke-linejoin="round"/>
+      <circle cx="120" cy="100" r="8" fill="#eef3fd"/>
+      <path d="M105 176v-34a15 15 0 0 1 30 0v34z" fill="#eef3fd"/>
+    </symbol>
+    <symbol id="ci-id" viewBox="0 0 240 240">
+      <rect x="70" y="62" width="100" height="132" rx="15" fill="url(#ciG)"/>
+      <rect x="104" y="72" width="32" height="7" rx="3.5" fill="#fff" opacity=".75"/>
+      <circle cx="120" cy="108" r="17" fill="#fff"/>
+      <path d="M92 150a28 24 0 0 1 56 0z" fill="#fff"/>
+      <rect x="96" y="160" width="48" height="5" rx="2.5" fill="#fff"/>
+      <rect x="104" y="172" width="32" height="4" rx="2" fill="#fff" opacity=".6"/>
+    </symbol>
+    <symbol id="ci-qr" viewBox="0 0 240 240">
+      <g fill="url(#ciG)"><rect x="60" y="60" width="48" height="48" rx="11"/><rect x="132" y="60" width="48" height="48" rx="11"/><rect x="60" y="132" width="48" height="48" rx="11"/></g>
+      <g fill="#fff"><rect x="75" y="75" width="18" height="18" rx="4"/><rect x="147" y="75" width="18" height="18" rx="4"/><rect x="75" y="147" width="18" height="18" rx="4"/></g>
+      <rect x="132" y="132" width="20" height="20" rx="5" fill="url(#ciG)"/><rect x="160" y="132" width="20" height="20" rx="5" fill="#60a5fa"/>
+      <rect x="132" y="160" width="20" height="20" rx="5" fill="#60a5fa"/><rect x="160" y="160" width="20" height="20" rx="5" fill="url(#ciG)"/>
+    </symbol>
+    <symbol id="ci-share" viewBox="0 0 240 240">
+      <path d="M120 84L76 140h88z" fill="#dbeafe" stroke="#93c5fd" stroke-width="8" stroke-linejoin="round"/>
+      <g fill="#fff" stroke="url(#ciG)" stroke-width="8"><circle cx="120" cy="84" r="17"/><circle cx="76" cy="140" r="14"/><circle cx="164" cy="140" r="14"/></g>
+    </symbol>
+    <symbol id="ci-refer" viewBox="0 0 240 240">
+      <path d="M148 64l22-10" stroke="#60a5fa" stroke-width="7" stroke-linecap="round" stroke-dasharray="1 10"/>
+      <circle cx="184" cy="50" r="10" fill="#fff" stroke="#60a5fa" stroke-width="6"/>
+      <path d="M120 76L68 162h104z" fill="#dbeafe" stroke="#93c5fd" stroke-width="9" stroke-linejoin="round"/>
+      <g fill="#fff" stroke="url(#ciG)" stroke-width="9"><circle cx="120" cy="76" r="22"/><circle cx="68" cy="162" r="18"/><circle cx="172" cy="162" r="18"/></g>
+    </symbol>
+    <symbol id="ci-plus" viewBox="0 0 240 240">
+      <circle cx="120" cy="120" r="96" fill="url(#ciG)"/>
+      <path d="M120 80v80M80 120h80" stroke="#fff" stroke-width="16" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+<script>
+// 아이콘: ci('star') = 그림만, ci('star',1) = 연한 파란 타일 포함
+function ci(n,tile,cls){return '<svg class="ci'+(cls?' '+cls:'')+'" viewBox="'+(tile||n==='plus'?'0 0 240 240':n==='refer'?'40 34 160 160':'48 48 144 144')+'" aria-hidden="true">'+(tile?'<use href="#ci-tile" width="240" height="240"/>':'')+'<use href="#ci-'+n+'" width="240" height="240"/></svg>';}
+</script>
 <div id="appRoot">
   <div class="loading-screen"><div class="spinner"></div><div class="loading-text">불러오는 중...</div></div>
 </div>
@@ -463,7 +545,7 @@ function renderLogin() {
   document.getElementById('appRoot').innerHTML = `
     <div class="login-screen">
       ${cardBanner}
-      <div class="login-icon">🗂️</div>
+      <div class="login-icon">${ci('cards',1)}</div>
       <div class="login-title">카드북</div>
       <div class="login-desc">명함·카드를 한곳에 모으고, 기억나는 단어로 바로 찾으세요<br><a href="javascript:void(0)" onclick="openPricingModal()" style="color:#2563eb;font-size:12px;text-decoration:underline;">가입 시 이미지 명함 50장 무료 · 요금제 보기</a></div>
       <div style="width:100%;max-width:300px;margin-bottom:4px;">
@@ -497,9 +579,9 @@ function renderLogin() {
       </div>
     </div>
     <div class="bottom-nav">
-      <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
-      <button class="nav-btn active"><span class="icon">🗂️</span><span>카드</span></button>
-      <button class="nav-btn" onclick="openScanModal()"><span class="icon">➕</span><span>명함 추가</span></button>
+      <button class="nav-btn" onclick="goMyCard()">${ci('id')}<span>내 명함</span></button>
+      <button class="nav-btn active">${ci('cards')}<span>카드</span></button>
+      <button class="nav-btn nav-add" onclick="openScanModal()">${ci('plus')}<span>명함 추가</span></button>
     </div>
   `;
   // 엔터키 지원
@@ -809,7 +891,7 @@ function renderApp() {
   document.getElementById('appRoot').innerHTML = `
     <div class="top-bar">
       <div class="top-row">
-        <div class="top-title">🗂️ <span>카드북</span></div>
+        <div class="top-title">${ci('cards',0,'ci-title')} <span>카드북</span></div>
           <canvas id="myQRCanvas" width="80" height="80" style="border-radius:8px;flex-shrink:0;display:none"></canvas>
         <div class="user-row">
           <span class="user-name" id="userName"></span>
@@ -855,11 +937,11 @@ function renderApp() {
     </div>
     </div>
     <div class="bottom-nav">
-      <button class="nav-btn" id="navHome" onclick="showView('home')"><span class="icon">🏠</span><span>홈</span></button>
-      <button class="nav-btn" id="navCards" onclick="showView('cards')"><span class="icon">🗂️</span><span>카드</span></button>
-      <button class="nav-btn" id="navFav" onclick="showView('fav')"><span class="icon">⭐</span><span>즐겨찾기</span></button>
-      <button class="nav-btn" onclick="openScanModal()"><span class="icon">➕</span><span>추가</span></button>
-      <button class="nav-btn" onclick="goMyCard()"><span class="icon">📇</span><span>내 명함</span></button>
+      <button class="nav-btn" id="navHome" onclick="showView('home')">${ci('home')}<span>홈</span></button>
+      <button class="nav-btn" id="navCards" onclick="showView('cards')">${ci('cards')}<span>카드</span></button>
+      <button class="nav-btn" id="navFav" onclick="showView('fav')">${ci('star')}<span>즐겨찾기</span></button>
+      <button class="nav-btn nav-add" onclick="openScanModal()">${ci('plus')}<span>추가</span></button>
+      <button class="nav-btn" onclick="goMyCard()">${ci('id')}<span>내 명함</span></button>
     </div>
   `;
   renderCards(allCards);
@@ -1143,8 +1225,8 @@ function renderCards(cards) {
 
   if(cards.length === 0) {
     if((window._searchTerms||[]).length) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">검색 결과가 없어요</div><div class="empty-desc">단어를 하나 빼거나 짧게 줄여보세요<br>예: "인테리어 해운대" → "인테리어"</div></div>`; return; }
-    if(favOnly) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">⭐</div><div class="empty-title">즐겨찾기한 카드가 없어요</div><div class="empty-desc">카드 오른쪽 위의 ☆를 누르면<br>여기에 모여요.</div></div>`; return; }
-    list.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂️</div><div class="empty-title">저장된 명함이 없어요</div><div class="empty-desc">명함 페이지에서<br>"명함 저장하기" 버튼을 눌러 추가하세요.</div></div>`;
+    if(favOnly) { list.innerHTML = `<div class="empty-state"><div class="empty-icon">${ci('star',1)}</div><div class="empty-title">즐겨찾기한 카드가 없어요</div><div class="empty-desc">카드 오른쪽 위의 ☆를 누르면<br>여기에 모여요.</div></div>`; return; }
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">${ci('cards',1)}</div><div class="empty-title">저장된 명함이 없어요</div><div class="empty-desc">명함 페이지에서<br>"명함 저장하기" 버튼을 눌러 추가하세요.</div></div>`;
     return;
   }
 
@@ -1180,7 +1262,7 @@ function renderCards(cards) {
       }
     } else if(_upd) {
       if(!updHeaderDone) {
-        html += `<div class="alpha-divider upd-divider">📣 새 소식</div>`;
+        html += `<div class="alpha-divider upd-divider">${ci('bell')} 새 소식</div>`;
         updHeaderDone = true;
       }
       // 이 자음의 명함이 전부 "새 소식"이라 아래쪽엔 안 나오는 경우, 여기라도 목적지를 심어둠
@@ -1228,7 +1310,7 @@ function renderCards(cards) {
         ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇 연락처 저장</button>`:''}
         ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 비즈홈</a>`:''}
         ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️ 명함</a>`:''}
-        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">📤 전달하기</button>
+        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">${ci('share')} 전달하기</button>
         <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️ 삭제하기</button>
       </div>
       <button class="crm-toggle" onclick="toggleCRM(this)">
@@ -1648,18 +1730,18 @@ function renderHome() {
         <div class="home-stat"><div class="home-stat-num">${updCards.length}</div><div class="home-stat-label">새 소식</div></div>
         <div class="home-stat"><div class="home-stat-num">${stale.length}</div><div class="home-stat-label">챙길 사람</div></div>
       </div>
-      <button class="home-hero-btn" onclick="goMyCard()">${myDicaUrl ? '📇 내 명함 · QR' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
+      <button class="home-hero-btn" onclick="goMyCard()">${myDicaUrl ? ci('qr') + ' 내 명함 · QR' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
     </div>
     ${!myDicaUrl ? `    <div class="home-ac">
       <a class="home-ac-main" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener" onclick="trackBanner('dica')">
         <span class="home-ac-ico">✨</span>
         <span class="home-ac-txt"><b>${myDicaUrl ? '디지털 명함 만들기' : '내 디지털 명함 만들기'}</b><small>무료로 시작 · 1분 완성 · 받은 사람은 카드북에 저장</small></span>
       </a>
-      <button type="button" class="home-ac-share" onclick="shareAutocard()">📤<span>추천</span></button>
+      <button type="button" class="home-ac-share" onclick="shareAutocard()">${ci('refer')}<span>추천</span></button>
     </div>
     ` : ''}
     ${myDicaUrl && !_hasBizhome(myDicaUrl) ? `<a class="home-ac home-bh" href="https://jinjjabg-hub.github.io/T.M-LINK/#pricing" target="_blank" rel="noopener" onclick="trackBanner('bizhome')">
-      <span class="home-ac-ico">🏠</span>
+      <span class="home-ac-ico">${ci('home')}</span>
       <span class="home-ac-txt"><b>비즈홈 — 나만의 작은 홈페이지</b><small>경력·사례·서비스·영상까지 · 15만 원부터 · BNI 특별가</small></span>
       <span class="home-ac-go">›</span>
     </a>` : ''}
@@ -1669,7 +1751,7 @@ function renderHome() {
       <span class="home-ac-go">›</span>
     </a>
     <div class="home-section">
-      <div class="home-sec-title">📣 새 소식</div>
+      <div class="home-sec-title">${ci('bell')} 새 소식</div>
       ${updHtml}
     </div>
     <div class="home-section">
@@ -1951,7 +2033,7 @@ function _showDuplicateConfirm(name) {
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:500;display:flex;align-items:center;justify-content:center;padding:24px;';
     modal.innerHTML = `
       <div style="background:#f6f8fc;border-radius:20px;padding:28px 24px;width:100%;max-width:360px;text-align:center;">
-        <div style="font-size:36px;margin-bottom:12px;">📇</div>
+        <div style="margin-bottom:12px;line-height:0">${ci('cards',1,'ci-lg')}</div>
         <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:8px;">이미 저장된 명함이에요</div>
         <div style="font-size:13px;color:#5b7bb0;margin-bottom:24px;line-height:1.7;">${name}님 명함이 카드북에 있어요.<br>최신 정보로 업데이트할까요?</div>
         <div style="display:flex;gap:10px;">
@@ -2379,7 +2461,7 @@ function showDicaRegisterModal() {
       </div>
       <label style="display:block;margin-bottom:12px;padding:13px;border-radius:12px;border:1.5px dashed rgba(37,99,235,0.45);background:#fff;text-align:center;cursor:pointer;">
         <input id="pfScanFile" type="file" accept="image/*" style="display:none" onchange="cbScanMyCard(this)">
-        <div id="pfScanTxt" style="font-size:14px;font-weight:800;color:#2563eb;">📷 내 명함 사진으로 채우기</div>
+        <div id="pfScanTxt" style="font-size:14px;font-weight:800;color:#2563eb;">${ci('scan')} 내 명함 사진으로 채우기</div>
         <div style="font-size:11px;color:#8aa0c6;margin-top:3px;">종이 명함을 찍으면 아래 칸을 자동으로 채워요 · 사진은 저장하지 않아요</div>
       </label>
       <label style="${lab}">이름 *</label><input id="pfName" maxlength="20" value="${cbEsc(nm)}" placeholder="홍길동" autocomplete="name" style="${inp}">
@@ -2417,7 +2499,7 @@ window.cbPickHas = function(k) {
 window.cbScanMyCard = async function(input) {
   const f = input.files && input.files[0]; input.value = '';
   if(!f) return;
-  const txt = document.getElementById('pfScanTxt'), orig = txt ? txt.textContent : '';
+  const txt = document.getElementById('pfScanTxt'), orig = txt ? txt.innerHTML : '';
   if(txt) txt.textContent = '⏳ 명함 읽는 중… (5~10초)';
   try {
     const img = await new Promise((ok, no) => { const u = URL.createObjectURL(f), i = new Image(); i.onload = () => { URL.revokeObjectURL(u); ok(i); }; i.onerror = no; i.src = u; });
@@ -2436,7 +2518,7 @@ window.cbScanMyCard = async function(input) {
   } catch(e) {
     showToast('❌ ' + (e.message || '명함을 읽지 못했어요'));
   } finally {
-    if(txt) txt.textContent = orig;
+    if(txt) txt.innerHTML = orig;
   }
 };
 
@@ -2542,7 +2624,7 @@ window.goMyCard = function() {
   sheet.onclick = (e) => { if(e.target === sheet) sheet.remove(); };
   sheet.innerHTML = `
     <div class="mycard-sheet-box">
-      <div style="font-size:15px;font-weight:800;color:#16305e;margin-bottom:14px;">📇 내 명함</div>
+      <div style="font-size:15px;font-weight:800;color:#16305e;margin-bottom:14px;">${ci('id')} 내 명함</div>
       <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;" onclick="window.open(myDicaUrl,'_blank');document.getElementById('myCardSheet').remove();">🔗 내 명함 열기</button>
       <button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="document.getElementById('myCardSheet').remove();showDicaRegisterModal()">✏️ 본인 정보${!myCards.bizhome || !myCards.autocard ? ` · ${!myCards.bizhome ? '비즈홈' : '오토명함'} 등록` : ' 수정'}</button>
       <button class="mycard-sheet-btn" style="background:linear-gradient(135deg,#2563eb,#60a5fa);color:#16305e;" onclick="openNotifyUpdate()">📣 업데이트 알리기</button>
