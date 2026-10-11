@@ -12,8 +12,20 @@ service cloud.firestore {
         && !request.resource.data.keys().hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted','paidLots','creditsV2','rewardMonth','rewardCount']);
       // 내 명함 링크(비즈홈 bizhomeUrl · 오토명함 autocardUrl · 예전 dicaUrl)는 한 번 등록하면 바꾸거나 지울 수 없다 (계정당 종류별 1회)
       function keepOnce(f) { return !(f in resource.data) || (f in request.resource.data && request.resource.data[f] == resource.data[f]); }
+      // 예외 1개: 무료 오토명함 → 본인이 새로 발행한 유료 오토명함으로는 바꿀 수 있다(유료로 올라가는 길). 바꾼 뒤엔 유료라 다시 못 바꾼다
+      function acUrlOk(u) { return u is string && u.matches('https://jinjjabg-hub[.]github[.]io/autocard/c/[?]id=[A-Za-z0-9_-]{6,40}'); }
+      function acCardOf(u) { return get(/databases/$(database)/documents/autocards/$(u.split('[?]id=')[1])).data; }
+      function acFreeToPaid() {
+        return 'autocardUrl' in resource.data && 'autocardUrl' in request.resource.data
+          && acUrlOk(resource.data.autocardUrl) && acUrlOk(request.resource.data.autocardUrl)
+          && acCardOf(resource.data.autocardUrl).get('plan', '') == 'free'
+          && acCardOf(resource.data.autocardUrl).ownerUid == uid
+          && acCardOf(request.resource.data.autocardUrl).get('plan', '') != 'free'
+          && acCardOf(request.resource.data.autocardUrl).ownerUid == uid
+          && acCardOf(request.resource.data.autocardUrl).status == 'published';
+      }
       allow update: if request.auth != null && request.auth.uid == uid
-        && keepOnce('bizhomeUrl') && keepOnce('autocardUrl') && keepOnce('dicaUrl')
+        && keepOnce('bizhomeUrl') && (keepOnce('autocardUrl') || acFreeToPaid()) && keepOnce('dicaUrl')
         && !request.resource.data.diff(resource.data).affectedKeys()
              .hasAny(['credits','paidTotal','scanTotal','freeMonth','freeRemain','dica500Granted','autocard50Granted','paidLots','creditsV2','rewardMonth','rewardCount']);
 
