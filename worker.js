@@ -54,18 +54,21 @@ const CORS = {
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 
-async function callClaude(env, content, maxTokens, models = MODELS) {
+// extra(model) → { headers, body }: 특정 모델에만 붙일 요청 옵션(예: Sonnet 5.5의 effort·fallbacks). 없으면 예전 그대로
+async function callClaude(env, content, maxTokens, models = MODELS, extra = null) {
   if (!env.ANTHROPIC_API_KEY) throw new Error('Worker에 ANTHROPIC_API_KEY Secret이 없습니다');
   let lastErr = '';
   for (const model of models) {
+    const ex = (extra && extra(model)) || {};
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
+        ...(ex.headers || {}),
       },
-      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }], ...(ex.body || {}) }),
     });
     const data = await res.json();
     if (res.ok) {
@@ -542,6 +545,50 @@ Strings: ${JSON.stringify(c)}` }], 8000, AUTOCARD_MODELS).catch(() => ({}))));
   if (env.OCR_CACHE) await env.OCR_CACHE.put(cacheKey, JSON.stringify(out));
   return json({ strings: out });
 }
+// ── 카드북 본인 등록: 내 종이·디지털 명함 사진 1장 → 이름·회사·직함·휴대폰·이메일 ──
+// 왜 Sonnet 5.5: 사람당 거의 1번이라 장당 비용(약 10원대)보다 정확도가 중요. 단순 옮겨 적기라 effort는 low로 생각을 줄여 비용·시간을 아낌.
+// 로그인한 사람만, 한 사람 하루 3번(같은 사진은 캐시라 안 셈). 사진은 읽기만 하고 저장하지 않는다(캐시에는 결과 JSON만)
+const PROFILE_SCAN_MODELS = ['claude-sonnet-5-5', 'claude-sonnet-4-6'];
+const PROFILE_SCAN_DAILY = 3;
+const profileScanExtra = model => model === 'claude-sonnet-5-5'
+  ? { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, body: { output_config: { effort: 'low' }, fallbacks: 'default' } }
+  : null;
+function cleanProfile(r) {
+  const s = (v, n) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const email = s(r.email, 80);
+  return { name: normName(s(r.name, 20)), company: s(r.company, 25), title: s(r.title, 25), phone: normPhone(r.phone), email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '' };
+}
+async function profileScan(env, body) {
+  const { image, mediaType, hash, idToken } = body;
+  const uid = await verifyIdToken(idToken);
+  if (!image || image.length > 7_000_000) return json({ error: '사진이 없거나 너무 커요' }, 400);
+  const cacheKey = hash && /^[a-f0-9]{64}$/.test(hash) ? 'pf-scan:v1:' + hash : '';
+  if (cacheKey && env.OCR_CACHE) {
+    const hit = await env.OCR_CACHE.get(cacheKey, 'json');
+    if (hit) return json({ ...cleanProfile(hit), cached: true });
+  }
+  if (env.OCR_CACHE) {
+    const k = `pf-rl:${uid}:${new Date().toISOString().slice(0, 10)}`;
+    const n = Number(await env.OCR_CACHE.get(k)) || 0;
+    if (n >= PROFILE_SCAN_DAILY) return json({ error: '오늘은 사진 읽기를 모두 썼어요(하루 3번). 직접 입력하거나 내일 다시 해주세요.', limited: true }, 429);
+    await env.OCR_CACHE.put(k, String(n + 1), { expirationTtl: 60 * 60 * 26 });
+  }
+  const prompt = `이 사진은 한 사람의 명함(종이 명함 사진이나 디지털 명함 캡처)이야. 명함에 실제로 적힌 글자만 옮겨 JSON으로 답해.
+- 없거나 안 보이는 칸은 "". 추측·보충 금지, 보이는 그대로.
+- name: 사람 이름만(직함 빼고). 한글 이름이 있으면 한글.
+- company: 회사·상호명(한글 표기가 있으면 한글). title: 직함(대표, 팀장 등).
+- phone: 휴대폰 번호(010 등) 우선, 없으면 대표 전화. 팩스 번호는 넣지 마.
+- email: 이메일 주소.
+JSON만: {"name":"","company":"","title":"","phone":"","email":""}`;
+  const raw = await callClaude(env, [
+    { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
+    { type: 'text', text: prompt },
+  ], 2000, PROFILE_SCAN_MODELS, profileScanExtra);
+  const result = cleanProfile(raw);
+  if (cacheKey && env.OCR_CACHE) await env.OCR_CACHE.put(cacheKey, JSON.stringify(result), { expirationTtl: 60 * 60 * 24 * 30 });
+  return json(result);
+}
+
 async function importRateLimit(env, request, deviceId) {
   if (!env.OCR_CACHE) return null;   // KV 바인딩이 없으면 제한 없이 동작(캐시도 없음)
   const day = new Date().toISOString().slice(0, 10);
@@ -752,6 +799,7 @@ export default {
       if (url.pathname === '/autocard/draft') return await autocardDraft(env, await request.json());
       if (url.pathname === '/autocard/translate') return await autocardTranslate(env, await request.json());
       if (url.pathname === '/autocard/import') return await autocardImport(env, request, await request.json());
+      if (url.pathname === '/profile/scan') return await profileScan(env, await request.json());
       if (url.pathname === '/autocard/ui') return await autocardUi(env, request, await request.json());
       if (url.pathname === '/autocard/pay/confirm') return await autocardPay(env, await request.json());
 

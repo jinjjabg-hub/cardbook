@@ -2377,6 +2377,11 @@ function showDicaRegisterModal() {
         <div style="font-family:'Nanum Gothic',sans-serif;font-size:18px;font-weight:800;color:#16305e;margin-bottom:6px;">본인 등록</div>
         <div style="font-size:13px;color:#5b7bb0;line-height:1.6;">내 정보와 명함을 등록하면<br>QR·명함 공유가 바로 켜져요.</div>
       </div>
+      <label style="display:block;margin-bottom:12px;padding:13px;border-radius:12px;border:1.5px dashed rgba(37,99,235,0.45);background:#fff;text-align:center;cursor:pointer;">
+        <input id="pfScanFile" type="file" accept="image/*" style="display:none" onchange="cbScanMyCard(this)">
+        <div id="pfScanTxt" style="font-size:14px;font-weight:800;color:#2563eb;">📷 내 명함 사진으로 채우기</div>
+        <div style="font-size:11px;color:#8aa0c6;margin-top:3px;">종이 명함을 찍으면 아래 칸을 자동으로 채워요 · 사진은 저장하지 않아요</div>
+      </label>
       <label style="${lab}">이름 *</label><input id="pfName" maxlength="20" value="${cbEsc(nm)}" placeholder="홍길동" autocomplete="name" style="${inp}">
       <label style="${lab}">회사</label><input id="pfCompany" maxlength="25" value="${cbEsc(p.company)}" placeholder="회사·상호" autocomplete="organization" style="${inp}">
       <label style="${lab}">직함</label><input id="pfTitle" maxlength="25" value="${cbEsc(p.title)}" placeholder="대표" autocomplete="organization-title" style="${inp}">
@@ -2406,6 +2411,33 @@ window.cbPickHas = function(k) {
   document.getElementById('pfFreeBox').style.display = k === 'none' ? 'block' : 'none';
   const i = document.getElementById('dicaUrlInput');
   if(i) i.placeholder = k === 'autocard' ? 'https://jinjjabg-hub.github.io/autocard/c/?id=...' : '비즈홈 주소(https://...)';
+};
+
+// 내 명함 사진 → Worker(/profile/scan, Sonnet 5.5)가 읽어 칸을 채움. 결과는 사람이 확인·수정한 뒤 저장
+window.cbScanMyCard = async function(input) {
+  const f = input.files && input.files[0]; input.value = '';
+  if(!f) return;
+  const txt = document.getElementById('pfScanTxt'), orig = txt ? txt.textContent : '';
+  if(txt) txt.textContent = '⏳ 명함 읽는 중… (5~10초)';
+  try {
+    const img = await new Promise((ok, no) => { const u = URL.createObjectURL(f), i = new Image(); i.onload = () => { URL.revokeObjectURL(u); ok(i); }; i.onerror = no; i.src = u; });
+    const sc = Math.min(1, 1568 / Math.max(img.width, img.height));   // Claude가 읽는 최대 크기 — 이보다 작게 줄이면 작은 글씨가 뭉개짐
+    const cv = document.createElement('canvas'); cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    const jpeg = cv.toDataURL('image/jpeg', 0.88).split(',')[1];
+    const res = await fetch(CB_WORKER_URL + '/profile/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: jpeg, mediaType: 'image/jpeg', hash: await _sha256(jpeg), idToken: await currentUser.getIdToken() }) });
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.error || '읽기 실패');
+    const put = (id, v) => { const el = document.getElementById(id); if(el && v) { el.value = v; el.style.borderColor = '#2563eb'; } };
+    put('pfName', r.name); put('pfCompany', r.company); put('pfTitle', r.title); put('pfPhone', r.phone);
+    const n = [r.name, r.company, r.title, r.phone].filter(Boolean).length;
+    showToast(n ? `✅ ${n}칸을 채웠어요 · 맞는지 확인해주세요` : '😅 글자를 못 읽었어요 · 밝은 곳에서 다시 찍거나 직접 입력해주세요');
+  } catch(e) {
+    showToast('❌ ' + (e.message || '명함을 읽지 못했어요'));
+  } finally {
+    if(txt) txt.textContent = orig;
+  }
 };
 
 // 본인 정보 저장 — 이름은 꼭, 나머지는 선택
