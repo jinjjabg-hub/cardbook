@@ -2313,6 +2313,7 @@ async function loadUserProfile(uid) {
       name    = d.name    || name;
       title   = d.title   || '';
       company = d.company || '';
+      cbProfile = { name: d.name || '', company, title, phone: d.phone || '' };
       cbSetMyCards(d);
     } else {
       isNew = true;
@@ -2352,54 +2353,97 @@ async function applyMyCardParam() {
   return true;
 }
 
-// 카드북에서 무료 명함 만들기 → 오토명함 무료판 이름 칸부터 바로 시작(이름 미리 채움). 발행하면 같은 탭으로 돌아와 내 명함에 자동 등록(?mycard=)
-function cbFreeCardLink() {
-  let name = '';
-  try { name = (document.getElementById('userName')?.textContent || '').split(' · ')[0].trim(); } catch(e) {}
-  if(!name || /@/.test(name) || name === '사용자') name = currentUser?.displayName || '';
-  const q = new URLSearchParams({ start: 'free', from: 'cardbook' });
-  if(name && !/@/.test(name)) q.set('name', name.slice(0, 20));
-  return 'https://jinjjabg-hub.github.io/autocard/?' + q.toString();
-}
+// ===== 본인 등록 (리멤버처럼 로그인 후 내 정보 입력 → 내 명함 연결) =====
+// 왜: 카드북 사용자가 "나는 누구인지"를 먼저 등록하게 하고, 명함(비즈홈·오토명함)이 없으면 그 자리에서 무료 명함으로 이어지게.
+// 내 정보는 users/{uid}의 name·company·title·phone에 저장(본인만 읽기·쓰기, firestore.rules)
+let cbProfile = { name: '', company: '', title: '', phone: '' };
+const cbEsc = v => String(v || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let cbHasCard = '';   // 본인 등록 창에서 고른 답: 'bizhome' | 'autocard' | 'none'
 
-// ===== 내 DiCA 등록 모달 =====
 function showDicaRegisterModal() {
-  // 이미 모달 있으면 중복 방지
   if(document.getElementById('dicaRegisterModal')) return;
   const modal = document.createElement('div');
   modal.id = 'dicaRegisterModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:500;display:flex;align-items:flex-end;justify-content:center;';
+  const inp = 'width:100%;box-sizing:border-box;background:#fff;border:1.5px solid rgba(37,99,235,0.25);border-radius:12px;padding:12px 14px;font-size:14px;color:#16305e;font-family:\'Noto Sans KR\',sans-serif;outline:none;margin-bottom:8px;';
+  const lab = 'display:block;font-size:12px;font-weight:700;color:#5b7bb0;margin:2px 0 4px;';
+  const chip = (k, txt) => `<button type="button" class="cb-has" data-k="${k}" onclick="cbPickHas('${k}')" style="flex:1;padding:11px 4px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.25);background:#fff;color:#16305e;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">${txt}</button>`;
+  const chips = (!myCards.bizhome ? chip('bizhome', '비즈홈 있어요') : '') + (!myCards.autocard ? chip('autocard', '오토명함 있어요') : '') + (!myDicaUrl ? chip('none', '아직 없어요') : '');
+  const p = cbProfile, nm = p.name && !/@/.test(p.name) && p.name !== '사용자' ? p.name : (currentUser?.displayName || '');
   modal.innerHTML = `
-    <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:28px 24px 44px;">
-      <div style="text-align:center;margin-bottom:20px;">
-        <div style="font-size:40px;margin-bottom:10px;">📇</div>
-        <div style="font-family:'Nanum Gothic',sans-serif;font-size:18px;font-weight:800;color:#16305e;margin-bottom:8px;">내 디지털 명함 등록</div>
-        <div style="font-size:13px;color:#5b7bb0;line-height:1.7;">내 명함(비즈홈·디지털 명함) 링크를 등록하면<br>QR과 명함 공유가 바로 활성화돼요.</div>
+    <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;max-height:92vh;overflow-y:auto;padding:24px 22px 36px;box-sizing:border-box;">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:36px;margin-bottom:6px;">👋</div>
+        <div style="font-family:'Nanum Gothic',sans-serif;font-size:18px;font-weight:800;color:#16305e;margin-bottom:6px;">본인 등록</div>
+        <div style="font-size:13px;color:#5b7bb0;line-height:1.6;">내 정보와 명함을 등록하면<br>QR·명함 공유가 바로 켜져요.</div>
       </div>
-      <input id="dicaUrlInput" type="url" placeholder="https://jinjjabg-hub.github.io/..." 
-        style="width:100%;background:#fff;border:1.5px solid rgba(37,99,235,0.25);border-radius:12px;padding:13px 14px;font-size:13px;color:#16305e;font-family:'Noto Sans KR',sans-serif;outline:none;margin-bottom:12px;"
-        onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='rgba(37,99,235,0.25)'">
-      <button onclick="saveDicaUrl()" style="width:100%;background:#16305e;color:#f6f8fc;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:10px;">등록하기</button>
-      <div style="margin:6px 0 12px;padding:14px;border-radius:14px;background:#fff;border:1.5px dashed rgba(37,99,235,0.35);text-align:center;">
-        <div style="font-size:13px;font-weight:800;color:#16305e;margin-bottom:4px;">아직 디지털 명함이 없나요?</div>
-        <div style="font-size:12px;color:#5b7bb0;line-height:1.6;margin-bottom:10px;">무료로 시작해 1분 만에 만들어져요<br>만든 뒤 버튼 한 번으로 여기 내 명함에 등록돼요</div>
-        <a href="${cbFreeCardLink()}" style="display:block;background:linear-gradient(135deg,#2563eb,#60a5fa);color:#fff;border-radius:12px;padding:13px;font-size:14px;font-weight:700;text-decoration:none;">✨ 무료 명함 바로 만들기</a>
+      <label style="${lab}">이름 *</label><input id="pfName" maxlength="20" value="${cbEsc(nm)}" placeholder="홍길동" autocomplete="name" style="${inp}">
+      <label style="${lab}">회사</label><input id="pfCompany" maxlength="25" value="${cbEsc(p.company)}" placeholder="회사·상호" autocomplete="organization" style="${inp}">
+      <label style="${lab}">직함</label><input id="pfTitle" maxlength="25" value="${cbEsc(p.title)}" placeholder="대표" autocomplete="organization-title" style="${inp}">
+      <label style="${lab}">휴대폰</label><input id="pfPhone" type="tel" inputmode="tel" maxlength="20" value="${cbEsc(p.phone)}" placeholder="010-0000-0000" autocomplete="tel" style="${inp}">
+      ${chips ? `<div style="font-size:14px;font-weight:800;color:#16305e;margin:14px 0 8px;">${myDicaUrl ? '다른 명함도 등록할까요?' : '내 명함이 있나요?'}</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">${chips}</div>` : ''}
+      <div id="pfUrlBox" style="display:none;">
+        <input id="dicaUrlInput" type="url" placeholder="명함 주소(https://...)를 붙여넣어 주세요" style="${inp}">
       </div>
+      <div id="pfFreeBox" style="display:none;margin:4px 0 10px;padding:14px;border-radius:14px;background:#fff;border:1.5px dashed rgba(37,99,235,0.35);text-align:center;">
+        <div style="font-size:14px;font-weight:800;color:#16305e;margin-bottom:4px;">무료 명함 만들래요?</div>
+        <div style="font-size:12px;color:#5b7bb0;line-height:1.6;margin-bottom:10px;">위에 적은 정보로 채워서 시작해요 · 1분이면 완성<br>만들면 여기 내 명함으로 자동 등록돼요</div>
+        <button type="button" onclick="cbGoFreeCard()" style="width:100%;background:linear-gradient(135deg,#2563eb,#60a5fa);color:#fff;border:none;border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">✨ 무료 명함 만들기</button>
+      </div>
+      <button onclick="saveDicaUrl()" style="width:100%;background:#16305e;color:#f6f8fc;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin:6px 0 8px;">저장하기</button>
       <button onclick="skipDicaRegister()" style="width:100%;background:none;border:none;color:#a0a0a0;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;padding:8px;">나중에 하기</button>
     </div>
   `;
   document.body.appendChild(modal);
+  cbHasCard = '';
 }
+
+window.cbPickHas = function(k) {
+  cbHasCard = k;
+  document.querySelectorAll('.cb-has').forEach(b => { const on = b.dataset.k === k; b.style.background = on ? '#16305e' : '#fff'; b.style.color = on ? '#fff' : '#16305e'; });
+  document.getElementById('pfUrlBox').style.display = k === 'bizhome' || k === 'autocard' ? 'block' : 'none';
+  document.getElementById('pfFreeBox').style.display = k === 'none' ? 'block' : 'none';
+  const i = document.getElementById('dicaUrlInput');
+  if(i) i.placeholder = k === 'autocard' ? 'https://jinjjabg-hub.github.io/autocard/c/?id=...' : '비즈홈 주소(https://...)';
+};
+
+// 본인 정보 저장 — 이름은 꼭, 나머지는 선택
+async function cbSaveProfile() {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const p = { name: v('pfName').slice(0, 20), company: v('pfCompany').slice(0, 25), title: v('pfTitle').slice(0, 25), phone: v('pfPhone').replace(/[^0-9+\-\s]/g, '').slice(0, 20) };
+  if(!p.name) { const n = document.getElementById('pfName'); if(n) n.style.borderColor = '#C8102E'; showToast('❌ 이름을 적어주세요'); return null; }
+  await db.collection('users').doc(currentUser.uid).set(p, { merge: true });
+  cbProfile = p;
+  const el = document.getElementById('userName');
+  if(el) el.textContent = [p.name, p.title, p.company].filter(Boolean).join(' · ');
+  return p;
+}
+
+// 무료 명함 만들기 → 오토명함 무료판을 같은 탭에서 열고, 적은 정보를 미리 채움.
+// 정보는 주소의 # 뒤(해시)로 넘긴다 — 해시는 서버로 전송되지 않고, 오토명함이 읽자마자 지운다
+window.cbGoFreeCard = async function() {
+  let p; try { p = await cbSaveProfile(); } catch(e) { showToast('저장 실패. 다시 시도해주세요.'); return; }
+  if(!p) return;
+  const pf = encodeURIComponent(JSON.stringify({ n: p.name, c: p.company, t: p.title, p: p.phone }));
+  location.href = 'https://jinjjabg-hub.github.io/autocard/?start=free&from=cardbook#pf=' + pf;
+};
 
 window.saveDicaUrl = async function() {
   const input = document.getElementById('dicaUrlInput');
-  const url = input?.value.trim();
-  if(!url || !url.startsWith('http')) {
+  const url = (cbHasCard === 'bizhome' || cbHasCard === 'autocard') ? (input?.value.trim() || '') : '';
+  if(url && !url.startsWith('http')) {
     input.style.borderColor = '#C8102E';
-    showToast('❌ 올바른 URL을 입력해주세요');
+    showToast('❌ 올바른 명함 주소를 입력해주세요');
     return;
   }
   try {
+    if(!(await cbSaveProfile())) return;
+    if(!url) {
+      document.getElementById('dicaRegisterModal')?.remove();
+      showToast(cbHasCard === 'none' ? '✅ 저장했어요 · 명함은 아래 "무료 명함 만들기"로 언제든' : '✅ 내 정보를 저장했어요');
+      return;
+    }
     if(!(await cbRegisterMyCard(url))) return;
     document.getElementById('dicaRegisterModal')?.remove();
     showToast('✅ 내 명함이 등록됐어요!');
@@ -2468,7 +2512,7 @@ window.goMyCard = function() {
     <div class="mycard-sheet-box">
       <div style="font-size:15px;font-weight:800;color:#16305e;margin-bottom:14px;">📇 내 명함</div>
       <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;" onclick="window.open(myDicaUrl,'_blank');document.getElementById('myCardSheet').remove();">🔗 내 명함 열기</button>
-      ${!myCards.bizhome || !myCards.autocard ? `<button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="document.getElementById('myCardSheet').remove();showDicaRegisterModal()">➕ ${!myCards.bizhome ? '비즈홈' : '오토명함'} 등록하기</button>` : ''}
+      <button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="document.getElementById('myCardSheet').remove();showDicaRegisterModal()">✏️ 본인 정보${!myCards.bizhome || !myCards.autocard ? ` · ${!myCards.bizhome ? '비즈홈' : '오토명함'} 등록` : ' 수정'}</button>
       <button class="mycard-sheet-btn" style="background:linear-gradient(135deg,#2563eb,#60a5fa);color:#16305e;" onclick="openNotifyUpdate()">📣 업데이트 알리기</button>
       <button class="mycard-sheet-btn" style="background:#f0f0f0;color:#666;margin-bottom:0;" onclick="document.getElementById('myCardSheet').remove()">취소</button>
     </div>`;
