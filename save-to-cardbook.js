@@ -27,6 +27,28 @@ function _cbStoreDel(k){
   try { sessionStorage.removeItem(k); } catch(e) {}
 }
 
+// ===== 화면 안내 문구 =====
+// 카톡·네이버 같은 앱 안 브라우저는 alert()을 막는 경우가 있어서, 결과는 항상 화면 위 문구로 보여준다.
+// ms를 0으로 주면 누를 때까지 남아 있다(오류 안내용).
+function _cbToast(msg, kind, ms) {
+  const old = document.getElementById('_cb_toast');
+  if(old) old.remove();
+  if(!msg) return;
+  const bg = kind === 'error' ? '#5a1f1a' : kind === 'ok' ? '#1a3a2a' : '#2a2416';
+  const t = document.createElement('div');
+  t.id = '_cb_toast';
+  t.style.cssText = "position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:100000;width:calc(100% - 32px);max-width:400px;background:" + bg + ";color:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.4);font-size:13px;line-height:1.6;font-family:'Noto Sans KR',sans-serif;white-space:pre-line;cursor:pointer;";
+  t.textContent = msg;
+  t.onclick = () => t.remove();
+  document.body.appendChild(t);
+  if(ms !== 0) setTimeout(() => { if(t.parentNode) t.remove(); }, ms || 4000);
+}
+
+// 응답이 없으면 기다리지 않고 실패로 처리 (Firestore는 연결이 끊기면 저장 약속이 끝나지 않을 수 있음)
+function _cbTimeout(p, ms) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej({ code: 'cb/timeout' }), ms))]);
+}
+
 (function loadFirebase() {
   const scripts = [
     'https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js',
@@ -39,6 +61,7 @@ function _cbStoreDel(k){
     const s = document.createElement('script');
     s.src = src;
     s.onload = () => { loaded++; if(loaded === scripts.length) initFirebase(); };
+    s.onerror = () => { _cbSdkFailed = true; };
     document.head.appendChild(s);
   });
   if(loaded === scripts.length) initFirebase();
@@ -57,6 +80,8 @@ function _cbStoreDel(k){
 })();
 
 let _cbAuth, _cbDb;
+var _cbSdkFailed = false; // 구글 도구(Firebase) 파일을 못 받아온 경우
+let _cbBusy = false;      // 저장 중 중복 누름 방지
 
 function initFirebase(tries) {
   tries = tries || 0;
@@ -100,7 +125,13 @@ function initFirebase(tries) {
       if(!pending) return;
       const unsub = _cbAuth.onAuthStateChanged(async u => {
         unsub();
-        if(!u) return;
+        if(!u) {
+          // 로그인하러 갔다 왔는데 로그인 정보가 안 넘어온 경우(아이폰 사파리·최신 크롬의 저장소 분리)
+          // 예전에는 여기서 아무 표시 없이 끝나서 "눌러도 반응 없음"처럼 보였다.
+          _cbStoreDel('_cbPendingCard');
+          _cbToast('❌ 로그인 정보를 받지 못했어요.\n카드북에 저장을 한 번 더 눌러주세요.\n(계속 안 되면 이메일 로그인을 써주세요)', 'error', 0);
+          return;
+        }
         const still = _cbStoreGet('_cbPendingCard');
         if(!still) return;
         _cbStoreDel('_cbPendingCard');
@@ -120,7 +151,7 @@ function initFirebase(tries) {
           'auth/web-storage-unsupported': '브라우저의 쿠키/저장소 설정을 확인해주세요. (시크릿 모드는 지원되지 않을 수 있어요)'
         };
         const friendly = msgs[err.code] || ('로그인 처리 중 오류가 발생했습니다: ' + (err.message || err.code || '알 수 없는 오류'));
-        alert('❌ ' + friendly + '\n다시 시도해주세요.');
+        _cbToast('❌ ' + friendly + '\n다시 시도해주세요.', 'error', 0);
       }
     });
   } catch(e) {
@@ -151,35 +182,50 @@ async function saveToCardbook(cardData) {
     return;
   }
 
-  // 2. Firebase 준비 확인 (아직이면 즉시 초기화 시도)
-  if(!_cbAuth) initFirebase();
+  if(_cbBusy) { _cbToast('저장하는 중이에요. 잠시만 기다려주세요…'); return false; }
+  _cbBusy = true;
+  // 누르자마자 반응을 보여준다 (예전엔 최대 9초 동안 아무 표시가 없었음)
+  _cbToast('카드북에 저장하는 중…', 'info', 0);
+  try {
+    // 2. Firebase 준비 확인 (아직이면 즉시 초기화 시도)
+    if(!_cbAuth) initFirebase();
 
-  // 3. 로그인 상태 확인 → 이미 로그인이면 원터치 즉시 저장
-  const user = await _cbWaitAuth();
-  if(user) {
-    await _saveCard(user.uid, cardData);
-  } else {
+    // 3. 로그인 상태 확인 → 이미 로그인이면 원터치 즉시 저장
+    const user = await _cbWaitAuth();
+    if(user === 'nosdk') {
+      _cbToast('❌ 카드북 연결 도구를 불러오지 못했어요.\n인터넷 연결을 확인하고 다시 눌러주세요.\n(광고 차단 앱이 있으면 잠시 꺼주세요)', 'error', 0);
+      return false;
+    }
+    if(user) return await _saveCard(user.uid, cardData);
     // 첫 사용자만 로그인 (한 번만)
+    _cbToast('');
     showLoginModal(cardData);
+    return false;
+  } finally {
+    _cbBusy = false;
   }
 }
 
 // ===== Firebase Auth 준비 대기 =====
+// 결과: 로그인한 사용자 / null(로그인 안 됨) / 'nosdk'(구글 도구를 못 불러옴)
 function _cbWaitAuth() {
   return new Promise(resolve => {
     let done = false;
     const finish = u => { if(!done) { done = true; resolve(u); } };
     const check = () => {
+      if(done) return;
       if(_cbAuth) {
         const unsub = _cbAuth.onAuthStateChanged(u => { unsub(); finish(u); });
+      } else if(_cbSdkFailed) {
+        finish('nosdk');
       } else {
         initFirebase();
         setTimeout(check, 150);
       }
     };
     check();
-    // 느린 네트워크에서 세션 복원이 늦게 끝나는 경우를 대비해 9초까지 대기
-    setTimeout(() => finish(_cbAuth ? _cbAuth.currentUser : null), 9000);
+    // 도구가 6초 안에 준비 안 되면 기다리지 않고 원인을 알려준다
+    setTimeout(() => finish(_cbAuth ? _cbAuth.currentUser : 'nosdk'), 6000);
   });
 }
 
@@ -379,10 +425,11 @@ function showLoginModal(cardData) {
     document.getElementById('_cb_google').onclick = async () => {
       if(!_consentOk()) return;
       if(!_cbAuth) { initFirebase(); await new Promise(r => setTimeout(r, 800)); }
-      if(!_cbAuth) { alert('로그인 준비 중입니다. 잠시 후 다시 눌러주세요.'); return; }
+      if(!_cbAuth) { _cbToast('로그인 준비 중입니다. 잠시 후 다시 눌러주세요.', 'error'); return; }
       try {
         const provider = new firebase.auth.GoogleAuthProvider();
-        await _cbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+        // setPersistence를 먼저 기다리면 아이폰 사파리가 "사용자가 누른 동작"으로 보지 않아 팝업을 막는다.
+        // 웹에서는 LOCAL이 기본값이라 따로 지정하지 않고 바로 팝업을 연다.
         const standalone = window.matchMedia('(display-mode: standalone)').matches || !!navigator.standalone;
         // 모바일 브라우저는 팝업이 COOP/타이밍 문제로 종종 실패하므로 redirect를 기본값으로 사용
         if(standalone) {
@@ -393,7 +440,7 @@ function showLoginModal(cardData) {
           } catch(redirectErr) {
             _cbStoreDel('_cbPendingCard');
             console.error('signInWithRedirect 시작 실패:', redirectErr);
-            alert('❌ 로그인 시작에 실패했습니다: ' + (redirectErr.message || redirectErr.code) + '\n다시 시도해주세요.');
+            _cbToast('❌ 로그인 시작에 실패했습니다: ' + (redirectErr.message || redirectErr.code) + '\n다시 시도해주세요.', 'error', 0);
           }
           return;
         }
@@ -409,9 +456,9 @@ function showLoginModal(cardData) {
             _cbStoreSet('_cbPendingCard', JSON.stringify(cardData));
             await _cbAuth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
             return;
-          } catch(e2) { alert('Google 로그인 실패: ' + e2.message); return; }
+          } catch(e2) { _cbToast('❌ Google 로그인 실패: ' + e2.message, 'error', 0); return; }
         }
-        alert('Google 로그인 실패: ' + e.message);
+        _cbToast('❌ Google 로그인 실패: ' + e.message, 'error', 0);
       }
     };
   }
@@ -506,19 +553,29 @@ async function _saveCard(uid, cardData) {
     let docId = cardData.id || cardData.name.replace(/\s/g, '_');
     // 중복 방지: 같은 이름의 기존 카드 중 URL이 같은(또는 URL 없는) 카드가 있으면 그 문서에 덮어쓰기
     try {
-      const snap = await _cbDb.collection('users').doc(uid).collection('cards')
-        .where('name', '==', data.name).get();
+      const snap = await _cbTimeout(_cbDb.collection('users').doc(uid).collection('cards')
+        .where('name', '==', data.name).get(), 6000);
       const nu = _cbNormUrl(data.url);
       snap.docs.forEach(d => {
         const ex = d.data();
         if(!ex.url || _cbNormUrl(ex.url) === nu) docId = d.id;
       });
     } catch(e) {}
-    await _cbDb.collection('users').doc(uid).collection('cards').doc(docId).set(data, { merge: true });
+    await _cbTimeout(_cbDb.collection('users').doc(uid).collection('cards').doc(docId).set(data, { merge: true }), 15000);
+    _cbToast('');
     _showSaveSuccess(cardData);
+    // 명함 페이지가 "저장 성공"만 셀 수 있도록 알린다 (누른 횟수가 아니라 실제 저장 수)
+    try { window.dispatchEvent(new CustomEvent('cardbook:saved', { detail: { name: data.name, url: data.url } })); } catch(e) {}
+    return true;
   } catch(err) {
     console.error('_saveCard 실패:', err);
-    alert('❌ 저장 실패: ' + (err.message || err.code || '알 수 없는 오류'));
+    const msg = err.code === 'cb/timeout'
+      ? '카드북 서버 응답이 없어요. 인터넷 연결을 확인하고 다시 눌러주세요.'
+      : err.code === 'permission-denied'
+        ? '저장 권한이 없어요. 로그아웃 후 다시 로그인해주세요.'
+        : (err.message || err.code || '알 수 없는 오류');
+    _cbToast('❌ 저장 실패: ' + msg, 'error', 0);
+    return false;
   }
 }
 
