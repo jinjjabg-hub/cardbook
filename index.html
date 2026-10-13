@@ -929,7 +929,8 @@ function renderApp() {
     <div id="aiResult"></div>
     <div id="homeView" style="display:none"></div>
     <div id="cardsView">
-    <div class="sort-row"><button class="sort-pick" id="sortPickBtn" onclick="openSortMenu()"><span id="sortPickLabel">정렬 · 이름</span><small>바꾸기 ▾</small></button></div>
+    <div class="sort-row"><button class="sort-pick" id="sortPickBtn" onclick="openSortMenu()"><span id="sortPickLabel">정렬 · 이름</span><small>바꾸기 ▾</small></button>
+      <button class="sort-pick" style="margin-top:8px;" onclick="openBulkPhoneSave()"><span>📇 폰 연락처로 한꺼번에 저장</span><small>고르기 ▾</small></button></div>
     <div class="count-bar"><span><span class="count-label">CARDS</span> <span class="count-num" id="countNum">0</span></span></div>
     <div class="card-wrap">
       <div id="alphaIndex" class="alpha-index"></div>
@@ -2323,6 +2324,60 @@ window.saveToPhoneContacts = function(docId) {
   if(!c) { showToast('❌ 명함 정보를 찾을 수 없어요'); return; }
   _sendVcfToPhone([c]);
 };
+// ===== 폰 연락처로 한꺼번에 저장 =====
+// 왜: 모임 후 받은 명함을 하나씩 저장하는 시간을 줄이려고. 고른 명함을 .vcf 한 파일로 묶어 연락처 앱이 N명을 한 번에 추가한다.
+window.openBulkPhoneSave = function() {
+  const old = document.getElementById('bulkPhoneModal'); if(old) old.remove();
+  const withPhone = allCards.filter(c => c.name && c.phone);
+  if(!withPhone.length) { showToast('전화번호가 있는 명함이 없어요'); return; }
+  const chapters = [...new Set(withPhone.map(c => c.chapter).filter(Boolean))];
+  const m = document.createElement('div');
+  m.id = 'bulkPhoneModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;font-family:"Noto Sans KR",sans-serif;';
+  m.innerHTML = `
+    <div style="background:#fff;border-radius:20px;padding:22px;width:100%;max-width:380px;max-height:88vh;display:flex;flex-direction:column;">
+      <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">📇 폰 연락처로 한꺼번에 저장</div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:10px;">고른 명함이 파일 하나로 묶여요. 파일을 열면 연락처 앱이 한 번에 추가해요</div>
+      <select id="bpChapter" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1.5px solid rgba(37,99,235,0.18);font-size:13px;margin-bottom:8px;">
+        <option value="">전체 (${withPhone.length}명)</option>
+        ${chapters.map(ch => `<option value="${_cbEsc(ch)}">${_cbEsc(ch)} (${withPhone.filter(c => c.chapter === ch).length}명)</option>`).join('')}
+      </select>
+      <label style="font-size:12px;color:#334155;margin-bottom:4px;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="bpAll" checked> 전체 선택</label>
+      <label style="font-size:12px;color:#334155;margin-bottom:8px;display:flex;gap:6px;align-items:center;"><input type="checkbox" id="bpPrefix"> 이름 앞에 챕터 붙이기 (폰에서 챕터명으로 검색)</label>
+      <div id="bpList" style="flex:1;overflow-y:auto;margin-bottom:12px;border-top:1px solid rgba(37,99,235,0.1);"></div>
+      <button id="bpGo" style="width:100%;padding:13px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px;"></button>
+      <button id="bpClose" style="width:100%;padding:10px;border-radius:12px;border:none;background:#eaf0f9;color:#16305e;font-size:13px;cursor:pointer;">닫기</button>
+    </div>`;
+  document.body.appendChild(m);
+  const list = m.querySelector('#bpList'), go = m.querySelector('#bpGo');
+  const checks = () => [...list.querySelectorAll('.bpCheck')];
+  const refreshBtn = () => { const n = checks().filter(x => x.checked).length; go.textContent = n + '명 저장하기'; go.disabled = !n; go.style.opacity = n ? 1 : 0.4; };
+  const render = () => {
+    const ch = m.querySelector('#bpChapter').value;
+    list.innerHTML = withPhone.filter(c => !ch || c.chapter === ch).map(c => `
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(37,99,235,0.08);font-size:13px;cursor:pointer;">
+        <input type="checkbox" class="bpCheck" value="${c.docId}" checked>
+        <span><b>${_cbEsc(c.name)}</b> <span style="color:#64748b">${_cbEsc([c.company,c.title].filter(Boolean).join(' · '))}</span></span>
+      </label>`).join('');
+    m.querySelector('#bpAll').checked = true;
+    checks().forEach(x => x.onchange = refreshBtn);
+    refreshBtn();
+  };
+  m.querySelector('#bpChapter').onchange = render;
+  m.querySelector('#bpAll').onchange = e => { checks().forEach(x => x.checked = e.target.checked); refreshBtn(); };
+  m.querySelector('#bpClose').onclick = () => m.remove();
+  m.onclick = e => { if(e.target === m) m.remove(); };
+  go.onclick = () => {
+    const prefix = m.querySelector('#bpPrefix').checked;
+    const cards = checks().filter(x => x.checked).map(x => allCards.find(c => c.docId === x.value)).filter(Boolean)
+      .map(c => prefix && c.chapter ? Object.assign({}, c, { name: c.chapter + ' ' + c.name }) : c);
+    if(!cards.length) return;
+    m.remove();
+    _sendVcfToPhone(cards);
+  };
+  render();
+};
+
 // ===== 저장 직후 "폰 연락처에도 저장할까요?" =====
 // 공유창은 사용자가 직접 누른 순간에만 열 수 있어서, 저장이 끝나면 버튼 하나짜리 창을 띄운다.
 // '다시 묻지 않기'를 누르면 이 기기에서는 묻지 않는다(카드의 📇 버튼은 그대로 쓸 수 있음).
