@@ -2262,7 +2262,7 @@ window.shareCard = async function(url, name, docId) {
 // 웹앱은 연락처에 몰래 쓸 수 없어서(보안 정책) 한 번 누르면 폰 연락처 앱으로 넘겨준다.
 // 폰 연락처에 들어가면 카카오톡 '자동 친구 추가'가 켜진 사람은 카톡 친구에도 자동으로 뜬다.
 function _vcfEsc(s) {
-  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');
 }
 function _cardVcf(c) {
   const noteParts = [c.chapter, c.industry, c.bni].filter(Boolean);
@@ -2279,39 +2279,50 @@ function _cardVcf(c) {
     c.url ? 'URL:' + _vcfEsc(c.url) : '',
     noteParts.length ? 'NOTE:' + _vcfEsc(noteParts.join(' · ')) : '',
     'END:VCARD'
-  ].filter(Boolean).join('\r\n');
+  ].filter(Boolean).join('\r\n') + '\r\n';
 }
-// 여러 명이면 한 파일에 이어 붙인다 (연락처 앱이 한 번에 N명 추가)
+// 왜 공유창을 안 쓰나: 안드로이드·아이폰 공유창엔 "연락처" 앱이 대상으로 거의 안 떠서 저장이 안 됐다.
+//  - 아이폰: 연락처 카드를 바로 열어 → [새로운 연락처 생성]
+//  - 안드로이드: .vcf 파일을 받고 → 파일을 눌러 → 연락처 앱에서 [저장] (단계 안내를 띄움)
+//  - PC: 파일 내려받기
 function _sendVcfToPhone(cards) {
-  const text = cards.map(_cardVcf).join('\r\n');
+  const text = cards.map(_cardVcf).join('');
   const base = cards.length === 1 ? (cards[0].name || 'contact') : '카드북_' + cards.length + '명';
-  const file = new File([text], base.replace(/[\\/:*?"<>|]/g,'') + '.vcf', { type: 'text/vcard' });
-  // 1순위: 공유창(아이폰·안드로이드 모두 "연락처" 앱을 고를 수 있음)
-  if(navigator.canShare && navigator.canShare({ files:[file] })) {
-    navigator.share({ files:[file], title: base })
-      .catch(e => { if(e.name !== 'AbortError') _downloadVcf(file); });
+  const fileName = (base.replace(/[\\/:*?"<>|]/g,'') || 'contact') + '.vcf';
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/vcard;charset=utf-8' }));
+  const ua = navigator.userAgent;
+  if(/iPhone|iPad|iPod/i.test(ua)) {
+    showToast('📞 연락처 카드가 열리면 [새로운 연락처 생성]을 눌러주세요', 6000);
+    setTimeout(() => { location.href = url; }, 300);
     return;
   }
-  // 2순위: 파일 내려받기 (PC·공유창 미지원 브라우저)
-  _downloadVcf(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  if(/Android/i.test(ua)) _contactSteps(fileName);
+  else showToast('📇 ' + fileName + ' 파일을 열어 연락처에 추가해 주세요', 5000);
+}
+function _contactSteps(fileName) {
+  const old = document.getElementById('contactSteps'); if(old) old.remove();
+  const f = _cbEsc(fileName);
+  const m = document.createElement('div');
+  m.id = 'contactSteps';
+  m.style.cssText = "position:fixed;inset:0;z-index:600;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;font-family:'Noto Sans KR',sans-serif;";
+  m.innerHTML = '<div style="background:#fff;color:#222;width:100%;max-width:430px;border-radius:20px 20px 0 0;padding:24px 22px 32px;text-align:left;">'
+    + '<div style="font-size:17px;font-weight:800;margin-bottom:14px;">📞 연락처 저장 2단계</div>'
+    + '<div style="font-size:15px;line-height:1.9;"><b>①</b> <b style="color:#16305e;">' + f + '</b> 를 누르세요<br>'
+    + '<span style="font-size:13px;color:#777;line-height:1.7;display:block;margin:2px 0 6px 22px;">"다시 다운로드?" 창이 뜨면 → 창 안의 파란 글씨 파일명<br>창이 안 뜨면 → 화면 위·아래 알림의 파일명</span>'
+    + '<b>②</b> 연락처 앱이 열리면 <b style="color:#16305e;">[저장]</b></div>'
+    + '<button style="margin-top:18px;width:100%;padding:13px;border:none;border-radius:12px;background:#16305e;color:#fff;font-size:15px;font-weight:700;">확인</button></div>';
+  m.onclick = e => { if(e.target === m || e.target.tagName === 'BUTTON') m.remove(); };
+  document.body.appendChild(m);
 }
 window.saveToPhoneContacts = function(docId) {
   const c = allCards.find(x => x.docId === docId);
   if(!c) { showToast('❌ 명함 정보를 찾을 수 없어요'); return; }
   _sendVcfToPhone([c]);
 };
-function _downloadVcf(file) {
-  const url = URL.createObjectURL(file);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = file.name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-  showToast('📇 연락처 파일이 저장됐어요. 열어서 추가해 주세요');
-}
-
 // ===== 저장 직후 "폰 연락처에도 저장할까요?" =====
 // 공유창은 사용자가 직접 누른 순간에만 열 수 있어서, 저장이 끝나면 버튼 하나짜리 창을 띄운다.
 // '다시 묻지 않기'를 누르면 이 기기에서는 묻지 않는다(카드의 📇 버튼은 그대로 쓸 수 있음).
