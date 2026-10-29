@@ -9,7 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
-<script src="https://js.tosspayments.com/v2/standard"></script>
+<script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js" crossorigin="anonymous"></script>
 <style>
 :root{
@@ -3055,7 +3055,9 @@ async function _sha256(b64) {
 const PACKS = [ { id:'p30', n:30, price:1000 }, { id:'p100', n:100, price:3000 }, { id:'p300', n:300, price:7000 } ];  // worker.js와 동일해야 함
 const PAID_VALID_DAYS = 30, SAVE_REWARD = 5;  // 유료분은 구매일로부터 30일 뒤 소멸(이월 불가) · 내 명함이 저장되면 +5장(무상, 소멸 없음)
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500;  // 표시용(실제 지급·차감은 Worker가 계산). "장" 단위는 사진 촬영이 아니라 이미지 명함 파일 등록 기준으로 안내한다
-const TOSS_CLIENT_KEY = 'test_ck_PBal2vxj811KJW5OMqpR85RQgOAN';  // 송승훈 테스트 상점 클라이언트 키 → 심사 후 live_ck_로 교체
+// 포트원(PortOne) V2 — 상점 ID·채널 키는 공개돼도 되는 값. 지금은 테스트 채널 → KCP 계약·심사 후 실연동 채널 키로 교체
+const PORTONE_STORE_ID = 'store-81501bc3-d46a-4bbf-8c19-c1d2265dfa2e';
+const PORTONE_CHANNEL_KEY = '';   // 비어 있으면 결제창을 열지 않음 → 포트원 콘솔에서 채널을 만든 뒤 채움
 async function _idToken() { return currentUser ? await currentUser.getIdToken() : null; }
 async function getCreditInfo() {
   const idToken = await _idToken(); if(!idToken) return { credits: 0 };
@@ -3158,29 +3160,41 @@ window.openChargeModal = async function() {
 };
 window.startPayment = async function(packId) {
   const p = PACKS.find(x => x.id === packId); if(!p || !currentUser) return;
+  if(!window.PortOne || !PORTONE_CHANNEL_KEY) { showToast('❌ 결제 준비 중이에요. 잠시 후 다시 시도해 주세요.'); return; }
   try {
-    const orderId = 'cb_' + currentUser.uid + '_' + p.id + '_' + Date.now();
+    const rnd = (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))).slice(0, 24);
+    const paymentId = 'cb_' + p.id + '_' + rnd;   // KCP 주문번호 40자 제한 → 32자 이내
     const base = location.origin + location.pathname;
-    const payment = TossPayments(TOSS_CLIENT_KEY).payment({ customerKey: currentUser.uid });
-    await payment.requestPayment({
-      method: 'CARD',
-      amount: { currency: 'KRW', value: p.price },
-      orderId, orderName: '카드북 스캔 ' + p.n + '장',
-      successUrl: base + '?pay=ok', failUrl: base + '?pay=fail',
-      customerEmail: currentUser.email || undefined, customerName: currentUser.displayName || undefined,
+    const r = await PortOne.requestPayment({
+      storeId: PORTONE_STORE_ID, channelKey: PORTONE_CHANNEL_KEY,
+      paymentId, orderName: '카드북 스캔 ' + p.n + '장',
+      totalAmount: p.price, currency: 'CURRENCY_KRW', payMethod: 'CARD',
+      customer: { customerId: currentUser.uid, email: currentUser.email || undefined, fullName: (currentUser.displayName || '').slice(0, 30) || undefined },
+      customData: { uid: currentUser.uid, packId: p.id },
+      redirectUrl: base + '?pay=portone',   // 모바일은 결제 후 이 주소로 돌아옴
     });
-  } catch(e) { if(e.code !== 'USER_CANCEL') showToast('❌ 결제 시작 실패: ' + e.message); }
+    // PC(팝업)는 결과가 여기로 바로 돌아옴
+    if(r) await finishPayment(r.paymentId || paymentId, r.code, r.message, r.pgCode);
+  } catch(e) { showToast('❌ 결제 시작 실패: ' + (e.message || e)); }
 };
-// 결제창에서 돌아왔을 때 (?pay=ok&paymentKey=…&orderId=…&amount=…)
+// 모바일 결제창에서 돌아왔을 때 (?pay=portone&paymentId=…[&code=…&message=…])
 async function handlePaymentReturn() {
   const q = new URLSearchParams(location.search);
-  if(!q.get('pay')) return;
+  if(q.get('pay') !== 'portone') return;
   history.replaceState(null, '', location.pathname);
-  if(q.get('pay') === 'fail') { showToast('❌ 결제 실패: ' + (q.get('message') || q.get('code') || '')); return; }
+  await finishPayment(q.get('paymentId'), q.get('code'), q.get('message'), q.get('pgCode'));
+}
+async function finishPayment(paymentId, code, message, pgCode) {
+  if(code) {
+    if(pgCode === '3017') { showToast('❌ 팝업이 차단됐어요. 주소창 오른쪽에서 이 사이트의 팝업을 허용한 뒤 다시 시도해 주세요.'); return; }
+    showToast(code === 'USER_CANCEL' || /취소/.test(message || '') ? '결제를 취소했어요' : '❌ 결제 실패: ' + (message || code));
+    return;
+  }
+  if(!paymentId) return;
   showToast('⏳ 결제 확인 중...');
   try {
     const res = await fetch(CB_WORKER_URL + '/pay/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentKey: q.get('paymentKey'), orderId: q.get('orderId'), amount: Number(q.get('amount')) }) });
+      body: JSON.stringify({ idToken: await _idToken(), paymentId }) });
     const d = await res.json();
     if(d.error) throw new Error(d.error);
     showToast('✅ ' + d.credits + '장 충전됐어요' + (d.expiresAt ? ' (' + new Date(d.expiresAt).toLocaleDateString('ko-KR') + '까지 사용)' : '') + ' · 남은 장수 ' + (await getCredits()) + '장');
