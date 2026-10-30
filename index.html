@@ -3057,7 +3057,11 @@ const PAID_VALID_DAYS = 30, SAVE_REWARD = 5;  // 유료분은 구매일로부터
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500;  // 표시용(실제 지급·차감은 Worker가 계산). "장" 단위는 사진 촬영이 아니라 이미지 명함 파일 등록 기준으로 안내한다
 // 포트원(PortOne) V2 — 상점 ID·채널 키는 공개돼도 되는 값. 지금은 테스트 채널 → KCP 계약·심사 후 실연동 채널 키로 교체
 const PORTONE_STORE_ID = 'store-81501bc3-d46a-4bbf-8c19-c1d2265dfa2e';
-const PORTONE_CHANNEL_KEY = '';   // 비어 있으면 결제창을 열지 않음 → 포트원 콘솔에서 채널을 만든 뒤 채움
+const PORTONE_CHANNEL_KEY = 'channel-key-84f7d3e8-f0d9-4280-b839-c57790198acc';   // "CARDBOOK JUJU KCP 일반결제 테스트" 채널 (테스트 모드)
+const PORTONE_LIVE = false;   // 실연동 채널 키로 바꾸면 true → 모든 회원에게 결제창이 열림
+// 테스트: 주소 끝에 ?paytest=1 을 붙여 한 번 열면 이 브라우저에서 결제창이 열림 (테스트 결제는 관리자 계정만 충전됨)
+try { if(new URLSearchParams(location.search).get('paytest') === '1') localStorage.setItem('cbPayTest', '1'); } catch(e) {}
+function cardPayEnabled() { try { return !!(window.PortOne && PORTONE_CHANNEL_KEY && (PORTONE_LIVE || localStorage.getItem('cbPayTest') === '1')); } catch(e) { return false; } }
 async function _idToken() { return currentUser ? await currentUser.getIdToken() : null; }
 async function getCreditInfo() {
   const idToken = await _idToken(); if(!idToken) return { credits: 0 };
@@ -3160,7 +3164,7 @@ window.openChargeModal = async function() {
 };
 window.startPayment = async function(packId) {
   const p = PACKS.find(x => x.id === packId); if(!p || !currentUser) return;
-  if(!window.PortOne || !PORTONE_CHANNEL_KEY) { showToast('❌ 결제 준비 중이에요. 잠시 후 다시 시도해 주세요.'); return; }
+  if(!cardPayEnabled()) { showToast('카드 결제는 준비 중이에요. 곧 열어드릴게요.'); return; }
   try {
     const rnd = (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))).slice(0, 24);
     const paymentId = 'cb_' + p.id + '_' + rnd;   // KCP 주문번호 40자 제한 → 32자 이내
