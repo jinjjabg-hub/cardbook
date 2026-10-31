@@ -1,13 +1,23 @@
 // CardBook AI Worker — cardbook-ai.jinjjabg.workers.dev
 // 환경변수(Secret): ANTHROPIC_API_KEY
 // KV 바인딩(선택): OCR_CACHE — 같은 이미지는 한 번만 읽고 결과 재사용. 바인딩이 없으면 캐시 없이 동작
-// 결제(Secret): TOSS_SECRET_KEY(토스페이먼츠 시크릿 키), FIREBASE_SA(Firebase 서비스 계정 JSON 전체)
+// 결제(Secret): PORTONE_API_SECRET(포트원 V2 API Secret, 장수 충전), TOSS_SECRET_KEY(자동 명함 결제 — 아직 토스), FIREBASE_SA(Firebase 서비스 계정 JSON 전체)
 
 // 충전 상품 — index.html의 PACKS와 반드시 같아야 함 (금액 검증에 사용)
 const PACKS = { p30: { n: 30, price: 1000 }, p100: { n: 100, price: 3000 }, p300: { n: 300, price: 7000 } };
 // 유료 크레딧은 구매일로부터 30일 뒤 소멸(다음 달 이월 불가) — 토스 '크레딧 소프트웨어업' 조건. 무상 지급분(가입·등록 보너스·리워드)은 소멸 없음
 const PAID_VALID_DAYS = 30, SAVE_REWARD = 5, SAVE_REWARD_MONTHLY_CAP = 50;
 const FIREBASE_PROJECT = 'mandu-e7c3c';
+// 포트원(PortOne) V2 — 결제 조회용. 비밀값 PORTONE_API_SECRET 은 Cloudflare Worker 시크릿으로만 둔다
+const PORTONE_API = 'https://api.portone.io';
+const PORTONE_STORE_ID_DEFAULT = 'store-81501bc3-d46a-4bbf-8c19-c1d2265dfa2e';
+async function portoneGetPayment(env, paymentId) {
+  const storeId = env.PORTONE_STORE_ID || PORTONE_STORE_ID_DEFAULT;
+  const res = await fetch(`${PORTONE_API}/payments/${encodeURIComponent(paymentId)}?storeId=${encodeURIComponent(storeId)}`, { headers: { Authorization: 'PortOne ' + env.PORTONE_API_SECRET } });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(d.message || '결제 조회 실패'); e.code = d.type || ('HTTP_' + res.status); e.status = res.status; throw e; }
+  return d;
+}
 const FIREBASE_WEB_API_KEY = 'AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0';
 const FREE_SIGNUP = 50, FREE_MONTHLY = 5, DICA_OWNER_BONUS = 500, AUTOCARD_OWNER_BONUS = 50;
 const DICA_DOMAINS = ['jinjjabg-hub.github.io', 'bizhome.bizmy.net'];
@@ -803,32 +813,35 @@ export default {
       if (url.pathname === '/autocard/ui') return await autocardUi(env, request, await request.json());
       if (url.pathname === '/autocard/pay/confirm') return await autocardPay(env, await request.json());
 
-      // ── 결제 확인: 토스에 승인 요청 → 성공 시 장수 충전 ──
+      // ── 결제 확인(포트원 V2): 브라우저 값은 믿지 않고 포트원에 결제 건을 직접 조회 → 결제완료·금액·계정 일치 시에만 장수 충전 ──
       if (url.pathname === '/pay/confirm') {
-        const { paymentKey, orderId, amount } = await request.json();
-        // orderId = cb_{uid}_{packId}_{timestamp}
-        const m = /^cb_([A-Za-z0-9]+)_(p\d+)_(\d+)$/.exec(orderId || '');
+        const { idToken, paymentId } = await request.json();
+        // paymentId = cb_{packId}_{랜덤} (KCP 주문번호 40자 제한)
+        const m = /^cb_(p\d+)_([A-Za-z0-9]{12,32})$/.exec(paymentId || '');
         if (!m) return json({ error: '주문번호 형식 오류' }, 400);
-        const [, uid, packId] = m; const pack = PACKS[packId];
+        const packId = m[1], pack = PACKS[packId];
         if (!pack) return json({ error: '없는 상품' }, 400);
-        if (Number(amount) !== pack.price) return json({ error: '금액 불일치' }, 400);
-        if (!env.TOSS_SECRET_KEY || !env.FIREBASE_SA) return json({ error: '결제 설정이 아직 안 됐어요 (TOSS_SECRET_KEY / FIREBASE_SA)' }, 500);
-        const tRes = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
-          method: 'POST',
-          headers: { Authorization: 'Basic ' + btoa(env.TOSS_SECRET_KEY + ':'), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentKey, orderId, amount: Number(amount) }),
-        });
-        const tData = await tRes.json();
-        if (!tRes.ok) return json({ error: tData.message || '결제 승인 실패', code: tData.code }, 400);
+        const uid = await verifyIdToken(idToken);
+        if (!env.PORTONE_API_SECRET || !env.FIREBASE_SA) return json({ error: '결제 설정이 아직 안 됐어요 (PORTONE_API_SECRET / FIREBASE_SA)' }, 500);
+        let p;
+        try { p = await portoneGetPayment(env, paymentId); }
+        catch (e) { return json({ error: e.status === 404 ? '결제 내역을 찾을 수 없어요' : '결제 확인 실패: ' + e.message, code: e.code }, e.status === 404 ? 404 : 502); }
+        if (p.status !== 'PAID') return json({ error: '결제가 완료되지 않았어요', code: 'NOT_PAID', status: p.status }, 400);
+        const storeId = env.PORTONE_STORE_ID || PORTONE_STORE_ID_DEFAULT;
+        if (p.storeId && p.storeId !== storeId) return json({ error: '다른 상점의 결제예요' }, 400);
+        if (Number(p.amount && p.amount.total) !== pack.price || (p.currency && p.currency !== 'KRW')) return json({ error: '금액 불일치' }, 400);
+        let cd = {}; try { cd = typeof p.customData === 'string' ? JSON.parse(p.customData) : (p.customData || {}); } catch (e) {}
+        if (cd.uid !== uid || cd.packId !== packId) return json({ error: '다른 계정의 결제예요' }, 403);
+        // 테스트 채널 결제(실제 돈이 안 나감)는 관리자만 반영 → 일반 회원이 테스트 카드로 장수를 받는 일을 막음
+        if (p.channel && p.channel.type === 'TEST' && !(await isAdminToken(idToken))) return json({ error: '테스트 결제는 충전할 수 없어요', code: 'TEST_PAYMENT' }, 403);
         try {
-          const exp = await creditUser(env, uid, orderId, pack.n, { amount: pack.price, paymentKey, method: tData.method });
+          const exp = await creditUser(env, uid, paymentId, pack.n, { amount: pack.price, paymentKey: p.pgTxId || p.transactionId || paymentId, method: (p.method && p.method.type) || 'CARD' });
           return json({ ok: true, credits: pack.n, expiresAt: exp });
         } catch (e) {
-          // 이미 처리된 주문(새로고침 등)이면 성공으로 간주
+          // 이미 처리된 결제(새로고침 등)면 성공으로 간주 — payments/{paymentId} 는 "없을 때만" 생성되므로 이중 충전 없음
           if (/ALREADY_EXISTS|already exists/i.test(e.message)) return json({ ok: true, credits: pack.n, duplicate: true });
           throw e;
         }
-        return json({ ok: true, credits: pack.n });
       }
 
       // ── 기존: 텍스트 파싱 ──
