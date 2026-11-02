@@ -18,3 +18,8 @@ enabled = true
 [observability.logs]
 enabled = true
 invocation_logs = true
+
+# 실행 위치를 Anthropic API 쪽 가까운 지역으로 맞춤 — 폰(통신사 망)에서 접속하면 지원 안 되는 지역에서 Worker가 돌아
+# Anthropic이 403 forbidden을 내던 문제 방지. 접속자 위치와 무관하게 같은 지역에서 호출됨.
+[placement]
+mode = "smart"
