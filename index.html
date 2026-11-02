@@ -786,10 +786,10 @@ window.openAccountModal = function() {
         <div style="font-size:12px;color:#5b7bb0;margin-top:6px;">${currentUser?.email || ''}</div>
       </div>
       <div id="creditBox" style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
-        <div><div style="font-size:11px;color:#5b7bb0">남은 스캔 장수</div><div style="font-size:20px;font-weight:800;color:#16305e"><span id="creditNum">…</span>장</div></div>
-        <button onclick="openChargeModal()" style="padding:10px 16px;border-radius:10px;border:none;background:#16305e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">충전</button>
+        <div><div style="font-size:11px;color:#5b7bb0">남은 스캔 횟수</div><div style="font-size:20px;font-weight:800;color:#16305e"><span id="creditNum">…</span>회</div></div>
+        <button onclick="openChargeModal()" style="padding:10px 16px;border-radius:10px;border:none;background:#16305e;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">이용권 구매</button>
       </div>
-      <button onclick="openPricingModal()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📋 요금제 자세히 보기</button>
+      <button onclick="openPricingModal()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📋 이용권 안내 자세히 보기</button>
       ${isAdmin() ? `<button onclick="openBannerStats()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📊 배너 클릭 통계 (관리자)</button>` : ''}
       <button id="installSettingBtn" onclick="document.getElementById('accountModal').remove();doAddToHome();" style="display:none;width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📲 홈화면에 추가하기</button>
       <button onclick="refreshDicaCards()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">🔄 DiCA 카드 새로고침</button>
@@ -3101,68 +3101,68 @@ window.openPricingModal = function() {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:660;display:flex;align-items:flex-end;justify-content:center;font-family:"Noto Sans KR",sans-serif;';
   modal.innerHTML = `
     <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;max-height:88vh;overflow-y:auto;padding:28px 24px 40px;">
-      <div style="text-align:center;font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">요금제</div>
+      <div style="text-align:center;font-size:16px;font-weight:800;color:#16305e;margin-bottom:4px;">스캔 이용권 안내</div>
       <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:20px;">비즈홈·디지털 명함·연락처·링크 저장은 언제나 무료·무제한이에요<br><span style="font-size:11px">카톡·이메일로 받은 이미지 명함 파일이 인식이 가장 잘 돼요</span></div>
 
       <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:12px;">
         <div style="font-size:13px;font-weight:800;color:#16305e;margin-bottom:8px;">🆓 무료</div>
         <div style="font-size:12px;color:#3b4a63;line-height:2.1;">
-          가입 시 <b>${FREE_SIGNUP}장</b> 지급 (소멸 없음)<br>
-          매달 1일 <b>${FREE_MONTHLY}장</b> 자동 충전 (이번 달 안에 써야 해요)<br>
-          <b>내 비즈홈 등록 시 이미지 명함 ${DICA_OWNER_BONUS}장</b> 추가 지급 (소멸 없음)<br>
-          <b>내 디지털 명함 등록 시 50장</b> 추가 지급 (1회, 소멸 없음)<br>
-          🎁 <b>내 명함이 다른 사람 카드북에 저장될 때마다 ${SAVE_REWARD}장</b> (한 달 최대 50장, 소멸 없음)
+          가입 시 <b>${FREE_SIGNUP}회</b> 무료 지급 (소멸 없음)<br>
+          매달 1일 <b>${FREE_MONTHLY}회</b> 무료 지급 (이번 달 안에 써야 해요)<br>
+          <b>내 비즈홈 등록 시 이미지 명함 ${DICA_OWNER_BONUS}회</b> 추가 지급 (소멸 없음)<br>
+          <b>내 디지털 명함 등록 시 50회</b> 추가 지급 (1회, 소멸 없음)<br>
+          🎁 <b>내 명함이 다른 사람 카드북에 저장될 때마다 ${SAVE_REWARD}회</b> (한 달 최대 50회, 소멸 없음)
         </div>
       </div>
 
       ${PACKS.map(p => `
       <div style="background:#fff;border-radius:14px;padding:16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
         <div>
-          <div style="font-size:15px;font-weight:800;color:#16305e;">${p.n}장</div>
-          <div style="font-size:11px;color:#5b7bb0;">장당 ${Math.round(p.price/p.n)}원 · 구매일로부터 ${PAID_VALID_DAYS}일 사용</div>
+          <div style="font-size:15px;font-weight:800;color:#16305e;">${p.n}회 스캔 이용권</div>
+          <div style="font-size:11px;color:#5b7bb0;">1회당 ${Math.round(p.price/p.n)}원 · 구매일로부터 ${PAID_VALID_DAYS}일 사용</div>
         </div>
         <div style="font-size:15px;font-weight:800;color:#16305e;">${p.price.toLocaleString()}원</div>
       </div>`).join('')}
 
       <div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:14px;padding:16px;margin:12px 0 20px;">
-        <div style="font-size:12px;font-weight:700;color:#16305e;margin-bottom:8px;">1장은 언제 차감되나요?</div>
+        <div style="font-size:12px;font-weight:700;color:#16305e;margin-bottom:8px;">이용권 1회는 언제 사용되나요?</div>
         <div style="font-size:11.5px;color:#3b4a63;line-height:2;">
-          ✔️ 명함 이미지를 <b>새로</b> 인식할 때만 1장<br>
-          ✔️ 이미 저장된 것과 같은 이미지는 <b>0원</b>(자동 재사용)<br>
-          ✔️ 인식이 실패하면 차감되지 않아요<br>
-          ✔️ 비즈홈·디지털 명함·링크·연락처 저장은 <b>무제한·무료</b> (장수 차감 없음)<br>
-          ✔️ 차감 순서: 이번 달 무료분 → 유료 충전분(소멸 임박순) → 그 외 무료분
+          ✔️ 명함 이미지를 <b>새로</b> 인식할 때만 이용권 1회 사용<br>
+          ✔️ 이미 저장된 것과 같은 이미지는 <b>이용권 차감 없음</b>(자동 재사용)<br>
+          ✔️ 인식이 실패하면 이용권이 차감되지 않아요<br>
+          ✔️ 비즈홈·디지털 명함·링크·연락처 저장은 <b>무제한·무료</b> (이용권 차감 없음)<br>
+          ✔️ 차감 순서: 이번 달 무료분 → 구매한 스캔 이용권(소멸 임박순) → 그 외 무료분
         </div>
-        <div style="font-size:11.5px;color:#C8102E;font-weight:700;line-height:1.7;margin-top:8px;">⚠️ 유료 충전분은 구매일로부터 ${PAID_VALID_DAYS}일 동안 쓸 수 있고, 남은 장수는 소멸돼요(다음 달 이월 불가). 무료로 받은 장수는 소멸되지 않아요.</div>
+        <div style="font-size:11.5px;color:#C8102E;font-weight:700;line-height:1.7;margin-top:8px;">⚠️ 구매한 스캔 이용권은 구매일로부터 ${PAID_VALID_DAYS}일 동안 사용할 수 있고, 기간이 지나면 남은 횟수는 소멸돼요(이월 불가). 이용권은 현금으로 환급·출금하거나 다른 사람에게 양도할 수 없어요(청약철회·환불은 이용약관 제7조에 따릅니다). 무료로 받은 횟수는 소멸되지 않아요.</div>
       </div>
 
-      <button onclick="document.getElementById('pricingModal').remove();openChargeModal()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">충전하기</button>
+      <button onclick="document.getElementById('pricingModal').remove();openChargeModal()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#16305e;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">이용권 구매하기</button>
       <button onclick="document.getElementById('pricingModal').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#aaa;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
 };
 
-// ===== 충전 =====
+// ===== 스캔 이용권 구매 =====
 window.openChargeModal = async function() {
   document.getElementById('accountModal')?.remove();
   if(document.getElementById('chargeModal')) return;
   const ci = await getCreditInfo(), credits = ci.credits ?? 0;
-  const paidNote = ci.paid ? ` · 유료 ${ci.paid}장은 ${new Date(ci.paidExp).toLocaleDateString('ko-KR')}부터 소멸 시작` : '';
+  const paidNote = ci.paid ? ` · 구매 이용권 ${ci.paid}회는 ${new Date(ci.paidExp).toLocaleDateString('ko-KR')}부터 소멸 시작` : '';
   const modal = document.createElement('div');
   modal.id = 'chargeModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:650;display:flex;align-items:flex-end;justify-content:center;font-family:"Noto Sans KR",sans-serif;';
   modal.innerHTML = `
     <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:28px 24px 40px;">
-      <div style="text-align:center;margin-bottom:6px;font-size:13px;font-weight:700;color:#16305e;">스캔 장수 충전</div>
-      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:18px;">남은 장수 <b style="font-size:16px;color:#16305e">${credits}</b>장 · 매월 ${FREE_MONTHLY}장 무료${paidNote}<br><b style="color:#C8102E">충전분은 구매일로부터 ${PAID_VALID_DAYS}일 사용 · 남은 장수 소멸(이월 불가)</b></div>
+      <div style="text-align:center;margin-bottom:6px;font-size:13px;font-weight:700;color:#16305e;">스캔 이용권 구매</div>
+      <div style="text-align:center;font-size:12px;color:#5b7bb0;margin-bottom:18px;">남은 스캔 횟수 <b style="font-size:16px;color:#16305e">${credits}</b>회 · 매월 ${FREE_MONTHLY}회 무료${paidNote}<br><b style="color:#C8102E">스캔 이용권은 구매일로부터 ${PAID_VALID_DAYS}일 사용 · 기간 경과 시 남은 횟수 소멸(이월 불가)</b></div>
       ${PACKS.map(p => `
         <button onclick="startPayment('${p.id}')" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.2);background:#fff;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:8px;">
-          <span style="font-size:15px;font-weight:800;color:#16305e">${p.n}장</span>
-          <span style="font-size:11px;color:#5b7bb0">장당 ${Math.round(p.price/p.n)}원</span>
+          <span style="font-size:15px;font-weight:800;color:#16305e">${p.n}회 스캔 이용권</span>
+          <span style="font-size:11px;color:#5b7bb0">1회당 ${Math.round(p.price/p.n)}원</span>
           <span style="font-size:14px;font-weight:700;color:#16305e">${p.price.toLocaleString()}원</span>
         </button>`).join('')}
-      <div style="font-size:10px;color:#889;line-height:1.6;margin:10px 2px 14px">이미지 스캔 1건 = 1장. 같은 이미지를 다시 넣거나 인식에 실패하면 차감되지 않아요. 비즈홈·디지털 명함·링크·연락처 저장은 무제한(장수 차감 없음). 충전 전 <a href="terms.html" target="_blank" style="color:inherit">이용약관 제6조·제7조</a>를 확인해 주세요.</div>
+      <div style="font-size:10px;color:#889;line-height:1.6;margin:10px 2px 14px">이미지 스캔 1건 = 이용권 1회 사용. 같은 이미지를 다시 넣거나 인식에 실패하면 이용권이 차감되지 않아요. 구매일로부터 30일간 사용할 수 있으며, 현금 환급·출금·양도는 불가해요. 비즈홈·디지털 명함·링크·연락처 저장은 무제한(이용권 차감 없음). 구매 전 <a href="terms.html" target="_blank" style="color:inherit">이용약관 제6조·제7조</a>를 확인해 주세요.</div>
       <button onclick="document.getElementById('chargeModal').remove()" style="width:100%;padding:12px;border-radius:12px;border:none;background:transparent;color:#aaa;font-size:13px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">닫기</button>
     </div>`;
   modal.addEventListener('click', e => { if(e.target === modal) modal.remove(); });
@@ -3194,7 +3194,7 @@ window.startPayment = async function(packId) {
     const buyer = getBuyerInfo(); if(!buyer) return;
     const r = await PortOne.requestPayment({
       storeId: PORTONE_STORE_ID, channelKey: PORTONE_CHANNEL_KEY,
-      paymentId, orderName: '카드북 스캔 ' + p.n + '장',
+      paymentId, orderName: '카드북 ' + p.n + '회 스캔 이용권',
       totalAmount: p.price, currency: 'CURRENCY_KRW', payMethod: 'CARD',
       customer: { customerId: currentUser.uid, email: buyer.email, fullName: buyer.name, phoneNumber: buyer.phone },
       customData: { uid: currentUser.uid, packId: p.id },
@@ -3224,8 +3224,8 @@ async function finishPayment(paymentId, code, message, pgCode) {
       body: JSON.stringify({ idToken: await _idToken(), paymentId }) });
     const d = await res.json();
     if(d.error) throw new Error(d.error);
-    showToast('✅ ' + d.credits + '장 충전됐어요' + (d.expiresAt ? ' (' + new Date(d.expiresAt).toLocaleDateString('ko-KR') + '까지 사용)' : '') + ' · 남은 장수 ' + (await getCredits()) + '장');
-  } catch(e) { showToast('❌ 충전 처리 실패: ' + e.message + ' — 결제는 됐다면 문의해 주세요'); }
+    showToast('✅ 스캔 이용권 ' + d.credits + '회를 구매했어요' + (d.expiresAt ? ' (' + new Date(d.expiresAt).toLocaleDateString('ko-KR') + '까지 사용)' : '') + ' · 남은 스캔 횟수 ' + (await getCredits()) + '회');
+  } catch(e) { showToast('❌ 이용권 지급 처리 실패: ' + e.message + ' — 결제는 됐다면 문의해 주세요'); }
 }
 
 // 명함 이미지를 Storage에 저장 → 다운로드 URL (실패해도 명함 저장은 진행)

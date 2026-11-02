@@ -698,7 +698,7 @@ export default {
           if (hit) return json({ ...hit, cached: true });
         }
         const st = await ensureCredits(fbToken, uid);
-        if (st.total <= 0) return json({ error: '스캔 장수를 다 썼어요. 충전하면 바로 이어서 스캔할 수 있어요 (비즈홈·디지털 명함·링크 저장은 무제한)', needCharge: true }, 402);
+        if (st.total <= 0) return json({ error: '남은 스캔 횟수를 다 썼어요. 스캔 이용권을 구매하면 바로 이어서 스캔할 수 있어요 (비즈홈·디지털 명함·링크 저장은 무제한)', needCharge: true }, 402);
         const result = await callClaude(env, [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
           { type: 'text', text: `이 명함(또는 명함 전단) 이미지를 읽고 아래 JSON 스키마로만 답해. 마크다운 없이 JSON만. 없는 항목은 빈 문자열.\n${OCR_SCHEMA}` },
@@ -833,7 +833,7 @@ export default {
         let cd = {}; try { cd = typeof p.customData === 'string' ? JSON.parse(p.customData) : (p.customData || {}); } catch (e) {}
         if (cd.uid !== uid || cd.packId !== packId) return json({ error: '다른 계정의 결제예요' }, 403);
         // 테스트 채널 결제(실제 돈이 안 나감)는 관리자만 반영 → 일반 회원이 테스트 카드로 장수를 받는 일을 막음
-        if (p.channel && p.channel.type === 'TEST' && !(await isAdminToken(idToken))) return json({ error: '테스트 결제는 충전할 수 없어요', code: 'TEST_PAYMENT' }, 403);
+        if (p.channel && p.channel.type === 'TEST' && !(await isAdminToken(idToken))) return json({ error: '테스트 결제로는 이용권을 구매할 수 없어요', code: 'TEST_PAYMENT' }, 403);
         try {
           const exp = await creditUser(env, uid, paymentId, pack.n, { amount: pack.price, paymentKey: p.pgTxId || p.transactionId || paymentId, method: (p.method && p.method.type) || 'CARD' });
           return json({ ok: true, credits: pack.n, expiresAt: exp });
