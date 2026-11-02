@@ -19,7 +19,9 @@ enabled = true
 enabled = true
 invocation_logs = true
 
-# 실행 위치를 Anthropic API 쪽 가까운 지역으로 맞춤 — 폰(통신사 망)에서 접속하면 지원 안 되는 지역에서 Worker가 돌아
-# Anthropic이 403 forbidden을 내던 문제 방지. 접속자 위치와 무관하게 같은 지역에서 호출됨.
+# 실행 위치를 미국 동부(AWS us-east-1, Anthropic API 근처)로 고정.
+# 이유: 한국 통신사 망(폰 LTE/5G)은 Cloudflare 홍콩 등 Anthropic 미지원 지역으로 연결되는 경우가 있어
+#       그곳에서 Worker가 돌면 Anthropic이 403 forbidden(Request not allowed)을 낸다.
+#       mode="smart"는 트래픽이 충분히 쌓여야 이동해서 사용량 적은 우리 Worker엔 효과가 없었음 → 지역을 직접 지정.
 [placement]
-mode = "smart"
+region = "aws:us-east-1"
