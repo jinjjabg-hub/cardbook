@@ -2,17 +2,18 @@
 import { generateKeyPairSync } from 'crypto';
 import assert from 'assert';
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const env = { ANTHROPIC_API_KEY: 'k', TOSS_SECRET_KEY: 'test_sk', FIREBASE_SA: JSON.stringify({ client_email: 'sa@x', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }) };
+const env = { ANTHROPIC_API_KEY: 'k', PORTONE_API_SECRET: 'test_ps', FIREBASE_SA: JSON.stringify({ client_email: 'sa@x', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }) };
 const docs = {};   // 'users/u1' → { fields(plain), updateTime }
 let tick = 0;
 const plain = v => v.integerValue !== undefined ? Number(v.integerValue) : v.booleanValue ?? v.stringValue ?? v.timestampValue;
 const encF = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'boolean' ? { booleanValue: v } : { stringValue: v }]));
+const portone = {};   // paymentId → 포트원이 돌려줄 결제 건(가짜)
 const monthKey = () => { const d = new Date(); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
 globalThis.fetch = async (url, opt = {}) => {
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s });
   if (url.includes('oauth2')) return J({ access_token: 't', expires_in: 3600 });
   if (url.includes('identitytoolkit')) return J({ users: [{ localId: JSON.parse(opt.body).idToken }] });
-  if (url.includes('tosspayments')) return J({ method: '카드' });
+  if (url.startsWith('https://api.portone.io/payments/')) { const id = decodeURIComponent(url.split('/payments/')[1].split('?')[0]); return portone[id] ? J(portone[id]) : J({ type: 'PAYMENT_NOT_FOUND', message: 'x' }, 404); }
   if (url.includes('anthropic.com')) return J({ content: [{ type: 'text', text: '{"name":"홍길동"}' }] });
   if (url.includes(':commit')) {
     const { writes } = JSON.parse(opt.body);
@@ -40,15 +41,19 @@ const lots = uid => JSON.parse(docs['users/' + uid].fields.paidLots || '[]');
 // 1) 새 사용자: 가입 50 + 이번 달 5 = 55
 let r = await call('/credits/status', { idToken: 'u1' });
 assert.equal(r.credits, 55); assert.equal(r.paid, 0); assert.equal(docs['users/u1'].fields.credits, 50);
-// 2) 30장 1,000원 결제 → 유료 묶음(30일 뒤 소멸)
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p30_1', amount: 1000 });
+// 2) 30장 1,000원 결제 → 유료 묶음(30일 뒤 소멸). 포트원(V2)에서 결제 건을 직접 조회해 확인
+const paid = (uid, packId, total) => ({ status: 'PAID', amount: { total }, currency: 'KRW', customData: JSON.stringify({ uid, packId }), method: { type: 'PaymentMethodCard' }, pgTxId: 'tx' });
+portone.cb_p30_aaaaaaaaaaa1 = paid('u1', 'p30', 1000);
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_aaaaaaaaaaa1' });
 assert.equal(r.ok, true); const days = (r.expiresAt - Date.now()) / 86400000; assert.ok(days > 29.9 && days <= 30);
 r = await call('/credits/status', { idToken: 'u1' }); assert.equal(r.credits, 85); assert.equal(r.paid, 30);
-// 3) 1,000장 팩은 없어짐, 금액 조작 거부
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p1000_2', amount: 20000 }); assert.equal(r.error, '없는 상품');
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p100_3', amount: 1000 }); assert.equal(r.error, '금액 불일치');
+// 3) 1,000장 팩은 없어짐, 금액 조작 거부(포트원에 실제 결제된 금액이 팩 가격과 다름)
+portone.cb_p1000_aaaaaaaaaaa2 = paid('u1', 'p1000', 20000);
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p1000_aaaaaaaaaaa2' }); assert.equal(r.error, '없는 상품');
+portone.cb_p100_aaaaaaaaaaa3 = paid('u1', 'p100', 1000);
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p100_aaaaaaaaaaa3' }); assert.equal(r.error, '금액 불일치');
 // 4) 같은 주문 새로고침 → 중복, 묶음 늘지 않음
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p30_1', amount: 1000 }); assert.equal(r.duplicate, true); assert.equal(lots('u1').length, 1);
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_aaaaaaaaaaa1' }); assert.equal(r.duplicate, true); assert.equal(lots('u1').length, 1);
 // 5) 30일 지난 유료분은 소멸(이월 불가), 무상분은 그대로
 docs['users/u1'].fields.paidLots = JSON.stringify([{ n: 30, exp: Date.now() - 1000, o: 'old' }, { n: 100, exp: Date.now() + 5 * 86400000, o: 'new' }]);
 r = await call('/credits/status', { idToken: 'u1' }); assert.equal(r.paid, 100); assert.equal(r.credits, 155); assert.equal(lots('u1').length, 1);
