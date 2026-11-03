@@ -3042,8 +3042,20 @@ window.checkSharedContent = function() {
   window.history.replaceState({}, '', window.location.pathname);
 };
 
+// 카메라 촬영 전 안내(처음 한 번만) — 폰 기본 카메라를 여는 방식이라 화면 위에 가이드 틀을 띄울 수 없어서 미리 알려줌
 window.triggerCamera = function() {
-  document.getElementById('ocrCamInput').click();
+  const open = () => document.getElementById('ocrCamInput').click();
+  let seen = false; try { seen = localStorage.getItem('cbCamTip') === '1'; } catch(e) {}
+  if(seen) return open();
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:22px 20px;font-family:'Noto Sans KR',sans-serif;color:#16305e">
+    <div style="font-size:17px;font-weight:800;margin-bottom:12px">📷 이렇게 찍으면 잘 읽혀요</div>
+    <div style="font-size:14px;line-height:1.8">✅ 명함과 <b>다른 색 바닥</b> 위에 놓기<br><span style="color:#64748b;font-size:12px">(흰 명함은 어두운 책상, 어두운 명함은 흰 종이 위)</span><br>
+    ✅ 명함이 <b>화면에 꽉 차게</b>, 흔들리지 않게<br>✅ 방향은 상관없어요 — <b>자동으로 바로 세워요</b></div>
+    <button style="margin-top:16px;width:100%;padding:13px;border:0;border-radius:12px;background:#1e3a8a;color:#fff;font-size:15px;font-weight:700">확인하고 촬영하기</button></div>`;
+  d.querySelector('button').onclick = () => { try { localStorage.setItem('cbCamTip', '1'); } catch(e) {} d.remove(); open(); };
+  document.body.appendChild(d);
 };
 
 window.triggerGallery = function() {
@@ -3243,10 +3255,19 @@ async function _uploadCardImage(docId, jpegB64) {
 async function ocrImageFile(file) {
     // 종이 명함 사진이면 명함만 잘라 반듯하게 펴고(card-crop.js), 긴 변 1568px·화질 90%로 보냄
     // 왜: 예전엔 배경째 1200px·화질 80%로 줄여 명함 글자가 600px 정도로 뭉개졌음. 못 찾으면 원본 전체를 그대로 보냄
-    const { jpeg, cropped } = await CardCrop.prepare(file);
-    const hash = await _sha256(jpeg);
+    let { jpeg, cropped, rotated } = await CardCrop.prepare(file);
     const idToken = await _idToken();
     if(!idToken) throw new Error('로그인이 필요해요');
+    // 글자 줄을 가로로 돌렸으면(방향 추정) 위아래만 확인 — 작은 사진으로 Haiku에 묻고, 거꾸로면 180° 돌림. 실패해도 그대로 진행
+    if(rotated) {
+      try {
+        const thumb = await CardCrop.thumbJpeg(jpeg);
+        const o = await (await fetch(CB_WORKER_URL + '/orient', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: thumb, hash: await _sha256(thumb), idToken }) })).json();
+        if(o.upsideDown === true) jpeg = await CardCrop.rotateJpeg(jpeg, 180);
+      } catch(e) { console.warn('위아래 확인 건너뜀', e); }
+    }
+    const hash = await _sha256(jpeg);
 
     // Claude 비전으로 OCR + 구조화 (Cloudflare Worker 경유). 장수 확인·차감도 Worker가 원자적으로 처리 — 부족하면 402로 거절됨
     const cRes = await fetch(CB_WORKER_URL + '/ocr-image', {
