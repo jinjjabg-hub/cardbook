@@ -1,5 +1,5 @@
-const CACHE_NAME = 'cardbook-v3';
-const URLS_TO_CACHE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE_NAME = 'cardbook-v4';
+const URLS_TO_CACHE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './card-crop.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(URLS_TO_CACHE)));
