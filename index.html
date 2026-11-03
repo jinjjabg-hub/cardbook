@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-storage-compat.js"></script>
 <script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js" crossorigin="anonymous"></script>
+<script src="card-crop.js"></script>
 <style>
 :root{
   --dark:#f6f8fc;--dark2:#eaf0f9;--dark3:#dde7f5;
@@ -3240,21 +3241,9 @@ async function _uploadCardImage(docId, jpegB64) {
 
 // 이미지 1장 → 축소 → Worker OCR → 구조화 결과
 async function ocrImageFile(file) {
-    // base64 변환
-    const base64 = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result.split(',')[1]);
-      r.onerror = rej;
-      r.readAsDataURL(file);
-    });
-
-    // 이미지 축소 (최대 1600px) → 업로드 용량 절감
-    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = 'data:' + file.type + ';base64,' + base64; });
-    const scale = Math.min(1, 1200 / Math.max(img.width, img.height));
-    const cv = document.createElement('canvas');
-    cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
-    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-    const jpeg = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
+    // 종이 명함 사진이면 명함만 잘라 반듯하게 펴고(card-crop.js), 긴 변 1568px·화질 90%로 보냄
+    // 왜: 예전엔 배경째 1200px·화질 80%로 줄여 명함 글자가 600px 정도로 뭉개졌음. 못 찾으면 원본 전체를 그대로 보냄
+    const { jpeg, cropped } = await CardCrop.prepare(file);
     const hash = await _sha256(jpeg);
     const idToken = await _idToken();
     if(!idToken) throw new Error('로그인이 필요해요');
@@ -3268,6 +3257,7 @@ async function ocrImageFile(file) {
     const parsed = await cRes.json();
     if(parsed.error) { if(parsed.needCharge) setTimeout(openChargeModal, 300); throw new Error(parsed.error); }
     parsed._jpeg = jpeg;
+    parsed._cropped = cropped;
     return parsed;
 
 }
@@ -3289,7 +3279,7 @@ window.handleOcrFile = async function(e) {
     window._ocrJpeg = parsed._jpeg || '';
 
     // 미리보기 & 단계3
-    document.getElementById('ocrPreview').src = URL.createObjectURL(file);
+    document.getElementById('ocrPreview').src = parsed._jpeg ? 'data:image/jpeg;base64,' + parsed._jpeg : URL.createObjectURL(file);   // AI가 실제로 읽은 이미지(잘라낸 명함)를 보여줌
     document.getElementById('ocrName').value    = parsed.name;
     document.getElementById('ocrNameEn').value  = parsed.nameEn;
     document.getElementById('ocrTitle').value   = parsed.title;
