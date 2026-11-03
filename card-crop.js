@@ -78,11 +78,36 @@
   function detectQuad(rgba, w, h, why) {   // why: (선택) 거절 이유를 모으는 배열 — 조정할 때 확인용
     const g = toGray(rgba, w, h), th = otsu(g), n = w * h;
     const r = Math.max(2, Math.round(Math.max(w, h) * 0.015));
+    // 후보 덩어리 만드는 방법 3가지: 밝은 쪽 / 어두운 쪽 / 배경색과 다른 쪽
+    // '배경색과 다른 쪽': 사진 테두리 색(=책상·천)을 배경으로 보고 그와 다른 곳 → 반반 색 명함·어두운 명함도 한 덩어리로 잡힘
+    // 배경과의 색 차이 지도 + 기준값 후보 여러 개(배경 흔들림 기준·오츠·고정값) → 각각 시도하고 모양 검사를 통과한 것 중 가장 큰 것
+    const bgDist = (() => {
+      const ring = Math.max(2, Math.round(Math.min(w, h) * 0.03)), rs = [], gs = [], bs = [], idx = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (x >= ring && y >= ring && x < w - ring && y < h - ring) continue;
+        const j = (y * w + x) * 4; rs.push(rgba[j]); gs.push(rgba[j + 1]); bs.push(rgba[j + 2]); idx.push(y * w + x);
+      }
+      const med = a => a.slice().sort((p, q) => p - q)[a.length >> 1], br = med(rs), bg = med(gs), bb = med(bs);
+      const d = new Uint8Array(n);
+      for (let i = 0, j = 0; i < n; i++, j += 4) d[i] = Math.min(255, Math.abs(rgba[j] - br) + Math.abs(rgba[j + 1] - bg) + Math.abs(rgba[j + 2] - bb));
+      const ringD = idx.map(i => d[i]).sort((p, q) => p - q);
+      const ts = [...new Set([Math.round(ringD[Math.floor(ringD.length * 0.95)] * 1.5), otsu(d), 40, 60, 90].map(t => Math.max(30, t)))];
+      return { d, ts };
+    })();
+    const ro = Math.max(1, Math.round(r * 0.8));
+    const bgMask = t => {
+      const m = new Uint8Array(n);
+      for (let i = 0; i < n; i++) m[i] = bgDist.d[i] > t ? 1 : 0;
+      // 열기(open): 천의 반짝이는 잡티·반사광이 명함과 사진 가장자리를 잇는 가는 다리를 끊음 (명함은 커서 살아남음)
+      return morph(morph(m, w, h, ro, false), w, h, ro, true);
+    };
     let best = null;
-    for (const bright of [true, false]) {
+    for (const kind of ['bright', 'dark', ...bgDist.ts.map(t => 'bg' + t)]) {
+      const bright = kind;
       let m = new Uint8Array(n);
-      for (let i = 0; i < n; i++) m[i] = bright ? (g[i] > th ? 1 : 0) : (g[i] <= th ? 1 : 0);
-      m = morph(morph(m, w, h, r, true), w, h, r, false);   // 닫기(close)
+      if (kind.startsWith('bg')) m = bgMask(+kind.slice(2));
+      else for (let i = 0; i < n; i++) m[i] = kind === 'bright' ? (g[i] > th ? 1 : 0) : (g[i] <= th ? 1 : 0);
+      m = morph(morph(m, w, h, r, true), w, h, r, false);   // 닫기(close): 글자 구멍 메우기
       const lab = new Int32Array(n), stack = new Int32Array(n);
       let id = 0;
       for (let s = 0; s < n; s++) {
@@ -120,7 +145,7 @@
     }
     if (!best) return null;
     const d = detailInOut(g, w, h, best.quad);
-    if (d.outside > d.inside * 0.4) { if (why) why.push({ detail: d }); return null; }   // 바깥에도 글자·그림이 많음 → 배경이 아님
+    if (d.outside > d.inside) { if (why) why.push({ detail: d }); return null; }   // 바깥이 안보다 복잡함 → 배경이 아님(천 무늬·반사는 통과하도록 느슨하게, 주된 안전장치는 prepare의 '카메라 사진만')
     return best.quad;
   }
 
@@ -174,7 +199,8 @@
   }
 
   // ── 브라우저용: 파일 → { jpeg(base64), cropped } ──
-  async function prepare(file) {
+  // opts.force: 크기 조건 무시(시험용)
+  async function prepare(file, opts = {}) {
     const url = URL.createObjectURL(file);
     let img;
     try { img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; }); }
@@ -182,8 +208,10 @@
     const W = img.naturalWidth || img.width, Hh = img.naturalHeight || img.height;
     const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
     let cropped = false, out;
-    // PNG(스크린샷·이미지 명함)는 이미 명함만 있으므로 자르지 않음 — 사진(JPEG·HEIC 등)만 시도
-    if (!/png|gif|webp/i.test(file.type || '')) {
+    // 카메라로 찍은 사진만 자르기 시도: PNG·GIF·WEBP(스크린샷·이미지 명함)와 작은 이미지(카톡으로 받은 명함 이미지 등)는 그대로
+    // 폰 카메라 원본은 긴 변 3000px 이상이라 1600px 기준이면 넉넉함
+    const isPhoto = !/png|gif|webp/i.test(file.type || '') && Math.max(W, Hh) >= 1600;
+    if (isPhoto || opts.force) {
       try {
         const ds = Math.min(1, DETECT_SIDE / Math.max(W, Hh)), dw = Math.max(1, Math.round(W * ds)), dh = Math.max(1, Math.round(Hh * ds));
         const dc = canvas(dw, dh), dx = dc.getContext('2d', { willReadFrequently: true });
