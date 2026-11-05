@@ -1,8 +1,11 @@
 [{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "com.tmlink.cardbook",
-        "sha256_cert_fingerprints": ["FE:6E:66:88:DC:5A:0D:38:58:8B:E1:5E:F1:F8:E2:E3:61:3C:F9:E5:19:42:E9:D1:5F:01:96:E8:37:90:EE:B0"]
-      }
-    }]
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.tmlink.cardbook",
+    "sha256_cert_fingerprints": [
+      "B5:4E:C3:F8:87:3E:F4:D9:12:2B:12:B5:E5:C6:E0:BA:AC:7E:5A:94:04:A7:7B:73:86:10:BD:98:87:11:A7:38",
+      "FE:6E:66:88:DC:5A:0D:38:58:8B:E1:5E:F1:F8:E2:E3:61:3C:F9:E5:19:42:E9:D1:5F:01:96:E8:37:90:EE:B0"
+    ]
+  }
+}]
