@@ -198,6 +198,58 @@
     return { ow: Math.max(1, Math.round(wd * s)), oh: Math.max(1, Math.round(ht * s)) };
   }
 
+  // ── 글자 줄 방향: 'h'(가로 줄) / 'v'(세로 줄) / null(모르겠음) ──
+  // 왜: 폰을 어떻게 들었는지·브라우저가 사진 방향 정보를 어떻게 처리하는지에 따라 명함이 옆으로 누운 채 갈 수 있음
+  //     → 글자 줄 사이 빈 줄(가로로 텅 빈 행)이 많으면 가로 줄, 빈 열이 많으면 세로 줄. 세로형 명함도 글자 기준이라 안전
+  function textAxis(rgba, w, h) {
+    const g = toGray(rgba, w, h), th = otsu(g);
+    let dark = 0; for (let i = 0; i < g.length; i++) if (g[i] <= th) dark++;
+    const inkDark = dark < g.length / 2;   // 적은 쪽이 글자(흰 바탕 검은 글자 / 어두운 바탕 밝은 글자 모두)
+    const mx = Math.round(w * 0.06), my = Math.round(h * 0.06), W = w - 2 * mx, H = h - 2 * my;
+    if (W < 20 || H < 20) return null;
+    const rows = new Int32Array(H), cols = new Int32Array(W);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const v = g[(y + my) * w + x + mx];
+      if (inkDark ? v <= th : v > th) { rows[y]++; cols[x]++; }
+    }
+    const emptyFrac = (a, len) => {   // 글자가 있는 범위 안에서 '거의 빈' 줄의 비율
+      const lim = Math.max(1, len * 0.01);
+      let a0 = 0, a1 = a.length - 1;
+      while (a0 < a1 && a[a0] <= lim) a0++;
+      while (a1 > a0 && a[a1] <= lim) a1--;
+      if (a1 - a0 < 10) return 0;
+      let e = 0; for (let i = a0; i <= a1; i++) if (a[i] <= lim) e++;
+      return e / (a1 - a0 + 1);
+    };
+    const er = emptyFrac(rows, W), ec = emptyFrac(cols, H);
+    if (er > ec + 0.08) return 'h';
+    if (ec > er + 0.08) return 'v';
+    return null;
+  }
+
+  // 캔버스 회전(90 = 시계 방향, -90 = 반시계, 180)
+  function rotateCanvas(src, deg) {
+    const c = document.createElement('canvas'), q = Math.abs(deg) === 90;
+    c.width = q ? src.height : src.width; c.height = q ? src.width : src.height;
+    const x = c.getContext('2d');
+    x.translate(c.width / 2, c.height / 2); x.rotate(deg * Math.PI / 180);
+    x.drawImage(src, -src.width / 2, -src.height / 2);
+    return c;
+  }
+  // base64 JPEG → 회전한 base64 JPEG (위아래 뒤집기 확인 후 180° 돌릴 때)
+  async function rotateJpeg(b64, deg) {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/jpeg;base64,' + b64; });
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
+    return rotateCanvas(c, deg).toDataURL('image/jpeg', QUALITY).split(',')[1];
+  }
+  // 위아래 확인용 작은 미리보기(긴 변 512px)
+  async function thumbJpeg(b64, side = 512) {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/jpeg;base64,' + b64; });
+    const s = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.8).split(',')[1];
+  }
+
   // ── 브라우저용: 파일 → { jpeg(base64), cropped } ──
   // opts.force: 크기 조건 무시(시험용)
   async function prepare(file, opts = {}) {
@@ -207,7 +259,7 @@
     finally { URL.revokeObjectURL(url); }
     const W = img.naturalWidth || img.width, Hh = img.naturalHeight || img.height;
     const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
-    let cropped = false, out;
+    let cropped = false, rotated = false, out;
     // 카메라로 찍은 사진만 자르기 시도: PNG·GIF·WEBP(스크린샷·이미지 명함)와 작은 이미지(카톡으로 받은 명함 이미지 등)는 그대로
     // 폰 카메라 원본은 긴 변 3000px 이상이라 1600px 기준이면 넉넉함
     const isPhoto = !/png|gif|webp/i.test(file.type || '') && Math.max(W, Hh) >= 1600;
@@ -228,6 +280,11 @@
           id.data.set(warp(sx.getImageData(0, 0, sw, sh).data, sw, sh, quad, ow, oh));
           ox.putImageData(id, 0, 0);
           out = oc; cropped = true;
+          // 글자 줄이 세로면 90° 돌려 가로로 — 방향(왼쪽/오른쪽)은 확실하지 않아 반시계로 돌리고, 위아래는 호출한 쪽에서 확인(rotated: true)
+          const ts = Math.min(1, 400 / Math.max(ow, oh)), tw = Math.round(ow * ts), th2 = Math.round(oh * ts);
+          const tc = canvas(tw, th2), tx = tc.getContext('2d', { willReadFrequently: true });
+          tx.drawImage(oc, 0, 0, tw, th2);
+          if (textAxis(tx.getImageData(0, 0, tw, th2).data, tw, th2) === 'v') { out = rotateCanvas(oc, -90); rotated = true; }
         }
       } catch (e) { console.warn('명함 자르기 건너뜀', e); }
     }
@@ -236,10 +293,10 @@
       out = canvas(Math.round(W * s), Math.round(Hh * s));
       out.getContext('2d').drawImage(img, 0, 0, out.width, out.height);
     }
-    return { jpeg: out.toDataURL('image/jpeg', QUALITY).split(',')[1], cropped, width: out.width, height: out.height };
+    return { jpeg: out.toDataURL('image/jpeg', QUALITY).split(',')[1], cropped, rotated, width: out.width, height: out.height };
   }
 
-  const api = { prepare, detectQuad, warp, homography, expandQuad, outSize, MAX_SIDE, QUALITY };
+  const api = { prepare, textAxis, rotateJpeg, thumbJpeg, detectQuad, warp, homography, expandQuad, outSize, MAX_SIDE, QUALITY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CardCrop = api;
 })(typeof window !== 'undefined' ? window : globalThis);

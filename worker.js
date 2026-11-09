@@ -555,6 +555,25 @@ Strings: ${JSON.stringify(c)}` }], 8000, AUTOCARD_MODELS).catch(() => ({}))));
   if (env.OCR_CACHE) await env.OCR_CACHE.put(cacheKey, JSON.stringify(out));
   return json({ strings: out });
 }
+// ── 명함 사진 위아래 확인: 글자가 거꾸로(180°)인지만 묻는다 ──
+// 왜: 폰에서 글자 줄을 가로로 돌릴 때(card-crop.js) 왼쪽/오른쪽 중 어느 쪽으로 돌릴지는 확실하지 않음 → 돌린 경우에만 작은 사진(512px)으로 확인
+// 왜 Haiku 5.5: 단순 판별이라 가장 싼 모델로 충분(장당 약 0.04원). 장수 차감 없음, 로그인 필요, 같은 사진은 캐시
+const ORIENT_MODELS = ['claude-haiku-5-5', 'claude-haiku-4-5-20251001'];
+const orientExtra = model => model === 'claude-haiku-5-5' ? { body: { output_config: { effort: 'low' } } } : null;
+async function orientCheck(env, body) {
+  const { image, hash, idToken } = body;
+  await verifyIdToken(idToken);
+  if (!image || image.length > 400_000) return json({ error: '사진이 없거나 너무 커요' }, 400);
+  const cacheKey = hash && /^[a-f0-9]{64}$/.test(hash) ? 'orient:v1:' + hash : '';
+  if (cacheKey && env.OCR_CACHE) { const hit = await env.OCR_CACHE.get(cacheKey, 'json'); if (hit) return json({ ...hit, cached: true }); }
+  const r = await callClaude(env, [
+    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
+    { type: 'text', text: '명함 사진이다. 글자가 바로 서 있으면 false, 위아래가 뒤집혀(180° 회전) 있으면 true. JSON만: {"upsideDown": true 또는 false}' },
+  ], 1000, ORIENT_MODELS, orientExtra);
+  const out = { upsideDown: r.upsideDown === true };
+  if (cacheKey && env.OCR_CACHE) await env.OCR_CACHE.put(cacheKey, JSON.stringify(out), { expirationTtl: 60 * 60 * 24 * 30 });
+  return json(out);
+}
 // ── 카드북 본인 등록: 내 종이·디지털 명함 사진 1장 → 이름·회사·직함·휴대폰·이메일 ──
 // 왜 Sonnet 5.5: 사람당 거의 1번이라 장당 비용(약 10원대)보다 정확도가 중요. 단순 옮겨 적기라 effort는 low로 생각을 줄여 비용·시간을 아낌.
 // 로그인한 사람만, 한 사람 하루 3번(같은 사진은 캐시라 안 셈). 사진은 읽기만 하고 저장하지 않는다(캐시에는 결과 JSON만)
@@ -810,6 +829,7 @@ export default {
       if (url.pathname === '/autocard/translate') return await autocardTranslate(env, await request.json());
       if (url.pathname === '/autocard/import') return await autocardImport(env, request, await request.json());
       if (url.pathname === '/profile/scan') return await profileScan(env, await request.json());
+      if (url.pathname === '/orient') return await orientCheck(env, await request.json());
       if (url.pathname === '/autocard/ui') return await autocardUi(env, request, await request.json());
       if (url.pathname === '/autocard/pay/confirm') return await autocardPay(env, await request.json());
 
