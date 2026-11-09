@@ -47,9 +47,18 @@
   async function open() {
     if (!supported()) throw new Error('이 폰에서는 앱 안 카메라를 쓸 수 없어요');
     let stream = await getStream();
-    // 고른 카메라에 자동 초점이 없으면 다른 후면 카메라 중 자동 초점 되는 것으로 바꿈(초점 고정 광각 카메라 피하기)
     let cams = await backCameras();
     let track = stream.getVideoTracks()[0];
+    // 시작 카메라 고르기: ① 전에 🔄로 골라 둔 카메라 ② 메인 카메라(번호가 가장 작은 후면 카메라, 예: "camera2 0, facing back")
+    // 왜: 브라우저가 초광각 같은 보조 카메라(예: camera 2)를 고르는 폰이 있음 — 자동 초점이 있다고 응답해도 가까운 명함에 초점을 못 잡아 흐림
+    let saved = ''; try { saved = localStorage.getItem('cbCamDevice') || ''; } catch (e) {}
+    const camNo = d => { const m = /camera2?\s*(\d+)/i.exec(d.label || ''); return m ? +m[1] : 999; };
+    const main = cams.slice().sort((a, b) => camNo(a) - camNo(b))[0];
+    const want = cams.find(d => d.deviceId === saved) || (main && camNo(main) < 999 ? main : null);
+    if (want && want.deviceId !== track.getSettings().deviceId) {
+      try { const s2 = await getStream(want.deviceId); stream.getTracks().forEach(t => t.stop()); stream = s2; track = s2.getVideoTracks()[0]; } catch (e) {}
+    }
+    // 그래도 자동 초점이 없으면 다른 후면 카메라 중 자동 초점 되는 것으로
     if (!hasAF(track)) {
       for (const d of cams) {
         if (d.deviceId === track.getSettings().deviceId) continue;
@@ -90,7 +99,7 @@
       // 진단 정보(관리자 시험용): 실제로 받은 해상도·초점 방식·카메라 이름 — 흐릴 때 원인 파악에 씀
       const showDiag = () => {
         const s = track.getSettings ? track.getSettings() : {}, c = caps(track);
-        diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''} · ${(track.label || '').slice(0, 28)}`;
+        diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''} · ${(track.label || '').slice(0, 40)}`;
       };
       video.addEventListener('loadedmetadata', showDiag);
       showDiag();
@@ -104,6 +113,7 @@
           stream.getTracks().forEach(t => t.stop());
           stream = s2; track = s2.getVideoTracks()[0]; video.srcObject = stream;
           await continuousAF(track); showDiag();
+          try { localStorage.setItem('cbCamDevice', next.deviceId); } catch (e) {}   // 고른 카메라 기억 — 다음부터 이 카메라로 시작
         } catch (e) { console.warn('카메라 전환 실패', e); }
       };
 
