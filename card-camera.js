@@ -20,7 +20,11 @@
       wrap.innerHTML = `
         <video playsinline autoplay muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
         <div class="cc-guide" style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);border:2px solid rgba(255,255,255,.9)"></div>
-        <div class="cc-hint" style="position:absolute;left:0;right:0;text-align:center;color:#fff;font-size:15px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.6);padding:0 16px">명함을 <span style="color:#7dd3fc">가로로</span> 테두리에 맞춰주세요</div>
+        <div class="cc-hint" style="position:absolute;left:0;right:0;text-align:center;color:#fff;font-size:15px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.6);padding:0 16px"></div>
+        <div class="cc-mode" style="position:absolute;left:50%;bottom:calc(max(28px,env(safe-area-inset-bottom)) + 90px);transform:translateX(-50%);display:flex;background:rgba(0,0,0,.5);border-radius:20px;padding:3px">
+          <button data-v="0" style="border:0;border-radius:17px;padding:8px 16px;font-size:13px;font-weight:700;white-space:nowrap">가로 명함</button>
+          <button data-v="1" style="border:0;border-radius:17px;padding:8px 16px;font-size:13px;font-weight:700;white-space:nowrap">세로 명함</button>
+        </div>
         <div class="cc-sub" style="position:absolute;left:0;right:0;text-align:center;color:rgba(255,255,255,.75);font-size:12px;padding:0 16px">명함과 다른 색 바닥 위에 놓고, 흔들리지 않게</div>
         <button class="cc-close" aria-label="닫기" style="position:absolute;top:max(16px,env(safe-area-inset-top));left:16px;width:44px;height:44px;border-radius:22px;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:22px">✕</button>
         <button class="cc-shot" aria-label="촬영" style="position:absolute;left:50%;bottom:max(28px,env(safe-area-inset-bottom));transform:translateX(-50%);width:74px;height:74px;border-radius:37px;border:5px solid rgba(255,255,255,.85);background:#fff;box-shadow:0 0 0 3px rgba(0,0,0,.25)"></button>
@@ -29,11 +33,19 @@
       const video = wrap.querySelector('video'), guide = wrap.querySelector('.cc-guide'), hint = wrap.querySelector('.cc-hint'),
         sub = wrap.querySelector('.cc-sub'), shot = wrap.querySelector('.cc-shot'), rot = wrap.querySelector('.cc-rotate');
       video.srcObject = stream;
+      // 가로/세로 명함 전환 — 세로 명함은 세로 테두리에 똑바로 세워 찍어야 글자가 바로 선 채로 들어감. 마지막 선택 기억
+      let vertical = false; try { vertical = localStorage.getItem('cbCamVertical') === '1'; } catch (e) {}
+      const modeBtns = [...wrap.querySelectorAll('.cc-mode button')];
+      modeBtns.forEach(b => b.onclick = () => { vertical = b.dataset.v === '1'; try { localStorage.setItem('cbCamVertical', vertical ? '1' : '0'); } catch (e) {} layout(); });
       const layout = () => {
         const W = wrap.clientWidth, H = wrap.clientHeight, landscape = W > H;
         rot.style.display = landscape ? 'flex' : 'none';
         shot.disabled = landscape; shot.style.opacity = landscape ? '.3' : '1';
-        const gw = Math.round(Math.min(W * GUIDE_W, (H * 0.6) * RATIO)), gh = Math.round(gw / RATIO);
+        let gw, gh;
+        if (vertical) { gh = Math.round(Math.min(H * 0.6, W * GUIDE_W * RATIO)); gw = Math.round(gh / RATIO); }
+        else { gw = Math.round(Math.min(W * GUIDE_W, (H * 0.6) * RATIO)); gh = Math.round(gw / RATIO); }
+        hint.innerHTML = '명함을 <span style="color:#7dd3fc">' + (vertical ? '세로로 세워' : '가로로') + '</span> 테두리에 맞춰주세요';
+        modeBtns.forEach(b => { const on = (b.dataset.v === '1') === vertical; b.style.background = on ? '#fff' : 'transparent'; b.style.color = on ? '#16305e' : '#fff'; });
         guide.style.width = gw + 'px'; guide.style.height = gh + 'px';
         const top = H * 0.44 - gh / 2;
         hint.style.top = Math.max(12, top - 64) + 'px'; sub.style.top = (top + gh + 16) + 'px';
