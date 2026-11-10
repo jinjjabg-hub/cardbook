@@ -51,4 +51,18 @@ const near = (q, corners, tol) => q.every((p, i) => Math.hypot(p.x - corners[i].
   const z = H[6] * 10 + H[7] * 5 + H[8]; assert.ok(Math.abs((H[0] * 10 + H[1] * 5 + H[2]) / z - q[2].x) < 1e-6, '원근 변환 모서리 일치'); }
 // 8) 결과 크기: 긴 변 1568 넘지 않음
 { const s = C.outSize([{ x: 0, y: 0 }, { x: 3000, y: 0 }, { x: 3000, y: 1700 }, { x: 0, y: 1700 }]); assert.equal(Math.max(s.ow, s.oh), 1568); }
+// 저장용 크기: 인식용 1568과 달리 2400까지 허용, 원본보다 키우지 않음
+{ const q = [{ x: 0, y: 0 }, { x: 3000, y: 0 }, { x: 3000, y: 1700 }, { x: 0, y: 1700 }];
+  assert.equal(Math.max(C.outSize(q, 2400).ow, C.outSize(q, 2400).oh), 2400);
+  const small = [{ x: 0, y: 0 }, { x: 900, y: 0 }, { x: 900, y: 500 }, { x: 0, y: 500 }];
+  assert.equal(C.outSize(small, 2400).ow, 900, '작은 사진은 키우지 않음'); }
+// 저장용 보정: 칙칙한 종이는 밝아지고, 글자 가장자리는 또렷해지고, 밋밋한 면은 그대로
+{ const w = 60, h = 40, d = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4, ink = x >= 28 && x < 32; d[i] = d[i + 1] = d[i + 2] = ink ? 90 : 170; d[i + 3] = 255; }
+  C.enhanceRgba(d, w, h);
+  assert.ok(d[(10 * w + 5) * 4] > 200, '종이가 밝아짐: ' + d[(10 * w + 5) * 4]);
+  assert.ok(d[(10 * w + 29) * 4] < 90, '글자가 더 진해짐: ' + d[(10 * w + 29) * 4]);
+  assert.equal(d[3], 255, '투명도 유지');
+  const flat = new Uint8ClampedArray(w * h * 4).fill(200); for (let i = 3; i < flat.length; i += 4) flat[i] = 255;
+  C.enhanceRgba(flat, w, h); assert.ok(flat.every((v, i) => i % 4 === 3 || Math.abs(v - flat[0]) <= 1), '밋밋한 면은 잡음이 생기지 않음'); }
 console.log('CARD CROP TESTS PASSED');

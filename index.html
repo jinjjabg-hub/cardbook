@@ -1770,7 +1770,7 @@ function renderHome() {
       <div class="home-hero-stats">
         <div class="home-stat" onclick="showView('cards')" style="cursor:pointer"><div class="home-stat-num">${allCards.length}</div><div class="home-stat-label">명함</div></div>
       </div>
-      <button class="home-hero-btn" onclick="goMyCard()">${myDicaUrl ? ci('qr') + ' 내 명함 · QR' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
+      <button class="home-hero-btn" onclick="${myDicaUrl ? 'showMyQR()' : 'goMyCard()'}">${myDicaUrl ? ci('qr') + ' 내 명함 QR 보여주기' : '✨ 내 디지털 명함 만들기 · 등록'}</button>
     </div>
     ${!myDicaUrl ? `    <div class="home-ac">
       <a class="home-ac-main" href="https://jinjjabg-hub.github.io/autocard/" target="_blank" rel="noopener" onclick="trackBanner('dica')">
@@ -2696,12 +2696,48 @@ function generateMyQR() {
     _drawQR(canvas, url);
   }
 }
-function _drawQR(canvas, url) {
+function _drawQR(canvas, url, size) {
   QRCode.toCanvas(canvas, url, {
-    width: 80, margin: 1,
+    width: size || 80, margin: 1,
     color: { dark: '#16305e', light: '#f6f8fc' }
   }, err => { if(err) console.error('QR 오류', err); });
 }
+
+// ===== 내 명함 QR 크게 보기 (홈 버튼) =====
+// 왜: 홈의 'QR' 버튼이 QR이 아니라 메뉴를 열어서 헷갈렸음 → 상대 폰으로 바로 찍을 수 있게 QR을 크게 보여줌
+window.showMyQR = function() {
+  if(!myDicaUrl) { showDicaRegisterModal(); return; }
+  document.getElementById('myQRSheet')?.remove();
+  const url = myDicaUrl + (myDicaUrl.includes('?') ? '&' : '?') + 'ref=' + (currentUser?.uid || '');
+  const sheet = document.createElement('div');
+  sheet.id = 'myQRSheet';
+  sheet.className = 'mycard-sheet';
+  sheet.onclick = e => { if(e.target === sheet) sheet.remove(); };
+  sheet.innerHTML = `
+    <div class="mycard-sheet-box" style="text-align:center;">
+      <div style="font-size:15px;font-weight:800;color:#16305e;margin-bottom:4px;">내 명함 QR</div>
+      <div style="font-size:12px;color:#5b7bb0;margin-bottom:14px;">상대방 폰 카메라로 찍으면 내 명함이 열려요</div>
+      <canvas id="myQRBig" width="240" height="240" style="border-radius:12px;background:#f6f8fc;"></canvas>
+      <div style="height:14px"></div>
+      <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;" onclick="shareMyQRLink()">📤 내 명함 링크 보내기</button>
+      <button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="window.open(myDicaUrl,'_blank')">🔗 내 명함 열기</button>
+      <button class="mycard-sheet-btn" style="background:#f0f0f0;color:#666;margin-bottom:0;" onclick="document.getElementById('myQRSheet').remove()">닫기</button>
+    </div>`;
+  document.body.appendChild(sheet);
+  const draw = () => _drawQR(document.getElementById('myQRBig'), url, 240);
+  if(typeof QRCode === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js';
+    s.onload = draw;
+    s.onerror = () => showToast('QR을 불러오지 못했어요. 인터넷 연결을 확인해 주세요');
+    document.head.appendChild(s);
+  } else draw();
+};
+window.shareMyQRLink = function() {
+  const url = myDicaUrl;
+  if(navigator.share) navigator.share({ title: '내 디지털 명함', url }).catch(() => {});
+  else navigator.clipboard?.writeText(url).then(() => showToast('🔗 내 명함 주소를 복사했어요'), () => window.open(url, '_blank'));
+};
 
 // ===== QR 팝업 토글 =====
 function toggleQR() {
@@ -3300,7 +3336,7 @@ async function _uploadCardImage(docId, jpegB64) {
 async function ocrImageFile(file) {
     // 종이 명함 사진이면 명함만 잘라 반듯하게 펴고(card-crop.js), 긴 변 1568px·화질 90%로 보냄
     // 왜: 예전엔 배경째 1200px·화질 80%로 줄여 명함 글자가 600px 정도로 뭉개졌음. 못 찾으면 원본 전체를 그대로 보냄
-    let { jpeg, cropped, rotated } = await CardCrop.prepare(file, { force: !!file._guided });   // 앱 카메라 테두리로 찍은 사진은 크기와 상관없이 명함 찾기
+    let { jpeg, full, cropped, rotated } = await CardCrop.prepare(file, { force: !!file._guided });   // 앱 카메라 테두리로 찍은 사진은 크기와 상관없이 명함 찾기
     const idToken = await _idToken();
     if(!idToken) throw new Error('로그인이 필요해요');
     // 글자 줄을 가로로 돌렸으면(방향 추정) 위아래만 확인 — 작은 사진으로 Haiku에 묻고, 거꾸로면 180° 돌림. 실패해도 그대로 진행
@@ -3309,7 +3345,7 @@ async function ocrImageFile(file) {
         const thumb = await CardCrop.thumbJpeg(jpeg);
         const o = await (await fetch(CB_WORKER_URL + '/orient', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: thumb, hash: await _sha256(thumb), idToken }) })).json();
-        if(o.upsideDown === true) jpeg = await CardCrop.rotateJpeg(jpeg, 180);
+        if(o.upsideDown === true) { jpeg = await CardCrop.rotateJpeg(jpeg, 180); if(full) full = await CardCrop.rotateJpeg(full, 180, 0.92); }
       } catch(e) { console.warn('위아래 확인 건너뜀', e); }
     }
     const hash = await _sha256(jpeg);
@@ -3323,6 +3359,7 @@ async function ocrImageFile(file) {
     const parsed = await cRes.json();
     if(parsed.error) { if(parsed.needCharge) setTimeout(openChargeModal, 300); throw new Error(parsed.error); }
     parsed._jpeg = jpeg;
+    parsed._full = full || jpeg;   // 저장·전달용(더 크고 보정됨). 사진이 아니면 인식용과 같음
     parsed._cropped = cropped;
     return parsed;
 
@@ -3366,6 +3403,7 @@ window.handleOcrFile = async function(e) {
     const parsed = await ocrImageFile(file);
     window._ocrFullText = parsed.fullText || '';
     window._ocrJpeg = parsed._jpeg || '';
+    window._ocrFull = parsed._full || parsed._jpeg || '';
 
     // 미리보기 & 단계3
     document.getElementById('ocrPreview').src = parsed._jpeg ? 'data:image/jpeg;base64,' + parsed._jpeg : URL.createObjectURL(file);   // AI가 실제로 읽은 이미지(잘라낸 명함)를 보여줌
@@ -3471,7 +3509,7 @@ window.saveOcrBatch = async function() {
         services: p.services||'', fullText: (p.fullText||'').slice(0, 3000), chapter: p.chapter||'',
         referrer: '명함 스캔'
       }, 'scan');
-      const img = await _uploadCardImage(r.docId, p._jpeg);
+      const img = await _uploadCardImage(r.docId, p._full || p._jpeg);
       if(img) await db.collection('users').doc(currentUser.uid).collection('cards').doc(r.docId).update({ image: img });
       if(r.merged) m++; else { n++; newIds.push(r.docId); }
     }
@@ -3504,9 +3542,9 @@ window.saveOcrCard = async function() {
   if(!card.name) { showToast('❌ 이름을 입력해주세요'); return; }
   try {
     const r = await upsertCard(card, 'scan');
-    const img = await _uploadCardImage(r.docId, window._ocrJpeg);
+    const img = await _uploadCardImage(r.docId, window._ocrFull || window._ocrJpeg);
     if(img) await db.collection('users').doc(currentUser.uid).collection('cards').doc(r.docId).update({ image: img });
-    window._ocrJpeg = '';
+    window._ocrJpeg = ''; window._ocrFull = '';
     document.getElementById('scanModal').style.display = 'none';
     _saveToast(r, card.name, '명함 저장됐어요!');
     await loadCards();

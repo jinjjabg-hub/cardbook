@@ -5,6 +5,9 @@
 (function (root) {
   const MAX_SIDE = 1568;      // Claude 비전이 축소 없이 읽는 최대 긴 변
   const QUALITY = 0.9;        // JPEG 화질 — 0.8이면 작은 글씨 가장자리가 뭉개짐
+  const STORE_SIDE = 2400;    // 저장·전달용 이미지의 긴 변(인식용 1568과 따로 — 전달했을 때 선명하도록)
+  const STORE_QUALITY = 0.92; // 저장용 JPEG 화질
+  const STORE_MAX_BYTES = 1.8 * 1024 * 1024;   // Storage 규칙이 2MB 미만만 받음
   const DETECT_SIDE = 360;    // 명함 찾기용 축소 크기(빠르게)
   const SRC_SIDE = 3200;      // 펴기에 쓸 원본 최대 크기(폰 메모리 보호)
 
@@ -192,9 +195,9 @@
   }
 
   // 결과 크기: 명함 비율 유지, 긴 변 최대 1568, 원본보다 키우지 않음
-  function outSize(quad) {
+  function outSize(quad, maxSide = MAX_SIDE) {
     const wd = (dist(quad[0], quad[1]) + dist(quad[3], quad[2])) / 2, ht = (dist(quad[0], quad[3]) + dist(quad[1], quad[2])) / 2;
-    const s = Math.min(1, MAX_SIDE / Math.max(wd, ht));
+    const s = Math.min(1, maxSide / Math.max(wd, ht));
     return { ow: Math.max(1, Math.round(wd * s)), oh: Math.max(1, Math.round(ht * s)) };
   }
 
@@ -236,11 +239,51 @@
     x.drawImage(src, -src.width / 2, -src.height / 2);
     return c;
   }
+  // ── 저장용 이미지 보정: 종이 흰색을 맞추고(밝기 늘이기) 글자 가장자리를 또렷하게(언샵 마스크) ──
+  // 왜: 없는 해상도를 만들 수는 없지만, 흐릿하고 칙칙해 보이는 부분(어두운 종이·번진 가장자리)은 개선됨. 인식용 이미지엔 쓰지 않음(인식 결과가 달라지지 않게)
+  function enhanceRgba(d, w, h, amount = 0.8) {
+    const n = w * h, hist = new Uint32Array(256);
+    for (let i = 0, j = 0; i < n; i++, j += 4) hist[(d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114) | 0]++;
+    let acc = 0, lo = 0, hi = 255;
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.01) { lo = v; break; } }
+    acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= n * 0.01) { hi = v; break; } }
+    lo = Math.min(lo, 30); hi = Math.max(hi, 170);   // 어두운 명함·회색 장면을 과하게 늘리지 않음
+    const k = 255 / (hi - lo);
+    for (let j = 0; j < d.length; j += 4) for (let c = 0; c < 3; c++) { const v = (d[j + c] - lo) * k; d[j + c] = v < 0 ? 0 : v > 255 ? 255 : v; }
+    // 밝기(Y)만 가우시안 흐림(σ≈1.1) → 원본과의 차이를 더해 또렷하게(작은 차이는 잡음이라 무시)
+    const Y = new Float32Array(n), T = new Float32Array(n), R = 3, ker = [0.07, 0.13, 0.2, 0.2, 0.2, 0.13, 0.07];
+    const ks = ker.reduce((a, b) => a + b, 0); for (let i = 0; i < ker.length; i++) ker[i] /= ks;
+    for (let i = 0, j = 0; i < n; i++, j += 4) Y[i] = d[j] * 0.299 + d[j + 1] * 0.587 + d[j + 2] * 0.114;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let s = 0; for (let t = -R; t <= R; t++) s += Y[y * w + Math.min(w - 1, Math.max(0, x + t))] * ker[t + R]; T[y * w + x] = s; }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let s = 0; for (let t = -R; t <= R; t++) s += T[Math.min(h - 1, Math.max(0, y + t)) * w + x] * ker[t + R];
+      const i = y * w + x, diff = Y[i] - s;
+      if (diff > 3 || diff < -3) { const add = diff * amount, j = i * 4; for (let c = 0; c < 3; c++) { const v = d[j + c] + add; d[j + c] = v < 0 ? 0 : v > 255 ? 255 : v; } }
+    }
+    return d;
+  }
+  // 캔버스를 긴 변 maxSide 이하로 줄임(고화질 보간). 이미 작으면 그대로
+  function scaleTo(src, maxSide) {
+    const s = Math.min(1, maxSide / Math.max(src.width, src.height));
+    if (s >= 1) return src;
+    const c = document.createElement('canvas'); c.width = Math.round(src.width * s); c.height = Math.round(src.height * s);
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+    x.drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+  // 저장용 JPEG: 화질 0.92부터, 2MB를 넘으면 낮춰서 규칙에 맞춤
+  function encodeStore(canvas) {
+    for (const q of [STORE_QUALITY, 0.86, 0.8, 0.7]) {
+      const b64 = canvas.toDataURL('image/jpeg', q).split(',')[1];
+      if (b64.length * 0.75 < STORE_MAX_BYTES) return b64;
+    }
+    return scaleTo(canvas, 1800).toDataURL('image/jpeg', 0.8).split(',')[1];
+  }
   // base64 JPEG → 회전한 base64 JPEG (위아래 뒤집기 확인 후 180° 돌릴 때)
-  async function rotateJpeg(b64, deg) {
+  async function rotateJpeg(b64, deg, quality = QUALITY) {
     const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/jpeg;base64,' + b64; });
     const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0);
-    return rotateCanvas(c, deg).toDataURL('image/jpeg', QUALITY).split(',')[1];
+    return rotateCanvas(c, deg).toDataURL('image/jpeg', quality).split(',')[1];
   }
   // 위아래 확인용 작은 미리보기(긴 변 512px)
   async function thumbJpeg(b64, side = 512) {
@@ -259,7 +302,7 @@
     finally { URL.revokeObjectURL(url); }
     const W = img.naturalWidth || img.width, Hh = img.naturalHeight || img.height;
     const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
-    let cropped = false, rotated = false, out;
+    let cropped = false, rotated = false, out, full = null;
     // 카메라로 찍은 사진만 자르기 시도: PNG·GIF·WEBP(스크린샷·이미지 명함)와 작은 이미지(카톡으로 받은 명함 이미지 등)는 그대로
     // 폰 카메라 원본은 긴 변 3000px 이상이라 1600px 기준이면 넉넉함
     const isPhoto = !/png|gif|webp/i.test(file.type || '') && Math.max(W, Hh) >= 1600;
@@ -274,29 +317,42 @@
           const sc = canvas(sw, sh), sx = sc.getContext('2d', { willReadFrequently: true });
           sx.drawImage(img, 0, 0, sw, sh);
           const k = sw / dw, quad = expandQuad(q.map(p => ({ x: (p.x + 0.5) * k, y: (p.y + 0.5) * k })), 0.03, sw, sh);
-          const { ow, oh } = outSize(quad);
+          const { ow, oh } = outSize(quad, STORE_SIDE);   // 저장용 크기로 한 번만 펴고, 인식용은 거기서 줄임
           const oc = canvas(ow, oh), ox = oc.getContext('2d');
           const id = ox.createImageData(ow, oh);
           id.data.set(warp(sx.getImageData(0, 0, sw, sh).data, sw, sh, quad, ow, oh));
           ox.putImageData(id, 0, 0);
-          out = oc; cropped = true;
+          out = oc; full = oc; cropped = true;
           // 글자 줄이 세로면 90° 돌려 가로로 — 방향(왼쪽/오른쪽)은 확실하지 않아 반시계로 돌리고, 위아래는 호출한 쪽에서 확인(rotated: true)
           const ts = Math.min(1, 400 / Math.max(ow, oh)), tw = Math.round(ow * ts), th2 = Math.round(oh * ts);
           const tc = canvas(tw, th2), tx = tc.getContext('2d', { willReadFrequently: true });
           tx.drawImage(oc, 0, 0, tw, th2);
-          if (textAxis(tx.getImageData(0, 0, tw, th2).data, tw, th2) === 'v') { out = rotateCanvas(oc, -90); rotated = true; }
+          if (textAxis(tx.getImageData(0, 0, tw, th2).data, tw, th2) === 'v') { out = rotateCanvas(oc, -90); full = out; rotated = true; }
         }
       } catch (e) { console.warn('명함 자르기 건너뜀', e); }
     }
-    if (!out) {   // 못 찾으면 원본 전체(긴 변 1568)
-      const s = Math.min(1, MAX_SIDE / Math.max(W, Hh));
+    if (!out) {   // 못 찾으면 원본 전체
+      const s = Math.min(1, (isPhoto || opts.force ? STORE_SIDE : MAX_SIDE) / Math.max(W, Hh));
       out = canvas(Math.round(W * s), Math.round(Hh * s));
-      out.getContext('2d').drawImage(img, 0, 0, out.width, out.height);
+      const ox = out.getContext('2d'); ox.imageSmoothingEnabled = true; ox.imageSmoothingQuality = 'high';
+      ox.drawImage(img, 0, 0, out.width, out.height);
+      if (isPhoto || opts.force) full = out;
     }
-    return { jpeg: out.toDataURL('image/jpeg', QUALITY).split(',')[1], cropped, rotated, width: out.width, height: out.height };
+    // 인식용(긴 변 1568·화질 90%)은 보정 없이, 저장·전달용(긴 변 최대 2400)은 보정해서 따로 만듦. 사진이 아닌 이미지(스크린샷 등)는 저장용을 따로 만들지 않음
+    const ocr = scaleTo(out, MAX_SIDE);
+    let fullB64 = null;
+    if (full) {
+      try {
+        const fx = full.getContext('2d', { willReadFrequently: true }), id = fx.getImageData(0, 0, full.width, full.height);
+        enhanceRgba(id.data, full.width, full.height);
+        fx.putImageData(id, 0, 0);
+        fullB64 = encodeStore(full);
+      } catch (e) { console.warn('저장용 보정 건너뜀', e); try { fullB64 = encodeStore(full); } catch (e2) {} }
+    }
+    return { jpeg: ocr.toDataURL('image/jpeg', QUALITY).split(',')[1], full: fullB64, cropped, rotated, width: ocr.width, height: ocr.height };
   }
 
-  const api = { prepare, textAxis, rotateJpeg, thumbJpeg, detectQuad, warp, homography, expandQuad, outSize, MAX_SIDE, QUALITY };
+  const api = { prepare, textAxis, rotateJpeg, thumbJpeg, detectQuad, warp, homography, expandQuad, outSize, enhanceRgba, MAX_SIDE, QUALITY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CardCrop = api;
 })(typeof window !== 'undefined' ? window : globalThis);

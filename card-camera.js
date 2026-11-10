@@ -347,7 +347,7 @@
         }
         if (!out) { out = document.createElement('canvas'); out.width = Math.round(g.w); out.height = Math.round(g.h); out.getContext('2d').drawImage(frame, g.x, g.y, g.w, g.h, 0, 0, out.width, out.height); }
         if (opts.diag) { setStatus(info); await sleep(1500); }   // 관리자: 어떤 방식으로 찍혔는지 확인
-        const blob = await new Promise(ok => out.toBlob(ok, 'image/jpeg', 0.95));
+        const blob = await new Promise(ok => out.toBlob(ok, 'image/jpeg', 0.98));
         const file = new File([blob], 'card-camera.jpg', { type: 'image/jpeg' });
         file._guided = true;   // 테두리 안에서 찍음 → 명함 찾기를 크기와 상관없이 시도
         file._capture = info;
