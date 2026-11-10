@@ -119,6 +119,50 @@
     return { v: best.v, s: best.s, effective, tries };
   }
 
+  // ── 고해상도 사진 촬영(ImageCapture) → 미리보기 화면과 맞추기 ──
+  // 왜: 동영상 장면은 잡음 제거·압축이 강해 글자가 뭉개짐(실측 선명도: 동영상 63 vs 사진에서 자른 명함 403~770)
+  //     사진은 방향(0/90/180/270°)과 시야(사진이 보통 더 넓음)가 미리보기와 다를 수 있어, 작게 줄여 비교해 가장 잘 겹치는 쪽을 고른다
+  const grayOf = (src, sx, sy, sw, sh, W, H) => {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(src, sx, sy, sw, sh, 0, 0, W, H);
+    const d = x.getImageData(0, 0, W, H).data, g = new Float32Array(W * H);
+    for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = d[j] * 0.3 + d[j + 1] * 0.59 + d[j + 2] * 0.11;
+    return g;
+  };
+  const ncc = (a, b) => {   // 정규화 상관계수(1에 가까울수록 같은 장면)
+    let ma = 0, mb = 0; for (let i = 0; i < a.length; i++) { ma += a[i]; mb += b[i]; } ma /= a.length; mb /= b.length;
+    let sab = 0, saa = 0, sbb = 0; for (let i = 0; i < a.length; i++) { const x = a[i] - ma, y = b[i] - mb; sab += x * y; saa += x * x; sbb += y * y; }
+    return saa && sbb ? sab / Math.sqrt(saa * sbb) : 0;
+  };
+  function rotateTo(src, deg) {   // ImageBitmap/캔버스 → 돌린 캔버스
+    const w = src.width, h = src.height, q = deg % 180 !== 0, c = document.createElement('canvas');
+    c.width = q ? h : w; c.height = q ? w : h;
+    const x = c.getContext('2d'); x.translate(c.width / 2, c.height / 2); x.rotate(deg * Math.PI / 180); x.drawImage(src, -w / 2, -h / 2);
+    return c;
+  }
+  // frame: 미리보기 장면(캔버스, 동영상 해상도). photo: 사진(ImageBitmap)
+  // 결과: { img: 돌린 사진, crop: 미리보기와 같은 범위(사진 좌표), score } — 미리보기 좌표 → 사진 좌표 변환에 씀
+  function alignPhoto(frame, photo) {
+    const W = 48, H = Math.max(8, Math.round(48 * frame.height / frame.width));
+    const ref = grayOf(frame, 0, 0, frame.width, frame.height, W, H);
+    let best = { score: -2 };
+    for (const deg of [0, 90, 180, 270]) {
+      const pw = deg % 180 ? photo.height : photo.width, ph = deg % 180 ? photo.width : photo.height;
+      const fa = frame.width / frame.height;
+      // 미리보기 비율로 사진 가운데를 최대한 크게 자른 범위(=object-fit: cover) + 흔들림 보정 등으로 조금 더 확대된 경우(1.1, 1.2배)
+      let cw = pw, ch = pw / fa; if (ch > ph) { ch = ph; cw = ph * fa; }
+      // 비율이 크게 다르면(가로 사진 vs 세로 화면) 이 방향은 건너뜀
+      if ((pw > ph) !== (frame.width > frame.height) && Math.abs(pw / ph - 1) > 0.1) continue;
+      const img = rotateTo(photo, deg);
+      for (const z of [1, 1.1, 1.2]) {
+        const w = cw / z, h = ch / z, x = (pw - w) / 2, y = (ph - h) / 2;
+        const sc = ncc(ref, grayOf(img, x, y, w, h, W, H));
+        if (sc > best.score) best = { deg, img, crop: { x, y, w, h }, score: sc };
+      }
+    }
+    return best;
+  }
+
   // opts.diag: 진단 정보(해상도·초점·카메라 이름) 표시 — 관리자만
   async function open(opts = {}) {
     if (!supported()) throw new Error('이 폰에서는 앱 안 카메라를 쓸 수 없어요');
@@ -274,18 +318,43 @@
       shot.onclick = async () => {
         if (shot.disabled || !video.videoWidth) return;
         shot.disabled = true; shot.style.opacity = '.5';
-        // 촬영 직전: 아직 초점을 맞춘 적이 없으면 테두리 가운데에 맞추고 찍음
-        if (!locked) await doFocus(0.5, 0.44);
-        const { x, y, w, h } = guideRect(MARGIN);
-        const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h);
-        c.getContext('2d').drawImage(video, x, y, w, h, 0, 0, c.width, c.height);
-        const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.95));
+        const usePhoto = typeof root.ImageCapture === 'function';
+        // 사진 촬영을 쓸 수 없을 때만 직접 초점(사진 촬영은 폰이 사진용 초점을 직접 맞춤)
+        if (!usePhoto && !locked) await doFocus(0.5, 0.44);
+        const g = guideRect(MARGIN), vw = video.videoWidth, vh = video.videoHeight;
+        // ① 예비: 지금 미리보기 장면(동영상 해상도)
+        const frame = document.createElement('canvas'); frame.width = vw; frame.height = vh;
+        frame.getContext('2d').drawImage(video, 0, 0, vw, vh);
+        let out = null, info = '동영상 ' + vw + '×' + vh;
+        // ② 고해상도 사진 → 미리보기와 맞춰 테두리 영역만
+        if (usePhoto) {
+          try {
+            setStatus('촬영 중…');
+            const ic = new root.ImageCapture(track);
+            let opt = {}; try { const pc = await ic.getPhotoCapabilities(); if (pc.imageWidth && pc.imageWidth.max) opt = { imageWidth: pc.imageWidth.max }; } catch (e) {}
+            const blob = await ic.takePhoto(opt);
+            const photo = await createImageBitmap(blob);
+            const al = alignPhoto(frame, photo);
+            if (al.score > 0.6) {   // 충분히 같은 장면일 때만(아니면 예비 장면 사용)
+              const kx = al.crop.w / vw, ky = al.crop.h / vh;
+              const px = al.crop.x + g.x * kx, py = al.crop.y + g.y * ky, pw = g.w * kx, ph = g.h * ky;
+              out = document.createElement('canvas'); out.width = Math.round(pw); out.height = Math.round(ph);
+              out.getContext('2d').drawImage(al.img, px, py, pw, ph, 0, 0, out.width, out.height);
+              info = `사진 ${photo.width}×${photo.height} · 회전 ${al.deg}° · 일치 ${al.score.toFixed(2)}`;
+            } else info += ` (사진 불일치 ${al.score.toFixed(2)})`;
+            photo.close && photo.close();
+          } catch (e) { info += ' (사진 실패: ' + (e.name || e.message) + ')'; }
+        }
+        if (!out) { out = document.createElement('canvas'); out.width = Math.round(g.w); out.height = Math.round(g.h); out.getContext('2d').drawImage(frame, g.x, g.y, g.w, g.h, 0, 0, out.width, out.height); }
+        if (opts.diag) { setStatus(info); await sleep(1500); }   // 관리자: 어떤 방식으로 찍혔는지 확인
+        const blob = await new Promise(ok => out.toBlob(ok, 'image/jpeg', 0.95));
         const file = new File([blob], 'card-camera.jpg', { type: 'image/jpeg' });
         file._guided = true;   // 테두리 안에서 찍음 → 명함 찾기를 크기와 상관없이 시도
+        file._capture = info;
         done(file);
       };
     });
   }
 
-  root.CardCamera = { open, supported, _focusSweep: focusSweep, _sharpness: sharpness };   // _로 시작: 시험용
+  root.CardCamera = { open, supported, _focusSweep: focusSweep, _sharpness: sharpness, _alignPhoto: alignPhoto };   // _로 시작: 시험용
 })(window);
