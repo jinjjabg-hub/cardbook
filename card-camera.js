@@ -44,6 +44,47 @@
     return true;
   }
 
+  // ── 직접 초점 맞추기(수동 초점만 되는 폰용) ──
+  // 왜: 탭 초점(single-shot·지점 지정)을 지원하지 않고 manual/continuous만 되는 폰이 있음(실제 폰 진단)
+  //     → 초점 거리를 가까운 곳부터 바꿔 보며 테두리 안 선명도를 재고, 가장 선명한 거리로 고정(폰 카메라의 대비 방식 자동 초점과 같은 원리)
+  const canManual = track => { const c = caps(track); return (c.focusMode || []).includes('manual') && c.focusDistance && c.focusDistance.max > c.focusDistance.min; };
+  // 테두리 영역 선명도: 라플라시안(밝기 변화의 급함) 제곱 평균 — 초점이 맞을수록 글자 경계가 날카로워 값이 커짐
+  function sharpness(video, rect) {
+    const W = 240, H = Math.max(8, Math.round(W * rect.h / rect.w)), c = sharpness.c || (sharpness.c = document.createElement('canvas'));
+    c.width = W; c.height = H;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(video, rect.x, rect.y, rect.w, rect.h, 0, 0, W, H);
+    const d = x.getImageData(0, 0, W, H).data, g = new Float32Array(W * H);
+    for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = d[j] * 0.3 + d[j + 1] * 0.59 + d[j + 2] * 0.11;
+    let sum = 0;
+    for (let y = 1; y < H - 1; y++) for (let k = 1; k < W - 1; k++) { const i = y * W + k, l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - W] - g[i + W]; sum += l * l; }
+    return sum / ((W - 2) * (H - 2));
+  }
+  async function focusSweep(track, video, rect, onStep) {
+    const fd = caps(track).focusDistance, snap = v => { const st = fd.step || 0; const r = st ? Math.round((v - fd.min) / st) * st + fd.min : v; return Math.min(fd.max, Math.max(fd.min, r)); };
+    // 후보 거리: 명함 촬영 거리(약 8~80cm, 단위 m) + 폰이 알려준 전체 범위를 고르게 6칸
+    // (폰에 따라 단위가 다르게 오는 경우가 있어 둘 다 시도 — 정렬해서 가까운 것부터)
+    const even = Array.from({ length: 6 }, (_, i) => fd.min + (fd.max - fd.min) * i / 5);
+    const cand = [...new Set([0.08, 0.1, 0.12, 0.15, 0.18, 0.22, 0.27, 0.35, 0.5, 0.8].filter(v => v >= fd.min && v <= fd.max).concat(even).map(snap))].sort((a, b) => a - b);
+    const tryAt = async v => {
+      v = snap(v);
+      try { await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: v }] }); } catch (e) { return { v, s: -1 }; }
+      await sleep(160);   // 렌즈가 움직이고 새 화면이 들어올 시간
+      return { v, s: sharpness(video, rect) };
+    };
+    let best = { v: cand[0], s: -1 };
+    for (let i = 0; i < cand.length; i++) { const r = await tryAt(cand[i]); if (onStep) onStep(i + 1, cand.length); if (r.s > best.s) best = r; }
+    // 가장 선명했던 곳 양옆을 두 번 더 촘촘히(간격을 반씩 줄여 가며)
+    const bi = cand.indexOf(best.v);
+    let lo = bi > 0 ? cand[bi - 1] : best.v, hi = bi < cand.length - 1 ? cand[bi + 1] : best.v;
+    for (let round = 0; round < 2; round++) {
+      for (const v of [(lo + best.v) / 2, (best.v + hi) / 2]) { if (v === best.v) continue; const r = await tryAt(v); if (r.s > best.s) best = r; }
+      lo = (lo + best.v) / 2; hi = (best.v + hi) / 2;
+    }
+    try { await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: best.v }] }); } catch (e) {}
+    return best;
+  }
+
   async function open() {
     if (!supported()) throw new Error('이 폰에서는 앱 안 카메라를 쓸 수 없어요');
     let stream = await getStream();
@@ -88,18 +129,19 @@
         <button class="cc-close" aria-label="닫기" style="position:absolute;top:max(16px,env(safe-area-inset-top));left:16px;width:44px;height:44px;border-radius:22px;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:22px">✕</button>
         <button class="cc-switch" aria-label="카메라 전환" style="display:none;position:absolute;right:20px;bottom:calc(max(28px,env(safe-area-inset-bottom)) + 13px);height:48px;padding:0 14px;border-radius:24px;border:0;background:rgba(0,0,0,.5);color:#fff;font-size:13px;font-weight:700">🔄 카메라</button>
         <button class="cc-shot" aria-label="촬영" style="position:absolute;left:50%;bottom:max(28px,env(safe-area-inset-bottom));transform:translateX(-50%);width:74px;height:74px;border-radius:37px;border:5px solid rgba(255,255,255,.85);background:#fff;box-shadow:0 0 0 3px rgba(0,0,0,.25)"></button>
+        <div class="cc-status" style="display:none;position:absolute;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);color:#fde047;font-size:13px;font-weight:700;padding:6px 14px;border-radius:14px;white-space:nowrap;pointer-events:none"></div>
         <div class="cc-diag" style="position:absolute;right:12px;top:max(20px,env(safe-area-inset-top));max-width:60%;text-align:right;color:rgba(255,255,255,.6);font-size:10px;line-height:1.4;pointer-events:none"></div>
         <div class="cc-rotate" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.82);color:#fff;align-items:center;justify-content:center;text-align:center;font-size:17px;font-weight:700;line-height:1.7;padding:16px"><div><div style="font-size:40px">📱</div>폰을 <span style="color:#7dd3fc">세로로</span> 들어주세요<div style="font-size:13px;font-weight:400;opacity:.8">세로로 들고 찍어야 명함 방향이 정확해요</div></div></div>`;
       document.body.appendChild(wrap);
       const $ = sel => wrap.querySelector(sel);
       const video = $('video'), guide = $('.cc-guide'), hint = $('.cc-hint'), sub = $('.cc-sub'), shot = $('.cc-shot'),
-        rot = $('.cc-rotate'), ring = $('.cc-ring'), diag = $('.cc-diag'), sw = $('.cc-switch');
+        rot = $('.cc-rotate'), ring = $('.cc-ring'), diag = $('.cc-diag'), sw = $('.cc-switch'), status = $('.cc-status');
       video.srcObject = stream;
 
       // 진단 정보(관리자 시험용): 실제로 받은 해상도·초점 방식·카메라 이름 — 흐릴 때 원인 파악에 씀
       const showDiag = () => {
         const s = track.getSettings ? track.getSettings() : {}, c = caps(track);
-        diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''} · ${(track.label || '').slice(0, 40)}`;
+        diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''}${c.focusDistance ? ' · 거리 ' + c.focusDistance.min + '~' + c.focusDistance.max : ''}${s.focusDistance != null ? '(' + (+s.focusDistance).toFixed(2) + ')' : ''} · ${(track.label || '').slice(0, 40)}`;
       };
       video.addEventListener('loadedmetadata', showDiag);
       showDiag();
@@ -111,18 +153,47 @@
         try {
           const s2 = await getStream(next.deviceId);
           stream.getTracks().forEach(t => t.stop());
-          stream = s2; track = s2.getVideoTracks()[0]; video.srcObject = stream;
+          stream = s2; track = s2.getVideoTracks()[0]; video.srcObject = stream; locked = false;
           await continuousAF(track); showDiag();
           try { localStorage.setItem('cbCamDevice', next.deviceId); } catch (e) {}   // 고른 카메라 기억 — 다음부터 이 카메라로 시작
         } catch (e) { console.warn('카메라 전환 실패', e); }
       };
 
-      // 탭하면 그 지점에 초점
+      // 화면의 테두리 위치 → 영상 좌표(object-fit: cover 역계산)
+      const guideRect = (margin = 0) => {
+        const vw = video.videoWidth, vh = video.videoHeight, ew = video.clientWidth, eh = video.clientHeight;
+        const s = Math.max(ew / vw, eh / vh), ox = (ew - vw * s) / 2, oy = (eh - vh * s) / 2;
+        const g = guide.getBoundingClientRect(), e = video.getBoundingClientRect();
+        let x = (g.left - e.left - ox) / s, y = (g.top - e.top - oy) / s, w = g.width / s, h = g.height / s;
+        x -= w * margin; y -= h * margin; w *= 1 + 2 * margin; h *= 1 + 2 * margin;
+        x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+        return { x, y, w, h };
+      };
+      // 초점 맞추기: ① 지점 지정·한 번 맞추기를 지원하면 그것 ② 수동 초점만 되면 직접 맞추기(거리 바꿔 가며 가장 선명한 곳) ③ 둘 다 안 되면 자동 초점 다시 걸기
+      let locked = false, focusing = false;
+      const setStatus = t => { status.textContent = t; status.style.display = t ? 'block' : 'none'; status.style.top = (guide.getBoundingClientRect().bottom + 40) + 'px'; };
+      const doFocus = async (x, y) => {
+        if (focusing || !video.videoWidth) return;
+        focusing = true;
+        try {
+          if (await focusOnce(track, x, y)) { setStatus('초점 맞추는 중…'); await sleep(800); locked = true; }
+          else if (canManual(track)) {
+            const best = await focusSweep(track, video, guideRect(), (i, n) => setStatus(`초점 맞추는 중… ${i}/${n}`));
+            locked = best.s > 0; showDiag();
+          } else {
+            setStatus('초점 다시 잡는 중…');
+            try { await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }); } catch (e) {}
+            await sleep(150); await continuousAF(track); await sleep(800); locked = true;
+          }
+          setStatus('✓ 초점 맞음'); setTimeout(() => setStatus(''), 900);
+        } finally { focusing = false; }
+      };
+      // 탭하면 초점(노란 원 표시)
       video.addEventListener('click', async ev => {
         const r = video.getBoundingClientRect();
         ring.style.left = ev.clientX + 'px'; ring.style.top = ev.clientY + 'px'; ring.style.display = 'block';
-        await focusOnce(track, (ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
-        setTimeout(() => { ring.style.display = 'none'; continuousAF(track); }, 1200);
+        await doFocus((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
+        ring.style.display = 'none';
       });
 
       // 가로/세로 명함 전환 — 세로 명함은 세로 테두리에 똑바로 세워 찍어야 글자가 바로 선 채로 들어감. 마지막 선택 기억
@@ -154,15 +225,9 @@
       shot.onclick = async () => {
         if (shot.disabled || !video.videoWidth) return;
         shot.disabled = true; shot.style.opacity = '.5';
-        // 촬영 직전 테두리 가운데에 초점 한 번 더 → 초점 잡을 시간(0.7초) 기다린 뒤 찍음
-        if (await focusOnce(track, 0.5, 0.44)) await sleep(700);
-        // 화면의 테두리 위치 → 영상 좌표(object-fit: cover 역계산) → 여백 포함해 잘라냄
-        const vw = video.videoWidth, vh = video.videoHeight, ew = video.clientWidth, eh = video.clientHeight;
-        const s = Math.max(ew / vw, eh / vh), ox = (ew - vw * s) / 2, oy = (eh - vh * s) / 2;
-        const g = guide.getBoundingClientRect(), e = video.getBoundingClientRect();
-        let x = (g.left - e.left - ox) / s, y = (g.top - e.top - oy) / s, w = g.width / s, h = g.height / s;
-        x -= w * MARGIN; y -= h * MARGIN; w *= 1 + 2 * MARGIN; h *= 1 + 2 * MARGIN;
-        x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+        // 촬영 직전: 아직 초점을 맞춘 적이 없으면 테두리 가운데에 맞추고 찍음
+        if (!locked) await doFocus(0.5, 0.44);
+        const { x, y, w, h } = guideRect(MARGIN);
         const c = document.createElement('canvas'); c.width = Math.round(w); c.height = Math.round(h);
         c.getContext('2d').drawImage(video, x, y, w, h, 0, 0, c.width, c.height);
         const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.95));
@@ -173,5 +238,5 @@
     });
   }
 
-  root.CardCamera = { open, supported };
+  root.CardCamera = { open, supported, _focusSweep: focusSweep, _sharpness: sharpness };   // _로 시작: 시험용
 })(window);
