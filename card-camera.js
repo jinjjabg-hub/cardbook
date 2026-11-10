@@ -60,32 +60,67 @@
     for (let y = 1; y < H - 1; y++) for (let k = 1; k < W - 1; k++) { const i = y * W + k, l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - W] - g[i + W]; sum += l * l; }
     return sum / ((W - 2) * (H - 2));
   }
-  async function focusSweep(track, video, rect, onStep) {
+  // 렌즈를 움직인 뒤 '새 화면'이 실제로 들어올 때까지만 기다림(고정 시간 대신) — 빠르고, 덜 움직인 화면으로 재는 실수도 줄임
+  function waitFrames(video, n) {
+    if (!video.requestVideoFrameCallback) return sleep(110);
+    return new Promise(res => {
+      let left = n; const t = setTimeout(res, 300);
+      const step = () => { if (--left <= 0) { clearTimeout(t); res(); } else video.requestVideoFrameCallback(step); };
+      video.requestVideoFrameCallback(step);
+    });
+  }
+  // hint: 지난번에 가장 선명했던 거리(있으면 그 근처만 살펴 빠르게)
+  // 결과: { v: 고른 거리, s: 선명도, effective: 거리에 따라 선명도가 실제로 달라졌는지 }
+  async function focusSweep(track, video, rect, onStep, hint) {
     const fd = caps(track).focusDistance, snap = v => { const st = fd.step || 0; const r = st ? Math.round((v - fd.min) / st) * st + fd.min : v; return Math.min(fd.max, Math.max(fd.min, r)); };
     // 후보 거리: 명함 촬영 거리(약 8~80cm, 단위 m) + 폰이 알려준 전체 범위를 고르게 6칸
     // (폰에 따라 단위가 다르게 오는 경우가 있어 둘 다 시도 — 정렬해서 가까운 것부터)
     const even = Array.from({ length: 6 }, (_, i) => fd.min + (fd.max - fd.min) * i / 5);
     const cand = [...new Set([0.08, 0.1, 0.12, 0.15, 0.18, 0.22, 0.27, 0.35, 0.5, 0.8].filter(v => v >= fd.min && v <= fd.max).concat(even).map(snap))].sort((a, b) => a - b);
+    const seen = new Map();
+    let tries = 0;
     const tryAt = async v => {
       v = snap(v);
+      if (seen.has(v)) return { v, s: seen.get(v) };
       try { await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: v }] }); } catch (e) { return { v, s: -1 }; }
-      await sleep(160);   // 렌즈가 움직이고 새 화면이 들어올 시간
-      return { v, s: sharpness(video, rect) };
+      await waitFrames(video, 2);
+      const s = sharpness(video, rect); seen.set(v, s); tries++;
+      if (onStep) onStep(tries);
+      return { v, s };
     };
     let best = { v: cand[0], s: -1 };
-    for (let i = 0; i < cand.length; i++) { const r = await tryAt(cand[i]); if (onStep) onStep(i + 1, cand.length); if (r.s > best.s) best = r; }
-    // 가장 선명했던 곳 양옆을 두 번 더 촘촘히(간격을 반씩 줄여 가며)
-    const bi = cand.indexOf(best.v);
-    let lo = bi > 0 ? cand[bi - 1] : best.v, hi = bi < cand.length - 1 ? cand[bi + 1] : best.v;
-    for (let round = 0; round < 2; round++) {
-      for (const v of [(lo + best.v) / 2, (best.v + hi) / 2]) { if (v === best.v) continue; const r = await tryAt(v); if (r.s > best.s) best = r; }
-      lo = (lo + best.v) / 2; hi = (best.v + hi) / 2;
+    const take = r => { if (r.s > best.s) best = r; };
+    // 산 오르기: 가까운 쪽부터 재다가 최고점을 지나 두 번 연속 크게(25%↓) 떨어지면 멈춤
+    const climb = async (from, dir) => {
+      let drops = 0;
+      for (let i = from; i >= 0 && i < cand.length; i += dir) {
+        const r = await tryAt(cand[i]); take(r);
+        if (best.s > 0 && r.s < best.s * 0.75) { if (++drops >= 2) break; } else drops = 0;
+      }
+    };
+    if (hint != null && hint >= fd.min && hint <= fd.max) {
+      // 지난번 거리 근처부터: 그 자리와 양옆 → 더 좋아지는 쪽으로 계속
+      let i = 0; for (let k = 1; k < cand.length; k++) if (Math.abs(cand[k] - hint) < Math.abs(cand[i] - hint)) i = k;
+      take(await tryAt(hint));
+      const left = i > 0 ? await tryAt(cand[i - 1]) : { s: -1 }, right = i < cand.length - 1 ? await tryAt(cand[i + 1]) : { s: -1 };
+      take(left); take(right);
+      if (left.s >= best.s && i > 1) await climb(i - 2, -1);
+      else if (right.s >= best.s && i < cand.length - 2) await climb(i + 2, 1);
+    } else {
+      await climb(0, 1);
     }
-    try { await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: best.v }] }); } catch (e) {}
-    return best;
+    // 최고점 양옆을 한 번 더 촘촘히
+    const bi = cand.indexOf(best.v);
+    if (bi >= 0) for (const v of [bi > 0 ? (cand[bi - 1] + best.v) / 2 : null, bi < cand.length - 1 ? (best.v + cand[bi + 1]) / 2 : null]) if (v != null) take(await tryAt(v));
+    // 거리에 따라 선명도가 거의 안 달라졌으면 → 이 카메라는 브라우저의 초점 조절을 실제로 따르지 않음
+    const vals = [...seen.values()].filter(x => x > 0), lo = Math.min(...vals);
+    const effective = vals.length >= 3 && best.s > lo * 1.15;
+    if (effective) { try { await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: best.v }] }); } catch (e) {} }
+    return { v: best.v, s: best.s, effective, tries };
   }
 
-  async function open() {
+  // opts.diag: 진단 정보(해상도·초점·카메라 이름) 표시 — 관리자만
+  async function open(opts = {}) {
     if (!supported()) throw new Error('이 폰에서는 앱 안 카메라를 쓸 수 없어요');
     let stream = await getStream();
     let cams = await backCameras();
@@ -143,6 +178,7 @@
         const s = track.getSettings ? track.getSettings() : {}, c = caps(track);
         diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''}${c.focusDistance ? ' · 거리 ' + c.focusDistance.min + '~' + c.focusDistance.max : ''}${s.focusDistance != null ? '(' + (+s.focusDistance).toFixed(2) + ')' : ''} · ${(track.label || '').slice(0, 40)}`;
       };
+      if (!opts.diag) diag.style.display = 'none';
       video.addEventListener('loadedmetadata', showDiag);
       showDiag();
 
@@ -178,8 +214,21 @@
         try {
           if (await focusOnce(track, x, y)) { setStatus('초점 맞추는 중…'); await sleep(800); locked = true; }
           else if (canManual(track)) {
-            const best = await focusSweep(track, video, guideRect(), (i, n) => setStatus(`초점 맞추는 중… ${i}/${n}`));
-            locked = best.s > 0; showDiag();
+            // 카메라별 기억: 지난번 거리(빠르게 근처만) / 초점 조절이 안 되는 카메라(건너뜀)
+            const key = 'cbFocus:' + (track.getSettings().deviceId || track.label || '');
+            let mem = {}; try { mem = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
+            if (mem.none) { locked = true; return; }
+            setStatus('초점 맞추는 중…');
+            const r = await focusSweep(track, video, guideRect(), () => {}, mem.v);
+            if (r.effective) { try { localStorage.setItem(key, JSON.stringify({ v: r.v })); } catch (e) {} }
+            else {
+              // 거리를 바꿔도 선명도가 그대로 → 정직하게 알리고 자동 초점으로 돌려놓음, 다음부터는 건너뜀
+              try { localStorage.setItem(key, JSON.stringify({ none: 1 })); } catch (e) {}
+              await continuousAF(track);
+              setStatus('이 카메라는 초점 조절이 안 돼요 · 🔄로 바꿔보세요'); locked = true; showDiag();
+              setTimeout(() => setStatus(''), 2500); return;
+            }
+            locked = true; showDiag();
           } else {
             setStatus('초점 다시 잡는 중…');
             try { await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }); } catch (e) {}

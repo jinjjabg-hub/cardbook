@@ -2790,9 +2790,9 @@ window.openScanModal = function() {
   document.getElementById('scanStep4').style.display = 'none';
   document.getElementById('scanStep1').style.display = 'block';
   switchScanTab('scan');
-  // 카메라 촬영은 가이드 틀 붙기 전까진 관리자(테스트용) 계정에서만 노출
+  // 카메라 촬영: 앱 안 촬영 화면(테두리·방향·초점)이 붙어 베타로 모두에게 공개
   const camBtn = document.getElementById('camScanBtn');
-  if(camBtn) camBtn.style.display = isAdmin() ? 'flex' : 'none';
+  if(camBtn) camBtn.style.display = 'flex';
   // 멤버 명부는 등록·관리를 하는 관리자에게만 보인다
   const rosterTab = document.getElementById('tabRoster');
   if(rosterTab) rosterTab.style.display = isAdmin() ? '' : 'none';
@@ -3048,7 +3048,7 @@ window.checkSharedContent = function() {
 window.triggerCamera = async function() {
   if(window.CardCamera && CardCamera.supported()) {
     try {
-      const f = await CardCamera.open();
+      const f = await CardCamera.open({ diag: isAdmin() });   // 진단 정보(해상도·초점·카메라 이름)는 관리자에게만
       if(f) handleOcrFile({ target: { files: [f], value: '' } });
       return;
     } catch(e) { console.warn('앱 카메라를 못 써서 기본 카메라로', e); }
@@ -3295,6 +3295,29 @@ async function ocrImageFile(file) {
 
 }
 
+// 확인이 필요한 칸을 노란색으로: ① AI가 자신 없다고 한 칸(uncertain) ② 형식이 이상한 칸
+// 왜: '확인해 주세요' 문구만으로는 대부분 그냥 넘김 → 어디를 봐야 하는지 짚어 줌. 고치면(입력하면) 표시가 사라짐
+const OCR_FIELD_IDS = { name:'ocrName', nameEn:'ocrNameEn', title:'ocrTitle', company:'ocrCompany', industry:'ocrIndustry', phone:'ocrPhone', email:'ocrEmail', address:'ocrAddress', services:'ocrServices' };
+function ocrFormatIssues(p) {
+  const bad = [];
+  const digits = String(p.phone || '').replace(/\D/g, '');
+  if(p.phone && (digits.length < 9 || digits.length > 11 || digits[0] !== '0')) bad.push('phone');
+  if(p.email && !/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(String(p.email).trim())) bad.push('email');
+  if(p.nameEn && /[가-힣]/.test(p.nameEn)) bad.push('nameEn');          // 영문 이름 칸에 한글
+  if(p.name && /[A-Za-z]/.test(p.name) && /[가-힣]/.test(p.name)) bad.push('name');   // 이름에 한글·영어가 섞임
+  return bad;
+}
+function markOcrCheck(parsed) {
+  const flag = new Set([...(Array.isArray(parsed.uncertain) ? parsed.uncertain : []), ...ocrFormatIssues(parsed)]);
+  for(const [k, id] of Object.entries(OCR_FIELD_IDS)) {
+    const el = document.getElementById(id); if(!el) continue;
+    const on = flag.has(k) && String(el.value || '').trim() !== '';
+    el.style.background = on ? '#fffbeb' : ''; el.style.borderColor = on ? '#f59e0b' : ''; el.style.boxShadow = on ? '0 0 0 2px rgba(245,158,11,.25)' : '';
+    el.title = on ? '확인이 필요한 칸이에요' : '';
+    el.oninput = on ? () => { el.style.background = ''; el.style.borderColor = ''; el.style.boxShadow = ''; el.title = ''; el.oninput = null; } : null;
+  }
+}
+
 window.handleOcrFile = async function(e) {
   const files = [...e.target.files];
   if(files.length === 0) return;
@@ -3323,6 +3346,7 @@ window.handleOcrFile = async function(e) {
     document.getElementById('ocrAddress').value  = parsed.address || '';
     document.getElementById('ocrServices').value = parsed.services || '';
     document.getElementById('ocrChapter').value = guessChapter(parsed.bni);
+    markOcrCheck(parsed);
 
     document.getElementById('scanStep2').style.display = 'none';
     document.getElementById('scanStep3').style.display = 'block';
@@ -3708,7 +3732,7 @@ window.saveContactCard = async function() {
             <span class="bi">🖼️</span>갤러리 선택
           </button>
           <button class="scan-action-btn cam" id="camScanBtn" onclick="triggerCamera()" style="display:none">
-            <span class="bi">📷</span>카메라 촬영 (테스트중)
+            <span class="bi">📷</span>카메라 촬영 (베타)
           </button>
         </div>
         <p style="font-size:12px;color:#64748b;text-align:center;line-height:1.6">
@@ -3726,7 +3750,7 @@ window.saveContactCard = async function() {
       <!-- 단계3: 결과 확인 -->
       <div id="scanStep3" style="display:none">
         <img id="ocrPreview" class="ocr-preview" src="" alt="명함 미리보기"/>
-        <div style="font-size:12px;color:#64748b;margin-bottom:14px">✏️ 인식된 정보를 확인·수정 후 저장하세요</div>
+        <div style="font-size:12.5px;color:#7c4a03;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin-bottom:14px;line-height:1.6">🔍 <b>AI가 읽은 내용이에요.</b> 저장 전에 명함과 한 번 확인해 주세요.<br><span style="font-size:11.5px">특히 <b>한글·영어가 섞인 글자</b>를 봐 주세요. <span style="background:#fde68a;padding:0 4px;border-radius:4px">노란 칸</span>은 AI가 자신 없거나 형식이 이상한 칸이에요.</span></div>
         <div class="ocr-field"><div class="ocr-label">이름</div><input class="ocr-input" id="ocrName" placeholder="이름"/></div>
         <div class="ocr-field"><div class="ocr-label">영문 이름</div><input class="ocr-input" id="ocrNameEn" placeholder="Name in English"/></div>
         <div class="ocr-field"><div class="ocr-label">직함</div><input class="ocr-input" id="ocrTitle" placeholder="직함"/></div>

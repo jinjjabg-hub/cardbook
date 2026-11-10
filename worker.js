@@ -93,6 +93,22 @@ async function callClaude(env, content, maxTokens, models = MODELS, extra = null
   throw new Error(lastErr);
 }
 
+// ── 명함 스캔(/ocr-image) 모델: Sonnet 5.5 먼저 ──
+// 왜: Sonnet 4.6보다 최신이고 장당 더 쌈($2/$10 vs $3/$15). 옮겨 적기라 effort는 low로 생각을 줄여 비용·시간을 아낌
+// 자동 명함 가져오기(OCR_MODELS)는 따로 시험된 흐름이라 그대로 둠
+const SCAN_MODELS = ['claude-sonnet-5-5', 'claude-sonnet-4-6'];
+const scanExtra = model => model === 'claude-sonnet-5-5'
+  ? { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, body: { output_config: { effort: 'low' }, fallbacks: 'default' } }
+  : null;
+// 실제 사용 후기: 숫자는 잘 맞는데 한글·영어가 섞인 글자에서 틀림 → 옮겨 적기 규칙을 분명히 하고, 자신 없는 칸을 알려 달라고 함
+const SCAN_RULES = `규칙:
+- 명함에 실제로 보이는 글자만 그대로 옮겨 적어. 추측·보충·지어내기 금지.
+- 한글과 영어가 섞여 있으면 보이는 그대로 적어. 번역하지 말고, 영어를 한글 발음으로(또는 한글을 로마자로) 바꿔 적지 마.
+- 회사명·직함이 영어로만 적혀 있으면 영어 그대로. 대소문자·띄어쓰기·점(.)·하이픈(-)도 보이는 그대로.
+- nameEn은 명함에 영문 이름이 적혀 있을 때만. 없으면 빈 문자열(한글 이름을 로마자로 만들지 마).
+- 이메일·홈페이지는 한 글자씩 정확히(l/1/I, O/0, rn/m 구분에 주의).
+- uncertain: 흐리거나 가려져 확실하지 않은 칸의 이름 목록(예: ["email","company"]). 다 확실하면 [].`;
+const SCAN_FIELDS = ['name', 'nameEn', 'title', 'company', 'industry', 'phone', 'email', 'address', 'website', 'services', 'bni'];
 const OCR_SCHEMA = `{
   "name": "한글 이름",
   "nameEn": "영문 이름",
@@ -105,7 +121,8 @@ const OCR_SCHEMA = `{
   "website": "홈페이지/URL",
   "services": "취급 서비스·제품·대상고객을 줄바꿈으로 나열",
   "bni": "BNI 챕터명이 보이면 (예: 파이오니어), 없으면 빈 문자열",
-  "fullText": "명함에 보이는 모든 글자를 빠짐없이, 읽히는 순서대로"
+  "fullText": "명함에 보이는 모든 글자를 빠짐없이, 읽히는 순서대로",
+  "uncertain": []
 }`;
 
 // ── Firebase 서비스 계정으로 Firestore 쓰기 (결제 확인 후 장수 충전은 서버만 할 수 있어야 함) ──
@@ -712,17 +729,21 @@ export default {
         if (!image) return json({ error: 'image required' }, 400);
         const uid = await verifyIdToken(idToken);
         const fbToken = await firebaseAccessToken(env);
-        if (hash && env.OCR_CACHE) {
-          const hit = await env.OCR_CACHE.get(hash, 'json');
+        // 캐시 이름에 버전을 붙임: 예전 모델(4.6)로 읽은 결과와 섞이지 않게
+        const cacheKey = hash ? 'scan:v2:' + hash : '';
+        if (cacheKey && env.OCR_CACHE) {
+          const hit = await env.OCR_CACHE.get(cacheKey, 'json');
           if (hit) return json({ ...hit, cached: true });
         }
         const st = await ensureCredits(fbToken, uid);
         if (st.total <= 0) return json({ error: '스캔 장수를 다 썼어요. 충전하면 바로 이어서 스캔할 수 있어요 (비즈홈·디지털 명함·링크 저장은 무제한)', needCharge: true }, 402);
         const result = await callClaude(env, [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: image } },
-          { type: 'text', text: `이 명함(또는 명함 전단) 이미지를 읽고 아래 JSON 스키마로만 답해. 마크다운 없이 JSON만. 없는 항목은 빈 문자열.\n${OCR_SCHEMA}` },
-        ], 2000, OCR_MODELS);
-        if (hash && env.OCR_CACHE) await env.OCR_CACHE.put(hash, JSON.stringify(result), { expirationTtl: 60 * 60 * 24 * 365 });
+          { type: 'text', text: `이 명함(또는 명함 전단) 이미지를 읽고 아래 JSON 스키마로만 답해. 마크다운 없이 JSON만. 없는 항목은 빈 문자열.\n${SCAN_RULES}\n${OCR_SCHEMA}` },
+        ], 2000, SCAN_MODELS, scanExtra);
+        // 자신 없는 칸: 알려진 칸 이름만 남김(앱이 그 칸을 노란색으로 표시)
+        result.uncertain = Array.isArray(result.uncertain) ? [...new Set(result.uncertain.filter(k => SCAN_FIELDS.includes(k)))] : [];
+        if (cacheKey && env.OCR_CACHE) await env.OCR_CACHE.put(cacheKey, JSON.stringify(result), { expirationTtl: 60 * 60 * 24 * 365 });
         const base_ = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
         await commitWrites(fbToken, [
           statePatch(uid, spendOne(st)),
