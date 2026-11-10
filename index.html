@@ -216,6 +216,15 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .home-ac-txt b{display:block;font-size:14px;font-weight:800;}
 .home-ac-txt small{display:block;font-size:11.5px;opacity:.85;margin-top:2px;line-height:1.45;}
 .home-ac-go{font-size:22px;opacity:.8;}
+.home-section{margin:12px 16px 0;background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;}
+.home-sec-title{font-size:13px;font-weight:800;color:#16305e;margin-bottom:6px;}
+.home-item{display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid rgba(37,99,235,0.08);cursor:pointer;}
+.home-item:first-of-type{border-top:none;}
+.home-item-body{flex:1;min-width:0;}
+.home-item-name{font-size:13.5px;font-weight:700;color:#0b1c3d;}
+.home-item-sub{font-size:11.5px;color:#64748b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.home-item-go{color:#94a3b8;font-size:18px;}
+.home-empty{font-size:12px;color:#94a3b8;padding:6px 0;}
 .card-list{flex:1;padding-right:24px;}
 
 .ai-loading{display:flex;align-items:center;gap:8px;padding:10px 16px;font-size:12px;color:var(--gold);}
@@ -787,6 +796,7 @@ window.openAccountModal = function() {
       <button onclick="refreshDicaCards()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">🔄 DiCA 카드 새로고침</button>
       <button id="phoneAskToggle" onclick="togglePhoneAsk()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📱 저장할 때 폰 연락처에도 저장 묻기: <b>${_phoneAskOn() ? '켜짐' : '꺼짐'}</b></button>
       <button onclick="sendAllToPhone()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📇 전화번호 있는 명함 전부 폰 연락처로 보내기</button>
+      <button onclick="exportCardsCsv()" style="width:100%;padding:12px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.15);background:#fff;color:#16305e;font-size:13px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;margin-bottom:12px;">📤 내 명함 전체 엑셀(CSV)로 내보내기</button>
       <div style="text-align:center;margin-bottom:12px;">
         <a href="./terms.html" target="_blank" style="color:#5b7bb0;text-decoration:underline;font-size:11px;">이용약관</a>
         <span style="color:#cbd5e1;margin:0 6px;">·</span>
@@ -824,6 +834,29 @@ window.sendAllToPhone = function() {
   if(!list.length) { showToast('전화번호가 있는 명함이 없어요'); return; }
   if(!confirm(list.length + '명을 폰 연락처로 보낼까요?\n이미 폰에 있는 사람은 연락처 앱에서 중복으로 보일 수 있어요.')) return;
   _sendVcfToPhone(list);
+};
+
+// ===== 엑셀(CSV)로 내보내기 =====
+// 왜: 내 명함 데이터가 카드북 안에만 있으면 불안하다. 엑셀로 열리는 파일로 언제든 백업할 수 있게 한다.
+function _csvCell(v) {
+  let t = String(v == null ? '' : v).replace(/\r?\n/g, ' ');
+  if(/^[=@]/.test(t) || /^[+\-][^0-9\s().-]/.test(t)) t = "'" + t;   // 엑셀 수식으로 실행되는 것 방지
+  return /[",]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+}
+window.exportCardsCsv = function() {
+  if(!allCards.length) { showToast('내보낼 명함이 없어요'); return; }
+  const cols = [['이름','name'],['영문 이름','nameEn'],['회사','company'],['직함','title'],['업종','industry'],['챕터·모임','chapter'],['전화','phone'],['이메일','email'],['주소','address'],['웹 주소','url'],['만난 곳·계기','metPlace'],['메모','memo']];
+  const rows = [cols.map(c => c[0]).concat('저장일').join(',')];
+  allCards.forEach(c => {
+    const t = cbSavedTime(c);
+    rows.push(cols.map(([, k]) => _csvCell(c[k])).concat(_csvCell(t ? new Date(t).toISOString().slice(0, 10) : '')).join(','));
+  });
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = '카드북_명함_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  showToast('📤 명함 ' + allCards.length + '장을 내보냈어요');
 };
 
 // ===== 계정 삭제 확인 =====
@@ -1288,12 +1321,14 @@ function renderCards(cards) {
             <input class="ie-ti" value="${_cbEsc(card.title)}" placeholder="직함" maxlength="60">
             <input class="ie-in" value="${_cbEsc(card.industry)}" placeholder="업종" maxlength="60">
             <input class="ie-ch" list="chapterList" value="${_cbEsc(card.chapter)}" placeholder="챕터·모임" maxlength="60" autocomplete="off">
+            <input class="ie-mt" value="${_cbEsc(card.metPlace)}" placeholder="만난 곳·계기 (예: 11월 BNI 모임)" maxlength="80">
             <div class="row"><button class="ok" onclick="saveInfoEdit('${card.docId}',this)">저장</button><button onclick="toggleInfoEdit(this)">취소</button></div>
           </div>
           ${card.nameEn?`<div class="card-name-en">${card.nameEn}</div>`:''}
           ${card.company?`<div class="card-company">${card.company}</div>`:''}
           ${card.industry?`<div class="card-company" style="opacity:.75">${card.industry}</div>`:''}
           ${card.chapter?`<div class="card-chapter">📍 ${card.chapter}</div>`:''}
+          ${card.metPlace?`<div class="card-chapter">🤝 ${_cbEsc(card.metPlace)}</div>`:''}
           ${bniHtml}
         </div>
         <button class="fav-btn${card.favorite?' on':''}" onclick="toggleFavorite('${card.docId}')" aria-label="${card.favorite?'즐겨찾기 해제':'즐겨찾기 추가'}" aria-pressed="${card.favorite?'true':'false'}">${card.favorite?'★':'☆'}</button>
@@ -1374,7 +1409,7 @@ window.saveInfoEdit = async function(docId, btn) {
   const box = btn.closest('.info-edit');
   const card = allCards.find(c => c.docId === docId);
   if(!card) return;
-  const val = { nameEn:'.ie-en', company:'.ie-co', title:'.ie-ti', industry:'.ie-in', chapter:'.ie-ch' };
+  const val = { nameEn:'.ie-en', company:'.ie-co', title:'.ie-ti', industry:'.ie-in', chapter:'.ie-ch', metPlace:'.ie-mt' };
   const patch = {};
   const edited = new Set(card.editedFields || []);
   for(const [k,sel] of Object.entries(val)) {
@@ -1391,7 +1426,17 @@ window.saveInfoEdit = async function(docId, btn) {
 };
 
 // ===== 메모 저장 =====
+// 최근 사용한 명함(전화·메모·연락처 저장·전달) — 이 기기에만 기억, 홈에서 다시 열기용
+function cbTouch(docId) {
+  try {
+    const k = 'cb_recent_' + (currentUser ? currentUser.uid : '');
+    const list = JSON.parse(_cbGet(k) || '[]').filter(id => id !== docId);
+    list.unshift(docId);
+    _cbSet(k, JSON.stringify(list.slice(0, 10)));
+  } catch(e) {}
+}
 window.saveMemo = async function(docId) {
+  cbTouch(docId);
   const el = document.querySelector(`.memo-input[data-doc="${docId}"]`);
   if(!el) return;
   const memo = el.value.trim();
@@ -1439,6 +1484,7 @@ window.toggleFavorite = async function(docId) {
 
 // ===== 마지막 연락일 =====
 window.updateLastContact = async function(docId) {
+  cbTouch(docId);
   try {
     await db.collection('users').doc(currentUser.uid).collection('cards').doc(docId)
       .update({ lastContact: new Date().toISOString() });
@@ -1686,9 +1732,37 @@ window.shareAutocard = function() {
   return false;
 };
 
+window.openCardFromHome = function(docId) {
+  const c = allCards.find(x => x.docId === docId);
+  if(!c) return;
+  showView('cards');
+  const inp = document.getElementById('searchInput');
+  if(inp) { inp.value = c.name || ''; onSearch(inp.value); }
+  window.scrollTo(0, 0);
+};
+
 function renderHome() {
   const el = document.getElementById('homeView');
   if(!el) return;
+
+  let ids = [];
+  try { ids = JSON.parse(_cbGet('cb_recent_' + (currentUser ? currentUser.uid : '')) || '[]'); } catch(e) {}
+  const recentUsed = ids.map(id => allCards.find(c => c.docId === id)).filter(Boolean).slice(0, 5);
+  const recentAdded = allCards.slice().sort((a, b) => cbSavedTime(b) - cbSavedTime(a)).slice(0, 5);
+  const itemHtml = (c, sub) => `
+    <div class="home-item" onclick="openCardFromHome('${c.docId}')">
+      <div class="home-item-body">
+        <div class="home-item-name">${_cbEsc(c.name) || '이름 없음'}</div>
+        <div class="home-item-sub">${_cbEsc(sub)}</div>
+      </div>
+      <span class="home-item-go">›</span>
+    </div>`;
+  const usedHtml = recentUsed.length
+    ? recentUsed.map(c => itemHtml(c, [c.company, c.title].filter(Boolean).join(' · '))).join('')
+    : `<div class="home-empty">전화·메모·전달을 하면 여기에 모여요.</div>`;
+  const addedHtml = recentAdded.length
+    ? recentAdded.map(c => { const t = cbSavedTime(c); return itemHtml(c, [t ? fmtDate(t) : '', c.metPlace || c.company].filter(Boolean).join(' · ')); }).join('')
+    : `<div class="home-empty">아직 명함이 없어요. 아래 + 로 추가해 보세요.</div>`;
 
   el.innerHTML = `
     <div class="home-hero">
@@ -1716,6 +1790,14 @@ function renderHome() {
       <span class="home-ac-txt"><b>외국인 손님이 많은 매장·병원이라면</b><small>해외 바이어와 계속 소통해야 한다면 · 각자 모국어로 자동번역 채팅 '만두'</small></span>
       <span class="home-ac-go">›</span>
     </a>
+    <div class="home-section">
+      <div class="home-sec-title">🕘 최근 사용한 명함</div>
+      ${usedHtml}
+    </div>
+    <div class="home-section">
+      <div class="home-sec-title">🆕 최근 추가한 명함</div>
+      ${addedHtml}
+    </div>
     <div style="height:90px"></div>
   `;
 }
@@ -1736,12 +1818,12 @@ window.onSearch = function(val) {
 };
 
 function _searchText(c) {
-  return [c.name,c.nameEn,c.company,c.title,c.bni,c.industry,c.services,c.fullText,c.chapter,c.address,c.memo].filter(Boolean).join(' ').toLowerCase();
+  return [c.name,c.nameEn,c.company,c.title,c.bni,c.industry,c.services,c.fullText,c.chapter,c.address,c.memo,c.metPlace].filter(Boolean).join(' ').toLowerCase();
 }
 
 // 검색어가 걸린 문장 조각 (이름·회사 밖에서 찾아 "왜 걸렸는지" 보여줌)
 function _matchSnippet(c, terms) {
-  const src = [c.industry,c.services,c.fullText,c.address,c.memo].filter(Boolean).join(' · ').replace(/\s+/g,' ');
+  const src = [c.industry,c.services,c.fullText,c.address,c.memo,c.metPlace].filter(Boolean).join(' · ').replace(/\s+/g,' ');
   const low = src.toLowerCase();
   const w = terms.find(t => low.includes(t) && !(c.name||'').toLowerCase().includes(t) && !(c.company||'').toLowerCase().includes(t));
   if(!w) return '';
@@ -2184,6 +2266,7 @@ function showInstallGuide() {
 
 
 window.shareCard = async function(url, name, docId) {
+  cbTouch(docId);
   const c = docId ? allCards.find(x => x.docId === docId) : null;
   // 1) DiCA 링크 없음 + 이미지 있음 → 명함 이미지 파일 자체를 공유
   if(!url && c && c.image && navigator.share) {
@@ -2277,6 +2360,7 @@ function _contactSteps(fileName) {
   document.body.appendChild(m);
 }
 window.saveToPhoneContacts = function(docId) {
+  cbTouch(docId);
   const c = allCards.find(x => x.docId === docId);
   if(!c) { showToast('❌ 명함 정보를 찾을 수 없어요'); return; }
   _sendVcfToPhone([c]);
