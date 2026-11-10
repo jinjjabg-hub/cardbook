@@ -33,6 +33,20 @@
       try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
     }
   }
+  // ── 줌으로 촬영 거리 늘리기 ──
+  // 왜: 테두리를 줌 없이 채우려면 폰을 명함 약 11~12cm 앞까지 대야 하는데(가로 시야 약 53°·명함 9cm 기준 계산),
+  //     요즘 폰 메인 카메라는 그 거리에서 초점이 안 맞음(최소 초점 거리 10~25cm) → 탭을 하든 뭘 하든 계속 흐림
+  //     기본 카메라 앱은 이때 접사 렌즈로 자동 전환하지만 브라우저는 못 함 → 줌을 걸어 같은 크기로 보이는 거리를 18cm 이상으로 늘린다
+  const BASE_CM = 11.5;      // 줌 1배에서 테두리를 채우는 거리(추정)
+  async function applyZoom(track) {
+    const c = caps(track), zc = c.zoom;
+    if (!zc || !(zc.max > 1)) return 1;
+    const fdMin = c.focusDistance && c.focusDistance.min > 0.02 && c.focusDistance.min < 0.6 ? c.focusDistance.min : 0;   // 폰이 알려준 최소 초점 거리(m) — 값이 그럴듯할 때만 씀
+    let z = Math.max(1.6, fdMin * 100 * 1.25 / BASE_CM);
+    z = Math.max(zc.min || 1, Math.min(z, 2.5, zc.max));
+    try { await track.applyConstraints({ advanced: [{ zoom: z }] }); } catch (e) { return 1; }
+    return z;
+  }
   // 한 번 초점 맞추기(가능하면 지정한 지점) → 잠시 뒤 연속 자동 초점으로 복귀
   async function focusOnce(track, x, y) {
     const c = caps(track), modes = c.focusMode || [];
@@ -142,7 +156,7 @@
   }
   // frame: 미리보기 장면(캔버스, 동영상 해상도). photo: 사진(ImageBitmap)
   // 결과: { img: 돌린 사진, crop: 미리보기와 같은 범위(사진 좌표), score } — 미리보기 좌표 → 사진 좌표 변환에 씀
-  function alignPhoto(frame, photo) {
+  function alignPhoto(frame, photo, zoom) {
     const W = 48, H = Math.max(8, Math.round(48 * frame.height / frame.width));
     const ref = grayOf(frame, 0, 0, frame.width, frame.height, W, H);
     let best = { score: -2 };
@@ -154,7 +168,8 @@
       // 비율이 크게 다르면(가로 사진 vs 세로 화면) 이 방향은 건너뜀
       if ((pw > ph) !== (frame.width > frame.height) && Math.abs(pw / ph - 1) > 0.1) continue;
       const img = rotateTo(photo, deg);
-      for (const z of [1, 1.1, 1.2]) {
+      // 줌이 미리보기에만 걸리고 사진에는 안 걸리는 폰 대비: 줌 배율만큼 더 확대된 경우도 비교
+      for (const z of (zoom > 1.05 ? [1, 1.1, 1.2, zoom, zoom * 1.1] : [1, 1.1, 1.2])) {
         const w = cw / z, h = ch / z, x = (pw - w) / 2, y = (ph - h) / 2;
         const sc = ncc(ref, grayOf(img, x, y, w, h, W, H));
         if (sc > best.score) best = { deg, img, crop: { x, y, w, h }, score: sc };
@@ -190,6 +205,7 @@
       }
     }
     await continuousAF(track);
+    let zoom = await applyZoom(track);
 
     return new Promise(resolve => {
       const wrap = document.createElement('div');
@@ -200,7 +216,7 @@
         <div class="cc-guide" style="position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);border:2px solid rgba(255,255,255,.9);pointer-events:none"></div>
         <div class="cc-ring" style="display:none;position:absolute;width:64px;height:64px;margin:-32px 0 0 -32px;border:2px solid #fde047;border-radius:50%;pointer-events:none"></div>
         <div class="cc-hint" style="position:absolute;left:0;right:0;text-align:center;color:#fff;font-size:15px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.6);padding:0 16px;pointer-events:none"></div>
-        <div class="cc-sub" style="position:absolute;left:0;right:0;text-align:center;color:rgba(255,255,255,.8);font-size:12px;line-height:1.6;padding:0 16px;pointer-events:none">한 뼘(15~20cm) 떨어져서 · 흐리면 명함을 <b>탭</b>해 초점 맞추기</div>
+        <div class="cc-sub" style="position:absolute;left:0;right:0;text-align:center;color:rgba(255,255,255,.8);font-size:12px;line-height:1.6;padding:0 16px;pointer-events:none"></div>
         <div class="cc-mode" style="position:absolute;left:50%;bottom:calc(max(28px,env(safe-area-inset-bottom)) + 90px);transform:translateX(-50%);display:flex;background:rgba(0,0,0,.5);border-radius:20px;padding:3px">
           <button data-v="0" style="border:0;border-radius:17px;padding:8px 16px;font-size:13px;font-weight:700;white-space:nowrap">가로 명함</button>
           <button data-v="1" style="border:0;border-radius:17px;padding:8px 16px;font-size:13px;font-weight:700;white-space:nowrap">세로 명함</button>
@@ -220,8 +236,13 @@
       // 진단 정보(관리자 시험용): 실제로 받은 해상도·초점 방식·카메라 이름 — 흐릴 때 원인 파악에 씀
       const showDiag = () => {
         const s = track.getSettings ? track.getSettings() : {}, c = caps(track);
-        diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''}${c.focusDistance ? ' · 거리 ' + c.focusDistance.min + '~' + c.focusDistance.max : ''}${s.focusDistance != null ? '(' + (+s.focusDistance).toFixed(2) + ')' : ''} · ${(track.label || '').slice(0, 40)}`;
+        diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''}${c.focusDistance ? ' · 거리 ' + c.focusDistance.min + '~' + c.focusDistance.max : ''}${s.focusDistance != null ? '(' + (+s.focusDistance).toFixed(2) + ')' : ''} · 줌 ${s.zoom != null ? (+s.zoom).toFixed(1) : '없음'}(요청 ${zoom.toFixed(1)}) · 선명도 ${Math.round(lastSharp)}/${Math.round(peak)} · ${(track.label || '').slice(0, 40)}`;
       };
+      // 안내 문구: 줌이 걸리면 화면에 맞추기만 해도 거리가 확보됨. 줌이 안 되는 폰은 직접 떨어져야 함
+      let lastSharp = 0, peak = 0;
+      const SUB_OK = () => zoom > 1.05 ? '테두리에 맞추면 알맞은 거리(약 20cm)예요 · 흐리면 명함을 <b>탭</b>' : '너무 가까우면 초점이 안 맞아요 · <b>한 뼘 반(20cm)</b> 떨어져서 · 흐리면 명함을 <b>탭</b>';
+      const setSub = blurry => { sub.innerHTML = blurry ? '<span style="color:#fde047">흐려요 — 폰을 조금 <b>멀리</b> 떼거나 명함을 <b>탭</b>하세요</span>' : SUB_OK(); guide.style.borderColor = blurry ? '#fde047' : 'rgba(255,255,255,.9)'; };
+      setSub();
       if (!opts.diag) diag.style.display = 'none';
       video.addEventListener('loadedmetadata', showDiag);
       showDiag();
@@ -234,7 +255,7 @@
           const s2 = await getStream(next.deviceId);
           stream.getTracks().forEach(t => t.stop());
           stream = s2; track = s2.getVideoTracks()[0]; video.srcObject = stream; locked = false;
-          await continuousAF(track); showDiag();
+          await continuousAF(track); zoom = await applyZoom(track); peak = 0; setSub(); showDiag();
           try { localStorage.setItem('cbCamDevice', next.deviceId); } catch (e) {}   // 고른 카메라 기억 — 다음부터 이 카메라로 시작
         } catch (e) { console.warn('카메라 전환 실패', e); }
       };
@@ -250,34 +271,54 @@
         return { x, y, w, h };
       };
       // 초점 맞추기: ① 지점 지정·한 번 맞추기를 지원하면 그것 ② 수동 초점만 되면 직접 맞추기(거리 바꿔 가며 가장 선명한 곳) ③ 둘 다 안 되면 자동 초점 다시 걸기
-      let locked = false, focusing = false;
+      let locked = false, focusing = false, shooting = false, relT = 0;
+      const noManual = new Set();   // 이번 촬영 화면에서 직접 초점이 안 통한 카메라(영구 기억하지 않음 — 너무 가까워서 실패한 것일 수 있음)
+      // 탭으로 고정한 초점은 5초 뒤 연속 자동 초점으로 되돌림(기본 카메라 앱과 같음)
+      // 왜: 고정된 채로 폰을 움직이면 계속 흐린데 다시 맞춰지지 않아 '초점이 안 변하는' 것처럼 보였음
+      const holdFocus = () => { clearTimeout(relT); relT = setTimeout(async () => { if (shooting || focusing) return; await continuousAF(track); locked = false; }, 5000); };
+      // 초점이 자리 잡을 때까지 기다림: 테두리 안 선명도가 더 안 변하면(연속 2번 12% 이내) 끝. 브라우저는 '초점 맞음' 신호를 못 받으므로 화면으로 판단
+      const settle = async (maxMs = 1200) => {
+        const t0 = performance.now(); let prev = -1, stable = 0;
+        while (performance.now() - t0 < maxMs) {
+          await waitFrames(video, 3);
+          const v = sharpness(video, guideRect());
+          if (prev > 0 && Math.abs(v - prev) <= prev * 0.12) { if (++stable >= 2) break; } else stable = 0;
+          prev = v;
+        }
+      };
       const setStatus = t => { status.textContent = t; status.style.display = t ? 'block' : 'none'; status.style.top = (guide.getBoundingClientRect().bottom + 40) + 'px'; };
       const doFocus = async (x, y) => {
         if (focusing || !video.videoWidth) return;
         focusing = true;
         try {
-          if (await focusOnce(track, x, y)) { setStatus('초점 맞추는 중…'); await sleep(800); locked = true; }
+          if (await focusOnce(track, x, y)) { setStatus('초점 맞추는 중…'); await settle(1500); locked = true; }
           else if (canManual(track)) {
             // 카메라별 기억: 지난번 거리(빠르게 근처만) / 초점 조절이 안 되는 카메라(건너뜀)
-            const key = 'cbFocus:' + (track.getSettings().deviceId || track.label || '');
+            const dev = track.getSettings().deviceId || track.label || '', key = 'cbFocus2:' + dev;   // cbFocus2: 예전 기억(줌 없던 때의 거리·'안 됨' 표시)은 버림
             let mem = {}; try { mem = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
-            if (mem.none) { locked = true; return; }
+            if (noManual.has(dev)) {   // 직접 초점이 안 통하는 카메라 → 자동 초점을 다시 걸어 줌
+              setStatus('초점 다시 잡는 중…');
+              try { await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }); } catch (e) {}
+              await sleep(150); await continuousAF(track); await settle(1500);
+              setStatus(''); return;
+            }
             setStatus('초점 맞추는 중…');
             const r = await focusSweep(track, video, guideRect(), () => {}, mem.v);
             if (r.effective) { try { localStorage.setItem(key, JSON.stringify({ v: r.v })); } catch (e) {} }
             else {
-              // 거리를 바꿔도 선명도가 그대로 → 정직하게 알리고 자동 초점으로 돌려놓음, 다음부터는 건너뜀
-              try { localStorage.setItem(key, JSON.stringify({ none: 1 })); } catch (e) {}
-              await continuousAF(track);
-              setStatus('이 카메라는 초점 조절이 안 돼요 · 🔄로 바꿔보세요'); locked = true; showDiag();
+              // 거리를 바꿔도 선명도가 그대로 → 자동 초점으로 돌려놓고, 이번 화면에서는 직접 초점을 건너뜀
+              noManual.add(dev);
+              await continuousAF(track); await settle(1500);
+              setStatus('초점이 안 잡혀요 · 폰을 조금 멀리 떼 보세요'); showDiag();
               setTimeout(() => setStatus(''), 2500); return;
             }
             locked = true; showDiag();
           } else {
             setStatus('초점 다시 잡는 중…');
             try { await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] }); } catch (e) {}
-            await sleep(150); await continuousAF(track); await sleep(800); locked = true;
+            await sleep(150); await continuousAF(track); await settle(1500);
           }
+          if (locked) holdFocus();
           setStatus('✓ 초점 맞음'); setTimeout(() => setStatus(''), 900);
         } finally { focusing = false; }
       };
@@ -308,8 +349,18 @@
       };
       layout();
       window.addEventListener('resize', layout);
+      // 실시간 선명도: 방금 전 가장 선명했던 때의 절반 아래로 떨어지면 '흐려요'(테두리 노란색) — 초점이 변하는 것이 눈에 보이게
+      // 한계: 처음부터 계속 흐린 경우(너무 가까움)는 비교할 기준이 없어 못 잡음 → 그건 줌으로 거리를 벌려 해결
+      const meter = setInterval(() => {
+        if (focusing || shooting || !video.videoWidth) return;
+        lastSharp = sharpness(video, guideRect());
+        peak = Math.max(peak * 0.97, lastSharp);
+        setSub(peak > 0 && lastSharp < peak * 0.5);
+        if (opts.diag) showDiag();
+      }, 300);
       const done = file => {
         window.removeEventListener('resize', layout);
+        clearInterval(meter); clearTimeout(relT);
         stream.getTracks().forEach(t => t.stop());
         wrap.remove();
         resolve(file);
@@ -317,10 +368,12 @@
       $('.cc-close').onclick = () => done(null);
       shot.onclick = async () => {
         if (shot.disabled || !video.videoWidth) return;
-        shot.disabled = true; shot.style.opacity = '.5';
+        shot.disabled = true; shot.style.opacity = '.5'; shooting = true;
         const usePhoto = typeof root.ImageCapture === 'function';
-        // 사진 촬영을 쓸 수 없을 때만 직접 초점(사진 촬영은 폰이 사진용 초점을 직접 맞춤)
         if (!usePhoto && !locked) await doFocus(0.5, 0.44);
+        // 초점이 움직이는 중에 찍히지 않게, 자리 잡을 때까지 잠깐 기다림(0.3~1.2초)
+        // 왜: 브라우저의 사진 촬영은 기본 카메라 앱과 달리 '초점 맞춘 뒤 찍기'를 해 주지 않고 렌즈가 지금 있는 자리에서 그대로 찍음
+        setStatus('초점 확인 중…'); await settle(); setStatus('');
         const g = guideRect(MARGIN), vw = video.videoWidth, vh = video.videoHeight;
         // ① 예비: 지금 미리보기 장면(동영상 해상도)
         const frame = document.createElement('canvas'); frame.width = vw; frame.height = vh;
@@ -334,13 +387,13 @@
             let opt = {}; try { const pc = await ic.getPhotoCapabilities(); if (pc.imageWidth && pc.imageWidth.max) opt = { imageWidth: pc.imageWidth.max }; } catch (e) {}
             const blob = await ic.takePhoto(opt);
             const photo = await createImageBitmap(blob);
-            const al = alignPhoto(frame, photo);
+            const al = alignPhoto(frame, photo, zoom);
             if (al.score > 0.6) {   // 충분히 같은 장면일 때만(아니면 예비 장면 사용)
               const kx = al.crop.w / vw, ky = al.crop.h / vh;
               const px = al.crop.x + g.x * kx, py = al.crop.y + g.y * ky, pw = g.w * kx, ph = g.h * ky;
               out = document.createElement('canvas'); out.width = Math.round(pw); out.height = Math.round(ph);
               out.getContext('2d').drawImage(al.img, px, py, pw, ph, 0, 0, out.width, out.height);
-              info = `사진 ${photo.width}×${photo.height} · 회전 ${al.deg}° · 일치 ${al.score.toFixed(2)}`;
+              info = `사진 ${photo.width}×${photo.height} → 명함 ${out.width}×${out.height} · 줌 ${zoom.toFixed(1)} · 회전 ${al.deg}° · 일치 ${al.score.toFixed(2)}`;
             } else info += ` (사진 불일치 ${al.score.toFixed(2)})`;
             photo.close && photo.close();
           } catch (e) { info += ' (사진 실패: ' + (e.name || e.message) + ')'; }
