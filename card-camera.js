@@ -119,7 +119,8 @@
     return { v: best.v, s: best.s, effective, tries };
   }
 
-  async function open() {
+  // opts.diag: 진단 정보(해상도·초점·카메라 이름) 표시 — 관리자만
+  async function open(opts = {}) {
     if (!supported()) throw new Error('이 폰에서는 앱 안 카메라를 쓸 수 없어요');
     let stream = await getStream();
     let cams = await backCameras();
@@ -177,6 +178,7 @@
         const s = track.getSettings ? track.getSettings() : {}, c = caps(track);
         diag.textContent = `${s.width || video.videoWidth}×${s.height || video.videoHeight} · 초점 ${(c.focusMode || ['정보없음']).join('/')}${s.focusMode ? '(' + s.focusMode + ')' : ''}${c.focusDistance ? ' · 거리 ' + c.focusDistance.min + '~' + c.focusDistance.max : ''}${s.focusDistance != null ? '(' + (+s.focusDistance).toFixed(2) + ')' : ''} · ${(track.label || '').slice(0, 40)}`;
       };
+      if (!opts.diag) diag.style.display = 'none';
       video.addEventListener('loadedmetadata', showDiag);
       showDiag();
 
