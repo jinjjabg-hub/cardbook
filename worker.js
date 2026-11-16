@@ -707,6 +707,74 @@ async function bniCheck(env, phone) {
   return json({ isBni: false });
 }
 
+
+// ── 디지털 명함 공유 주소 /c/{명함 id} — 카톡·문자 미리보기에 그 사람 이름·사진(OG 이미지)이 뜨게 ──
+// 명함 페이지(GitHub Pages)는 주소가 하나라 미리보기가 모두 같다 → 여기서 명함별 og 태그만 넣어 주고 바로 명함으로 보낸다.
+const AC_CARD_PAGE = 'https://jinjjabg-hub.github.io/autocard/c/';
+const AC_OG_DEFAULT = 'https://jinjjabg-hub.github.io/autocard/assets/og-card.jpg';
+const acHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function autocardDoc(env, cardId) {
+  const token = await firebaseAccessToken(env);
+  const res = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents/autocards/${cardId}`, { headers: { Authorization: 'Bearer ' + token } });
+  return res.ok ? ((await res.json()).fields || {}) : null;
+}
+async function autocardShare(env, url) {
+  const cardId = url.pathname.slice(3).replace(/\/$/, '');
+  if (!/^[A-Za-z0-9_-]{6,40}$/.test(cardId)) return Response.redirect('https://jinjjabg-hub.github.io/autocard/', 302);
+  const want = String(url.searchParams.get('lang') || '');
+  const dest = AC_CARD_PAGE + '?id=' + cardId + (/^[a-z]{2,3}$/.test(want) ? '&lang=' + want : '');
+  let f = null; try { f = await autocardDoc(env, cardId); } catch (e) {}
+  if (!f || f.status?.stringValue !== 'published') return Response.redirect(dest, 302);   // 비공개·없는 명함 정보는 밖으로 내보내지 않음
+  const langs = (f.langs?.arrayValue?.values || []).map(v => v.stringValue);
+  const lang = langs.includes(want) ? want : langs.includes('ko') ? 'ko' : langs[0];
+  const pick = k => { const m = f[k]?.mapValue?.fields || {}; return m[lang]?.stringValue || m[langs[0]]?.stringValue || ''; };
+  const name = pick('name'), role = [pick('title'), pick('company')].filter(Boolean).join(' · ');
+  const slogan = f.copy?.mapValue?.fields?.[lang]?.mapValue?.fields?.slogan?.stringValue || '';
+  const ok = u => typeof u === 'string' && u.startsWith('https://firebasestorage.googleapis.com/');
+  const og = f.og?.stringValue, profile = f.images?.mapValue?.fields?.profile?.stringValue;
+  const image = ok(og) ? og : ok(profile) ? profile : AC_OG_DEFAULT;
+  const title = [name, role].filter(Boolean).join(' | ') || '디지털 명함';
+  const desc = slogan || (lang === 'ko' ? '눌러서 명함 보기 · 연락처·카드북에 저장' : 'Tap to open the card and save the contact');
+  const html = `<!DOCTYPE html><html lang="${acHtml(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${acHtml(title)}</title><meta name="description" content="${acHtml(desc)}">
+<meta property="og:type" content="website"><meta property="og:title" content="${acHtml(title)}"><meta property="og:description" content="${acHtml(desc)}">
+<meta property="og:image" content="${acHtml(image)}">${ok(og) ? '<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">' : ''}
+<meta name="twitter:card" content="summary_large_image"><link rel="canonical" href="${acHtml(dest)}">
+<meta http-equiv="refresh" content="0;url=${acHtml(dest)}"><script>location.replace(${JSON.stringify(dest)})</script></head>
+<body><a href="${acHtml(dest)}">${acHtml(title)}</a></body></html>`;
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } });
+}
+
+// ── 내 연락처 남기기: 명함을 받은 사람이 이름·전화를 남기면 명함 주인만 볼 수 있게 autocards/{id}/leads 에 저장 ──
+// 왜: 종이 명함은 서로 주고받는데 디지털 명함은 한쪽만 준다 → 주인이 "누가 받았는지" 알아야 후속 연락(리퍼럴)이 된다.
+// 쓰기는 이 Worker만(규칙에서 클라이언트 쓰기 금지). 도배 방지: IP당 하루 10건, 같은 명함에는 3건.
+const LEAD_DAILY_PER_IP = 10, LEAD_DAILY_PER_CARD = 3;
+async function autocardLead(env, request, body) {
+  const cardId = String(body.cardId || '');
+  if (!/^[A-Za-z0-9_-]{6,40}$/.test(cardId)) return json({ error: 'bad card' }, 400);
+  const clean = (v, n) => String(v || '').replace(/[\u0000-\u001f<>]/g, ' ').trim().slice(0, n);
+  const name = clean(body.name, 30), phone = clean(body.phone, 20).replace(/[^0-9+\-\s]/g, ''), company = clean(body.company, 40), note = clean(body.note, 100);
+  const digits = phone.replace(/\D/g, '');
+  if (!name || digits.length < 8 || digits.length > 15) return json({ error: 'bad input' }, 400);
+  if (body.agree !== true) return json({ error: 'consent required' }, 400);
+  if (env.OCR_CACHE) {
+    const ip = request.headers.get('CF-Connecting-IP') || 'noip', day = new Date().toISOString().slice(0, 10);
+    const k1 = `ac-lead:ip:${ip}:${day}`, k2 = `ac-lead:card:${cardId}:${ip}:${day}`;
+    const [a, b] = await Promise.all([env.OCR_CACHE.get(k1), env.OCR_CACHE.get(k2)]);
+    if (Number(a) >= LEAD_DAILY_PER_IP || Number(b) >= LEAD_DAILY_PER_CARD) return json({ error: 'daily limit', limited: true }, 429);
+    await Promise.all([env.OCR_CACHE.put(k1, String((Number(a) || 0) + 1), { expirationTtl: 60 * 60 * 26 }), env.OCR_CACHE.put(k2, String((Number(b) || 0) + 1), { expirationTtl: 60 * 60 * 26 })]);
+  }
+  const f = await autocardDoc(env, cardId);
+  if (!f || f.status?.stringValue !== 'published') return json({ error: 'not found' }, 404);
+  if (f.leadsOff?.booleanValue === true) return json({ error: 'closed' }, 403);
+  const token = await firebaseAccessToken(env);
+  const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+  const id = [...crypto.getRandomValues(new Uint8Array(15))].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 20);
+  const str = v => ({ stringValue: v });
+  await commitWrites(token, [{ update: { name: `${base}/autocards/${cardId}/leads/${id}`, fields: { name: str(name), phone: str(phone), company: str(company), note: str(note), lang: str(clean(body.lang, 5)), at: { integerValue: String(Date.now()) } } }, currentDocument: { exists: false } }]);
+  return json({ ok: true });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -719,6 +787,8 @@ export default {
       const r = await fetch(src);
       return new Response(r.body, { status: r.status, headers: { 'Content-Type': r.headers.get('Content-Type') || 'image/jpeg', 'Cache-Control': 'public, max-age=86400', ...CORS } });
     }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/c/')) return await autocardShare(env, url);
 
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
 
@@ -852,6 +922,7 @@ export default {
       if (url.pathname === '/profile/scan') return await profileScan(env, await request.json());
       if (url.pathname === '/orient') return await orientCheck(env, await request.json());
       if (url.pathname === '/autocard/ui') return await autocardUi(env, request, await request.json());
+      if (url.pathname === '/autocard/lead') return await autocardLead(env, request, await request.json());
       if (url.pathname === '/autocard/pay/confirm') return await autocardPay(env, await request.json());
 
       // ── 결제 확인(포트원 V2): 브라우저 값은 믿지 않고 포트원에 결제 건을 직접 조회 → 결제완료·금액·계정 일치 시에만 장수 충전 ──

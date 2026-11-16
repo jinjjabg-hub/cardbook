@@ -98,6 +98,12 @@ service cloud.firestore {
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(acLocked())
             && acUpgradeOk(request.resource.data));
       allow delete: if acAdmin() || (acOwner() && resource.data.status != 'published');
+
+      // 받은 연락처(명함을 본 사람이 남긴 이름·전화) — 쓰기는 Worker(서비스 계정)만, 읽기·지우기는 명함 주인과 관리자만
+      match /leads/{leadId} {
+        allow read, delete: if acAdmin() || (acSignedIn() && get(/databases/$(database)/documents/autocards/$(cardId)).data.ownerUid == request.auth.uid);
+        allow create, update: if false;
+      }
     }
 
     // 자동 명함 결제 기록 — Worker(서비스 계정)만 쓰고 읽음
