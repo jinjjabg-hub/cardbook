@@ -566,6 +566,7 @@ async function _saveCard(uid, cardData) {
     _showSaveSuccess(cardData);
     // 명함 페이지가 "저장 성공"만 셀 수 있도록 알린다 (누른 횟수가 아니라 실제 저장 수)
     try { window.dispatchEvent(new CustomEvent('cardbook:saved', { detail: { name: data.name, url: data.url } })); } catch(e) {}
+    _cbStat('save', data.url);   // 내 명함 통계: 저장한 사람 수(주인 본인·같은 사람 재저장은 서버가 제외)
     return true;
   } catch(err) {
     console.error('_saveCard 실패:', err);
@@ -659,3 +660,33 @@ function savePhone(cardData) {
   const vcf = `BEGIN:VCARD\nVERSION:3.0\nFN:${cardData.name||''}\nORG:${cardData.company||''}\nTITLE:${cardData.title||''}\nTEL;TYPE=CELL:${cardData.phone||''}\nEMAIL:${cardData.email||''}\nURL:${cardData.url||window.location.href}\nNOTE:${cardData.bni||''}\nEND:VCARD`;
   cbSaveContact(vcf);
 }
+
+
+// ===== 내 명함 통계 (열람 수·저장한 사람 수) =====
+// 왜: 명함 주인이 카드북 홈에서 "내 명함이 몇 번 열리고 몇 명이 저장했는지" 볼 수 있게 숫자만 보낸다.
+// 보내는 것은 이 페이지 주소뿐(방문자 정보 없음). 같은 브라우저는 하루에 한 번만 열람으로 센다.
+// 실패해도 명함 페이지 동작에는 영향이 없어야 하므로 오류는 모두 조용히 무시한다.
+const _CB_STAT_URL = 'https://cardbook-ai.jinjjabg.workers.dev/card/stat';
+const _CB_STAT_HOSTS = ['jinjjabg-hub.github.io', 'bizhome.bizmy.net'];
+async function _cbStat(type, url) {
+  try {
+    url = url || window.location.href;
+    if(_CB_STAT_HOSTS.indexOf(new URL(url).hostname) < 0) return;
+    const body = { type: type, url: url };
+    if(type === 'save') {
+      if(!_cbAuth || !_cbAuth.currentUser) return;
+      body.idToken = await _cbAuth.currentUser.getIdToken();
+    }
+    fetch(_CB_STAT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(function(){});
+  } catch(e) {}
+}
+(function _cbStatView() {
+  try {
+    if(_CB_STAT_HOSTS.indexOf(window.location.hostname) < 0) return;
+    const key = '_cb_view_' + window.location.pathname + window.location.search;
+    const day = new Date().toISOString().slice(0, 10);
+    if(_cbStoreGet(key) === day) return;
+    _cbStoreSet(key, day);
+    _cbStat('view');
+  } catch(e) {}
+})();

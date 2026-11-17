@@ -112,6 +112,42 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com' && request.auth.token.email_verified == true;
     }
 
+    // 모임 공유 명함첩 — 모임장이 만들고, 초대 링크를 받은 사람이 "본인 명함"을 직접 올린다.
+    //  groups/{gid}                : 모임 이름·모임장. 초대 링크(gid)를 아는 로그인 사용자는 이름을 볼 수 있다(목록 조회는 불가).
+    //  groups/{gid}/members/{uid}  : 멤버가 올린 본인 명함. 같은 모임 멤버와 모임장만 읽는다.
+    // 왜: BNI 명부처럼 관리자가 대신 넣어 주는 방식은 모임이 늘면 감당이 안 된다 → 멤버가 스스로 올리고, 나가면 명부에서 빠진다.
+    match /groups/{gid} {
+      function gSigned() { return request.auth != null; }
+      function gOwner() { return gSigned() && get(/databases/$(database)/documents/groups/$(gid)).data.ownerUid == request.auth.uid; }
+      function gMember() { return gSigned() && exists(/databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid)); }
+      function gDocOk(d) { return d.keys().hasOnly(['name', 'ownerUid', 'ownerName', 'createdAt'])
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 40 && d.ownerUid == request.auth.uid; }
+      allow get: if gSigned();
+      allow list: if false;
+      allow create: if gSigned() && gDocOk(request.resource.data);
+      allow update: if gSigned() && resource.data.ownerUid == request.auth.uid && gDocOk(request.resource.data);
+      allow delete: if gSigned() && resource.data.ownerUid == request.auth.uid;
+
+      match /members/{uid} {
+        function mDocOk(d) { return d.keys().hasOnly(['uid', 'name', 'company', 'title', 'phone', 'email', 'industry', 'url', 'joinedAt'])
+          && d.uid == uid && d.name is string && d.name.size() >= 1 && d.name.size() <= 40
+          && d.get('company', '').size() <= 60 && d.get('title', '').size() <= 60 && d.get('phone', '').size() <= 30
+          && d.get('email', '').size() <= 100 && d.get('industry', '').size() <= 60 && d.get('url', '').size() <= 300; }
+        allow read: if gMember() || gOwner();
+        allow create, update: if gSigned() && request.auth.uid == uid && mDocOk(request.resource.data)
+          && exists(/databases/$(database)/documents/groups/$(gid));
+        allow delete: if gSigned() && (request.auth.uid == uid || gOwner());
+      }
+    }
+
+    // 내 명함 통계(열람 수·저장한 사람 수) — Worker만 쓰고, 명함 주인만 읽는다.
+    match /cardStats/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    // 누가 누구 명함을 저장했는지(통계용 중복 방지 기록) — Worker만 쓴다.
+    match /cardSaves/{key} { allow read, write: if false; }
+
     // 예전 코드가 쓰다 만 최상위 컬렉션 — 지금은 아무도 안 쓰지만 혹시 남아있는 호출을 막아둔다.
     match /cards/{cardId} { allow read, write: if false; }
 
