@@ -272,7 +272,10 @@ async function manduLookup(emails) {
   for (let i = 0; i < emails.length; i += 30) {   // Firestore in 조건은 한 번에 30개까지
     const res = await fetch(`https://firestore.googleapis.com/v1/projects/${MANDU_PROJECT}/databases/(default)/documents:runQuery`, {
       method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'users' }], where: { fieldFilter: { field: { fieldPath: 'emailLower' }, op: 'IN', value: { arrayValue: { values: emails.slice(i, i + 30).map(e => ({ stringValue: e })) } } } }, limit: 100 } }),
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'users' }], where: { compositeFilter: { op: 'AND', filters: [   // 만두 규칙상 cardbookConsent==true 조건이 있어야 조회가 허용된다
+        { fieldFilter: { field: { fieldPath: 'cardbookConsent' }, op: 'EQUAL', value: { booleanValue: true } } },
+        { fieldFilter: { field: { fieldPath: 'emailLower' }, op: 'IN', value: { arrayValue: { values: emails.slice(i, i + 30).map(e => ({ stringValue: e })) } } } },
+      ] } }, limit: 100 } }),
     });
     if (!res.ok) throw new Error('만두 조회 실패');
     for (const row of await res.json()) {
