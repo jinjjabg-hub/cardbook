@@ -205,18 +205,26 @@
   // 왜: 폰을 어떻게 들었는지·브라우저가 사진 방향 정보를 어떻게 처리하는지에 따라 명함이 옆으로 누운 채 갈 수 있음
   //     → 글자 줄 사이 빈 줄(가로로 텅 빈 행)이 많으면 가로 줄, 빈 열이 많으면 세로 줄. 세로형 명함도 글자 기준이라 안전
   function textAxis(rgba, w, h) {
-    const g = toGray(rgba, w, h), th = otsu(g);
-    let dark = 0; for (let i = 0; i < g.length; i++) if (g[i] <= th) dark++;
-    const inkDark = dark < g.length / 2;   // 적은 쪽이 글자(흰 바탕 검은 글자 / 어두운 바탕 밝은 글자 모두)
+    // 글자 찾기: 사진 전체 기준값(오츠) 대신 '주변 평균보다 확실히 어둡거나(밝거나) 한 점'
+    // 왜: 실제 사진은 한쪽에 그림자가 져서 전체 기준값을 쓰면 그림자 쪽 전체가 글자로 잡힘 → 세로 줄로 착각해 가로 명함을 90° 돌렸음
+    const g = toGray(rgba, w, h), n = w * h;
+    const I = new Float64Array((w + 1) * (h + 1));   // 누적합(주변 평균을 빠르게)
+    for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += g[y * w + x]; I[(y + 1) * (w + 1) + x + 1] = I[y * (w + 1) + x + 1] + row; } }
+    const r = Math.max(4, Math.round(Math.min(w, h) / 10)), C = 18;
+    const mean = (x, y) => { const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), x1 = Math.min(w, x + r + 1), y1 = Math.min(h, y + r + 1);
+      return (I[y1 * (w + 1) + x1] - I[y0 * (w + 1) + x1] - I[y1 * (w + 1) + x0] + I[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0)); };
+    const sorted = Array.from(g).sort((a, b) => a - b), inkDark = sorted[n >> 1] >= 110;   // 바탕이 밝으면 어두운 글자, 어두우면 밝은 글자
     const mx = Math.round(w * 0.06), my = Math.round(h * 0.06), W = w - 2 * mx, H = h - 2 * my;
     if (W < 20 || H < 20) return null;
     const rows = new Int32Array(H), cols = new Int32Array(W);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const v = g[(y + my) * w + x + mx];
-      if (inkDark ? v <= th : v > th) { rows[y]++; cols[x]++; }
+      const v = g[(y + my) * w + x + mx], m = mean(x + mx, y + my);
+      if (inkDark ? v < m - C : v > m + C) { rows[y]++; cols[x]++; }
     }
     const emptyFrac = (a, len) => {   // 글자가 있는 범위 안에서 '거의 빈' 줄의 비율
-      const lim = Math.max(1, len * 0.01);
+      // 모든 줄에 똑같이 걸치는 부분(명함 가장자리 색 띠·세로 선)은 바닥값으로 보고 빼고 셈
+      const base = Array.from(a).sort((p, q) => p - q)[Math.floor(a.length * 0.1)];
+      const lim = Math.max(1, len * 0.01) + base;
       let a0 = 0, a1 = a.length - 1;
       while (a0 < a1 && a[a0] <= lim) a0++;
       while (a1 > a0 && a[a1] <= lim) a1--;
@@ -340,7 +348,8 @@
           const ts = Math.min(1, 400 / Math.max(ow, oh)), tw = Math.round(ow * ts), th2 = Math.round(oh * ts);
           const tc = canvas(tw, th2), tx = tc.getContext('2d', { willReadFrequently: true });
           tx.drawImage(oc, 0, 0, tw, th2);
-          if (textAxis(tx.getImageData(0, 0, tw, th2).data, tw, th2) === 'v') { out = rotateCanvas(oc, -90); full = out; rotated = true; }
+          // 사용자가 가로 박스로 맞췄으면(ow > oh) 세로로 돌리지 않음 — 사람이 정한 방향이 가장 정확함
+          if (!(opts.quad && ow > oh) && textAxis(tx.getImageData(0, 0, tw, th2).data, tw, th2) === 'v') { out = rotateCanvas(oc, -90); full = out; rotated = true; }
         }
       } catch (e) { console.warn('명함 자르기 건너뜀', e); }
     }
