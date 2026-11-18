@@ -13,6 +13,7 @@
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js" crossorigin="anonymous"></script>
 <script src="card-crop.js"></script>
 <script src="card-camera.js"></script>
+<script src="card-render.js"></script>
 <!-- 추가 기능(소개하기·다시 연락·태그·모임·문장 검색·행사 모드·통계). 본문 스크립트보다 먼저 불러와야 로그인 직후 화면을 그릴 때 함수가 준비돼 있다 -->
 <script src="features.js?v=1"></script>
 <style>
@@ -2285,21 +2286,27 @@ function showInstallGuide() {
 window.shareCard = async function(url, name, docId) {
   cbTouch(docId);
   const c = docId ? allCards.find(x => x.docId === docId) : null;
-  // 1) DiCA 링크 없음 + 이미지 있음 → 명함 이미지 파일 자체를 공유
-  if(!url && c && c.image && navigator.share) {
-    try {
-      const res = await fetch(CB_WORKER_URL + '/img?u=' + encodeURIComponent(c.image));
-      const blob = await res.blob();
-      if(!res.ok || !blob.type.startsWith('image/')) throw new Error('이미지 응답 아님: ' + res.status + ' ' + blob.type);
-      const file = new File([blob], 'namecard-' + Date.now() + '.jpg', { type: 'image/jpeg' });
-      if(navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name + ' 명함' }); return; }
-      throw new Error('이 브라우저는 파일 공유 미지원');
-    } catch(e) { if(e.name !== 'AbortError') showToast('이미지 공유 실패 → 텍스트로 보냅니다 (' + e.message + ')'); }
-  }
-  // 2) 링크도 이미지도 없음 → 텍스트로
+  // 1) DiCA 링크 없음 → 저장된 정보로 새로 그린 깨끗한 명함 + (있으면) 원본 명함 사진을 함께 공유
+  // 왜: 폰 브라우저 카메라 사진은 화질 한계가 있어 그대로 보내면 흐린 명함이 전달됨 → 받는 사람은 항상 선명한 명함을 받고,
+  //     옮겨 적은 내용이 맞는지는 함께 붙은 원본 사진으로 확인할 수 있게
   if(!url && c) {
     const txt = [c.name + (c.title ? ' ' + c.title : ''), c.company, c.phone, c.email, c.address].filter(Boolean).join('\n');
-    if(navigator.share) { navigator.share({ title: name + ' 명함', text: txt }); } else { navigator.clipboard.writeText(txt).then(() => showToast('명함 정보가 복사됐어요')); }
+    if(navigator.share && window.CardRender) {
+      try {
+        const files = [new File([await CardRender.toBlob(c)], (c.name || 'namecard') + '-명함.png', { type: 'image/png' })];
+        if(c.image) {
+          try {
+            const res = await fetch(CB_WORKER_URL + '/img?u=' + encodeURIComponent(c.image));
+            const blob = await res.blob();
+            if(res.ok && blob.type.startsWith('image/')) files.push(new File([blob], (c.name || 'namecard') + '-명함사진.jpg', { type: 'image/jpeg' }));
+          } catch(e) { console.warn('원본 사진 첨부 건너뜀', e); }
+        }
+        const pick = [files, files.slice(0, 1)].find(f => navigator.canShare && navigator.canShare({ files: f }));
+        if(pick) { await navigator.share({ files: pick, title: name + ' 명함', text: txt }); return; }
+      } catch(e) { if(e.name === 'AbortError') return; showToast('이미지 공유 실패 → 텍스트로 보냅니다 (' + e.message + ')'); }
+    }
+    // 2) 파일 공유가 안 되는 브라우저 → 텍스트로
+    if(navigator.share) { navigator.share({ title: name + ' 명함', text: txt }).catch(() => {}); } else { navigator.clipboard.writeText(txt).then(() => showToast('명함 정보가 복사됐어요')); }
     return;
   }
   const shareUrl = url || window.location.href;
@@ -3150,9 +3157,13 @@ window.checkSharedContent = function() {
   window.history.replaceState({}, '', window.location.pathname);
 };
 
-// 카메라 촬영: 앱 안 카메라(세로로 들고 가로 명함 테두리에 맞춰 찍기)를 먼저 쓰고,
-// 지원 안 하거나 권한을 거부하면 폰 기본 카메라로 — 기본 카메라는 화면 위에 테두리를 못 띄워 처음 한 번 안내를 보여줌
-window.triggerCamera = async function() {
+// 카메라 촬영: 폰 기본 카메라를 먼저 쓴다
+// 왜: 브라우저 안 카메라는 접사 렌즈 자동 전환·여러 장 합성·초점 맞춘 뒤 찍기를 못 하고, 아이폰은 고해상도 사진 촬영(ImageCapture)이 없어
+//     영상 한 장면(가로 약 1000px)을 잘라 씀 → 글자는 읽혀도 저장·전달되는 명함 이미지가 흐렸음
+//     기본 카메라 사진의 방향 문제는 명함 찾기·펴기와 세로 글자 자동 회전(card-crop.js)이 맞춰 줌
+//     앱 안 카메라(테두리 안내)는 '테두리 안내 카메라' 링크와 연속 촬영에서 계속 쓸 수 있음
+window.triggerCamera = function() { openNativeCamera(); };
+window.triggerAppCamera = async function() {
   if(window.CardCamera && CardCamera.supported()) {
     try {
       const f = await CardCamera.open({ diag: isAdmin() });   // 진단 정보(해상도·초점·카메라 이름)는 관리자에게만
@@ -3164,16 +3175,16 @@ window.triggerCamera = async function() {
 };
 function openNativeCamera() {
   const open = () => document.getElementById('ocrCamInput').click();
-  let seen = false; try { seen = localStorage.getItem('cbCamTip') === '1'; } catch(e) {}
+  let seen = false; try { seen = localStorage.getItem('cbCamTip2') === '1'; } catch(e) {}
   if(seen) return open();
   const d = document.createElement('div');
   d.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;padding:16px';
   d.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:340px;width:100%;padding:22px 20px;font-family:'Noto Sans KR',sans-serif;color:#16305e">
-    <div style="font-size:17px;font-weight:800;margin-bottom:12px">📷 이렇게 찍으면 잘 읽혀요</div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:12px">📷 이렇게 찍으면 선명해요</div>
     <div style="font-size:14px;line-height:1.8">✅ 명함과 <b>다른 색 바닥</b> 위에 놓기<br><span style="color:#64748b;font-size:12px">(흰 명함은 어두운 책상, 어두운 명함은 흰 종이 위)</span><br>
-    ✅ <b>폰은 세로로</b> 들고, 명함은 <b>가로로</b><br>✅ 명함이 <b>화면에 꽉 차게</b>, 흔들리지 않게</div>
+    ✅ 폰을 <b>한 뼘(15~20cm)</b> 떨어뜨리기 — 너무 붙이면 흐려요<br>✅ 화면에서 <b>명함을 톡 눌러</b> 초점 맞추고 찍기<br><span style="color:#64748b;font-size:12px">명함 부분만 자동으로 잘라 반듯하게 펴 드려요</span></div>
     <button style="margin-top:16px;width:100%;padding:13px;border:0;border-radius:12px;background:#1e3a8a;color:#fff;font-size:15px;font-weight:700">확인하고 촬영하기</button></div>`;
-  d.querySelector('button').onclick = () => { try { localStorage.setItem('cbCamTip', '1'); } catch(e) {} d.remove(); open(); };
+  d.querySelector('button').onclick = () => { try { localStorage.setItem('cbCamTip2', '1'); } catch(e) {} d.remove(); open(); };
   document.body.appendChild(d);
 };
 
@@ -3845,9 +3856,10 @@ window.saveContactCard = async function() {
             <span class="bi">🖼️</span>갤러리 선택
           </button>
           <button class="scan-action-btn cam" id="camScanBtn" onclick="triggerCamera()" style="display:none">
-            <span class="bi">📷</span>카메라 촬영 (베타)
+            <span class="bi">📷</span>카메라 촬영
           </button>
         </div>
+        <div style="text-align:center;margin:-4px 0 10px"><button onclick="triggerAppCamera()" style="background:none;border:0;color:#2563eb;font-size:12px;text-decoration:underline;cursor:pointer;font-family:'Noto Sans KR',sans-serif">테두리 안내 카메라로 찍기(베타)</button></div>
         <p style="font-size:12px;color:#64748b;text-align:center;line-height:1.6">
           카톡·이메일로 받은 <b>명함 이미지 파일</b>이 인식이 가장 잘 돼요<br>여러 장을 한 번에 선택할 수 있어요
         </p>
