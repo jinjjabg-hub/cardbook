@@ -293,6 +293,16 @@
     return c.toDataURL('image/jpeg', 0.8).split(',')[1];
   }
 
+  // 이미지(원본 크기)에서 명함 네 모서리 찾기 → 원본 좌표 [왼위, 오위, 오아래, 왼아래] 또는 null (촬영 후 영역 맞추기 화면의 첫 위치)
+  function findQuad(img) {
+    const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+    const ds = Math.min(1, DETECT_SIDE / Math.max(W, H)), dw = Math.max(1, Math.round(W * ds)), dh = Math.max(1, Math.round(H * ds));
+    const c = document.createElement('canvas'); c.width = dw; c.height = dh;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, dw, dh);
+    const q = detectQuad(x.getImageData(0, 0, dw, dh).data, dw, dh);
+    return q ? q.map(p => ({ x: (p.x + 0.5) * W / dw, y: (p.y + 0.5) * H / dh })) : null;
+  }
+
   // ── 브라우저용: 파일 → { jpeg(base64), cropped } ──
   // opts.force: 크기 조건 무시(시험용)
   async function prepare(file, opts = {}) {
@@ -311,12 +321,15 @@
         const ds = Math.min(1, DETECT_SIDE / Math.max(W, Hh)), dw = Math.max(1, Math.round(W * ds)), dh = Math.max(1, Math.round(Hh * ds));
         const dc = canvas(dw, dh), dx = dc.getContext('2d', { willReadFrequently: true });
         dx.drawImage(img, 0, 0, dw, dh);
-        const q = detectQuad(dx.getImageData(0, 0, dw, dh).data, dw, dh);
-        if (q) {
+        // opts.quad: 사용자가 맞춘 명함 영역(원본 좌표) — 있으면 자동 찾기 대신 그대로 씀(넓히지 않음: 배경이 섞이지 않게)
+        const q = opts.quad ? null : detectQuad(dx.getImageData(0, 0, dw, dh).data, dw, dh);
+        if (q || opts.quad) {
           const ss = Math.min(1, SRC_SIDE / Math.max(W, Hh)), sw = Math.round(W * ss), sh = Math.round(Hh * ss);
           const sc = canvas(sw, sh), sx = sc.getContext('2d', { willReadFrequently: true });
           sx.drawImage(img, 0, 0, sw, sh);
-          const k = sw / dw, quad = expandQuad(q.map(p => ({ x: (p.x + 0.5) * k, y: (p.y + 0.5) * k })), 0.03, sw, sh);
+          const k = sw / dw, quad = opts.quad
+            ? opts.quad.map(p => ({ x: Math.min(sw - 1, Math.max(0, p.x * ss)), y: Math.min(sh - 1, Math.max(0, p.y * ss)) }))
+            : expandQuad(q.map(p => ({ x: (p.x + 0.5) * k, y: (p.y + 0.5) * k })), 0.03, sw, sh);
           const { ow, oh } = outSize(quad, STORE_SIDE);   // 저장용 크기로 한 번만 펴고, 인식용은 거기서 줄임
           const oc = canvas(ow, oh), ox = oc.getContext('2d');
           const id = ox.createImageData(ow, oh);
@@ -352,7 +365,7 @@
     return { jpeg: ocr.toDataURL('image/jpeg', QUALITY).split(',')[1], full: fullB64, cropped, rotated, width: ocr.width, height: ocr.height };
   }
 
-  const api = { prepare, textAxis, rotateJpeg, thumbJpeg, detectQuad, warp, homography, expandQuad, outSize, enhanceRgba, MAX_SIDE, QUALITY };
+  const api = { prepare, findQuad, textAxis, rotateJpeg, thumbJpeg, detectQuad, warp, homography, expandQuad, outSize, enhanceRgba, MAX_SIDE, QUALITY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.CardCrop = api;
 })(typeof window !== 'undefined' ? window : globalThis);
