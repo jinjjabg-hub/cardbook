@@ -1,6 +1,8 @@
 // 촬영 직후 '명함 영역 맞추기' 화면: 사진 위에 명함 박스를 띄우고, 네 모서리를 끌어 명함에 맞춘 뒤 그 부분만 저장
 // 왜: 폰 기본 카메라는 화질이 좋지만 앱이 카메라 화면 위에 테두리를 그릴 수 없음 → 찍은 뒤에 박스를 보여 준다
 //     자동 찾기가 실패하면 사진 전체(책상·배경 포함)가 저장되던 문제 → 자동으로 찾은 영역을 보여 주고, 틀리면 사람이 바로잡는다
+// 박스는 직사각형: 모서리를 끌면 크기만 바뀜(맞은편 모서리 고정), 안쪽을 끌면 이동 — 네 점을 따로 맞추는 것보다 쉽고 빠름
+//   단, 자동으로 찾은 명함(기울어진 모양 그대로 반듯하게 펴짐)은 손대지 않으면 그대로 쓰고, 손대는 순간 직사각형으로 바뀜
 // 사용: const r = await CardAdjust.open(file);
 //       r = { quad: [왼위, 오위, 오아래, 왼아래](원본 좌표) } | { retake: true } | null(취소)
 (function (root) {
@@ -16,6 +18,8 @@
     return [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
   }
   const sideLen = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const bbox = q => { const xs = q.map(p => p.x), ys = q.map(p => p.y); return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }; };
+  const rectQuad = r => [{ x: r.x0, y: r.y0 }, { x: r.x1, y: r.y0 }, { x: r.x1, y: r.y1 }, { x: r.x0, y: r.y1 }];
   const isVertical = q => (sideLen(q[0], q[3]) + sideLen(q[1], q[2])) > (sideLen(q[0], q[1]) + sideLen(q[3], q[2]));
   // 점이 사각형 안에 있는지(볼록 사각형 가정 — 오목해도 대략 맞음)
   function inside(q, p) {
@@ -60,7 +64,7 @@
       const $ = s => wrap.querySelector(s);
       const stage = $('.ca-stage'), cv = $('canvas'), ctx = cv.getContext('2d');
       const modeBtns = [...wrap.querySelectorAll('.ca-mode')];
-      $('.ca-sub').textContent = auto ? '명함을 자동으로 찾았어요 · 어긋나면 모서리(●)를 끌어 맞춰 주세요' : '모서리(●)를 끌어 명함 네 귀퉁이에 맞춰 주세요';
+      $('.ca-sub').textContent = auto ? '명함을 자동으로 찾았어요 · 모서리(●)로 크기 조정' : '모서리(●)로 크기, 안쪽을 끌어 위치 조정';
 
       // 화면 좌표 ↔ 원본 좌표
       let k = 1, ox = 0, oy = 0, dpr = 1, cw = 0, ch = 0;
@@ -105,7 +109,7 @@
       }
       const setMode = v => modeBtns.forEach(b => { const on = (b.dataset.v === '1') === v; b.style.background = on ? '#fff' : 'transparent'; b.style.color = on ? '#16305e' : '#fff'; });
       setMode(isVertical(quad));
-      modeBtns.forEach(b => b.onclick = () => { const v = b.dataset.v === '1'; quad = defaultQuad(W, H, v); setMode(v); $('.ca-sub').textContent = '명함을 박스 안에 맞추고, 모서리(●)를 끌어 귀퉁이에 맞춰 주세요'; draw(); });
+      modeBtns.forEach(b => b.onclick = () => { const v = b.dataset.v === '1'; quad = defaultQuad(W, H, v); setMode(v); $('.ca-sub').textContent = '모서리(●)로 크기, 안쪽을 끌어 위치 조정'; draw(); });
 
       const pos = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
       cv.addEventListener('pointerdown', e => {
@@ -113,6 +117,7 @@
         let best = -1, bd = HIT;
         s.forEach((q, i) => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = i; } });
         if (best < 0 && !inside(s, p)) return;
+        if (best >= 0) quad = rectQuad(bbox(quad));   // 크기 조정은 직사각형으로(자동으로 찾은 기울어진 모양도 이때 직사각형으로)
         drag = { i: best, start: p, orig: quad.map(q => ({ ...q })) };
         try { cv.setPointerCapture(e.pointerId); } catch (err) {}
         e.preventDefault(); draw();
@@ -120,7 +125,15 @@
       cv.addEventListener('pointermove', e => {
         if (!drag) return;
         const p = pos(e);
-        if (drag.i >= 0) quad[drag.i] = toImg(p.x, p.y);
+        if (drag.i >= 0) {   // 맞은편 모서리는 고정, 끄는 모서리만 따라옴 → 직사각형 유지(너무 작아지지 않게 최소 크기)
+          const f = drag.orig[(drag.i + 2) % 4], m = toImg(p.x, p.y), min = Math.min(W, H) * 0.08;
+          const x = f.x < drag.orig[drag.i].x ? Math.max(f.x + min, m.x) : Math.min(f.x - min, m.x);
+          const y = f.y < drag.orig[drag.i].y ? Math.max(f.y + min, m.y) : Math.min(f.y - min, m.y);
+          const q = []; q[drag.i] = { x, y }; q[(drag.i + 2) % 4] = { ...f };
+          q[(drag.i + 1) % 4] = drag.i % 2 === 0 ? { x: f.x, y } : { x, y: f.y };
+          q[(drag.i + 3) % 4] = drag.i % 2 === 0 ? { x, y: f.y } : { x: f.x, y };
+          quad = q;
+        }
         else {   // 박스 전체 옮기기(사진 밖으로 나가지 않게)
           let dx = (p.x - drag.start.x) / k, dy = (p.y - drag.start.y) / k;
           const xs = drag.orig.map(q => q.x), ys = drag.orig.map(q => q.y);
