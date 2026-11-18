@@ -2598,6 +2598,7 @@ function showDicaRegisterModal() {
       <div style="display:flex;gap:6px;margin-bottom:10px;">${chips}</div>` : ''}
       <div id="pfUrlBox" style="display:none;">
         <input id="dicaUrlInput" type="url" placeholder="명함 주소(https://...)를 붙여넣어 주세요" style="${inp}">
+        <a id="pfSaveBtnLink" href="#" onclick="event.preventDefault();cbOpenSaveButton(true)" style="display:none;font-size:12px;color:#2563eb;text-decoration:underline;margin:-2px 0 10px 2px;">직접 만든 비즈홈인가요? 방문자용 '카드북에 저장' 버튼 달기 →</a>
       </div>
       <div id="pfFreeBox" style="display:none;margin:4px 0 10px;padding:14px;border-radius:14px;background:#fff;border:1.5px dashed rgba(37,99,235,0.35);text-align:center;">
         <div style="font-size:14px;font-weight:800;color:#16305e;margin-bottom:4px;">무료 명함 만들래요?</div>
@@ -2617,6 +2618,7 @@ window.cbPickHas = function(k) {
   document.querySelectorAll('.cb-has').forEach(b => { const on = b.dataset.k === k; b.style.background = on ? '#16305e' : '#fff'; b.style.color = on ? '#fff' : '#16305e'; });
   document.getElementById('pfUrlBox').style.display = k === 'bizhome' || k === 'autocard' ? 'block' : 'none';
   document.getElementById('pfFreeBox').style.display = k === 'none' ? 'block' : 'none';
+  const sbl = document.getElementById('pfSaveBtnLink'); if(sbl) sbl.style.display = k === 'bizhome' ? 'inline-block' : 'none';
   const i = document.getElementById('dicaUrlInput');
   if(i) i.placeholder = k === 'autocard' ? 'https://jinjjabg-hub.github.io/autocard/c/?id=...' : '비즈홈 주소(https://...)';
 };
@@ -2790,9 +2792,27 @@ window.goMyCard = function() {
       <button class="mycard-sheet-btn" style="background:#16305e;color:#fff;" onclick="window.open(myDicaUrl,'_blank');document.getElementById('myCardSheet').remove();">🔗 내 명함 열기</button>
       <button class="mycard-sheet-btn" style="background:#e8eefb;color:#16305e;" onclick="document.getElementById('myCardSheet').remove();showDicaRegisterModal()">✏️ 본인 정보${!myCards.bizhome || !myCards.autocard ? ` · ${!myCards.bizhome ? '비즈홈' : '오토명함'} 등록` : ' 수정'}</button>
       <button class="mycard-sheet-btn" style="background:linear-gradient(135deg,#2563eb,#60a5fa);color:#16305e;" onclick="openNotifyUpdate()">📣 업데이트 알리기</button>
+      <button class="mycard-sheet-btn" style="background:#fff;color:#16305e;border:1.5px solid rgba(37,99,235,0.25);" onclick="document.getElementById('myCardSheet').remove();cbOpenSaveButton()">🔘 내 비즈홈에 저장 버튼 달기</button>
       <button class="mycard-sheet-btn" style="background:#f0f0f0;color:#666;margin-bottom:0;" onclick="document.getElementById('myCardSheet').remove()">취소</button>
     </div>`;
   document.body.appendChild(sheet);
+};
+
+// ===== 저장 버튼 만들기 페이지 열기 =====
+// 왜: 직접 만든 비즈홈은 카드북 저장 스크립트를 못 쓴다(로그인 도메인 제한). 저장 링크 버튼을 달게 해서
+// 방문자가 스스로 카드북에 저장하게 한다. 이미 아는 내 정보는 미리 채워서 넘긴다.
+window.cbOpenSaveButton = function(fromRegister) {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const p = cbProfile || {};
+  const q = new URLSearchParams();
+  const put = (k, x) => { if(x) q.set(k, x); };
+  if(fromRegister) {
+    put('name', v('pfName')); put('company', v('pfCompany')); put('title', v('pfTitle')); put('phone', v('pfPhone')); put('url', v('dicaUrlInput'));
+  } else {
+    put('name', p.name && !/@/.test(p.name) && p.name !== '사용자' ? p.name : ''); put('company', p.company); put('title', p.title); put('phone', p.phone);
+    put('url', myCards.bizhome || '');
+  }
+  window.open('./save-button.html' + (q.toString() ? '?' + q.toString() : ''), '_blank');
 };
 
 // ===== 명함 업데이트 알림 (1단계: 앱 내 뱃지) =====

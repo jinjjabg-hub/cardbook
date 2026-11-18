@@ -216,6 +216,13 @@
     }
   } catch (e) {}
 
+  // 카드북 [내 명함]에서 열면 내 정보가 주소에 담겨 온다 → 그 값으로 채운다
+  try {
+    var qs = new URLSearchParams(location.search), got = false;
+    FIELDS.forEach(function (k) { var x = qs.get(k); if (x) { $('f-' + k).value = x; got = true; } });
+    if (got) history.replaceState(null, '', location.pathname);
+  } catch (e) {}
+
   FIELDS.concat('label').forEach(function (k) {
     $('f-' + k).addEventListener('input', render);
     $('f-' + k).addEventListener('blur', function () { touched[k] = true; render(); });
