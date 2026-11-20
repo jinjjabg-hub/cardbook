@@ -2,17 +2,29 @@
 import { generateKeyPairSync } from 'crypto';
 import assert from 'assert';
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const env = { ANTHROPIC_API_KEY: 'k', TOSS_SECRET_KEY: 'test_sk', FIREBASE_SA: JSON.stringify({ client_email: 'sa@x', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }) };
+const env = { ANTHROPIC_API_KEY: 'k', PORTONE_API_SECRET: 'test_secret', FIREBASE_SA: JSON.stringify({ client_email: 'sa@x', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }) };
 const docs = {};   // 'users/u1' → { fields(plain), updateTime }
 let tick = 0;
 const plain = v => v.integerValue !== undefined ? Number(v.integerValue) : v.booleanValue ?? v.stringValue ?? v.timestampValue;
 const encF = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'boolean' ? { booleanValue: v } : { stringValue: v }]));
+// 포트원에 있는 결제 건(paymentId → 조회 결과). 브라우저가 아니라 이 값만 믿고 충전한다
+const paid = (total, cd, extra = {}) => ({ status: 'PAID', amount: { total }, currency: 'KRW', customData: JSON.stringify(cd), method: { type: 'PaymentMethodCard' }, pgTxId: 'tx', ...extra });
+const portone = {
+  cb_p30_aaaaaaaaaaaa: paid(1000, { uid: 'u1', packId: 'p30' }),
+  cb_p100_bbbbbbbbbbbb: paid(1000, { uid: 'u1', packId: 'p100' }),                          // 3,000원 상품을 1,000원에 결제
+  cb_p30_cccccccccccc: paid(1000, { uid: 'u7', packId: 'p30' }),                            // 다른 계정의 결제
+  cb_p30_dddddddddddd: { ...paid(1000, { uid: 'u1', packId: 'p30' }), status: 'READY' },    // 결제 미완료
+  cb_p30_eeeeeeeeeeee: paid(1000, { uid: 'u1', packId: 'p30' }, { channel: { type: 'TEST' } }),   // 테스트 채널(관리자만)
+};
 const monthKey = () => { const d = new Date(); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'); };
 globalThis.fetch = async (url, opt = {}) => {
   const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s });
   if (url.includes('oauth2')) return J({ access_token: 't', expires_in: 3600 });
   if (url.includes('identitytoolkit')) return J({ users: [{ localId: JSON.parse(opt.body).idToken }] });
-  if (url.includes('tosspayments')) return J({ method: '카드' });
+  if (url.includes('api.portone.io/payments/')) {   // 포트원 결제 단건 조회
+    const p = portone[decodeURIComponent(url.split('/payments/')[1].split('?')[0])];
+    return p ? J(p) : J({ type: 'PAYMENT_NOT_FOUND', message: '없음' }, 404);
+  }
   if (url.includes('anthropic.com')) return J({ content: [{ type: 'text', text: '{"name":"홍길동"}' }] });
   if (url.includes(':commit')) {
     const { writes } = JSON.parse(opt.body);
@@ -41,14 +53,20 @@ const lots = uid => JSON.parse(docs['users/' + uid].fields.paidLots || '[]');
 let r = await call('/credits/status', { idToken: 'u1' });
 assert.equal(r.credits, 55); assert.equal(r.paid, 0); assert.equal(docs['users/u1'].fields.credits, 50);
 // 2) 30장 1,000원 결제 → 유료 묶음(30일 뒤 소멸)
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p30_1', amount: 1000 });
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_aaaaaaaaaaaa' });
 assert.equal(r.ok, true); const days = (r.expiresAt - Date.now()) / 86400000; assert.ok(days > 29.9 && days <= 30);
 r = await call('/credits/status', { idToken: 'u1' }); assert.equal(r.credits, 85); assert.equal(r.paid, 30);
-// 3) 1,000장 팩은 없어짐, 금액 조작 거부
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p1000_2', amount: 20000 }); assert.equal(r.error, '없는 상품');
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p100_3', amount: 1000 }); assert.equal(r.error, '금액 불일치');
-// 4) 같은 주문 새로고침 → 중복, 묶음 늘지 않음
-r = await call('/pay/confirm', { paymentKey: 'k', orderId: 'cb_u1_p30_1', amount: 1000 }); assert.equal(r.duplicate, true); assert.equal(lots('u1').length, 1);
+// 3) 1,000장 팩은 없어짐, 이상한 주문번호·금액 조작·다른 계정·미완료·테스트 결제 거부 — 어느 것도 장수가 늘지 않음
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p1000_zzzzzzzzzzzz' }); assert.equal(r.error, '없는 상품');
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_u1_p30_1' }); assert.equal(r.error, '주문번호 형식 오류');
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p100_bbbbbbbbbbbb' }); assert.equal(r.error, '금액 불일치');
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_cccccccccccc' }); assert.equal(r.error, '다른 계정의 결제예요');
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_dddddddddddd' }); assert.equal(r.code, 'NOT_PAID');
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_eeeeeeeeeeee' }); assert.equal(r.code, 'TEST_PAYMENT');
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_ffffffffffff' }); assert.equal(r.error, '결제 내역을 찾을 수 없어요');
+assert.equal(lots('u1').length, 1);
+// 4) 같은 결제 새로고침 → 중복, 묶음 늘지 않음
+r = await call('/pay/confirm', { idToken: 'u1', paymentId: 'cb_p30_aaaaaaaaaaaa' }); assert.equal(r.duplicate, true); assert.equal(lots('u1').length, 1);
 // 5) 30일 지난 유료분은 소멸(이월 불가), 무상분은 그대로
 docs['users/u1'].fields.paidLots = JSON.stringify([{ n: 30, exp: Date.now() - 1000, o: 'old' }, { n: 100, exp: Date.now() + 5 * 86400000, o: 'new' }]);
 r = await call('/credits/status', { idToken: 'u1' }); assert.equal(r.paid, 100); assert.equal(r.credits, 155); assert.equal(lots('u1').length, 1);
