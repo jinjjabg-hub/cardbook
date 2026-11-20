@@ -896,31 +896,77 @@ window.confirmDeleteAccount = function() {
 };
 
 // ===== 계정 삭제 실행 =====
+// 순서가 중요하다: ① 본인 재확인(최근 로그인) → ② 데이터 삭제 → ③ 마지막에 Auth 계정 삭제.
+// 예전에는 데이터를 먼저 지우고 Auth 삭제가 requires-recent-login으로 실패해 "데이터만 사라지고 계정은 남는" 일이 있었다.
+// 각 단계는 여러 번 해도 안전하므로, 중간에 실패하면 계정을 그대로 두고 다시 시도하게 한다.
+const CB_RECENT_LOGIN_MS = 4 * 60 * 1000; // Firebase는 로그인 후 약 5분까지 민감한 작업을 허용 — 여유를 두고 4분
+async function cbReauthForDelete() {
+  const user = currentUser;
+  const info = await user.getIdTokenResult(true);
+  if(Date.now() - new Date(info.authTime).getTime() < CB_RECENT_LOGIN_MS) return true;
+  if(user.providerData.some(p => p.providerId === 'google.com')) {
+    await user.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider()); // 팝업 닫음·차단은 호출한 쪽에서 안내
+    return true;
+  }
+  return false; // 이메일·카카오 로그인: 비밀번호를 다시 받을 화면이 없어 재로그인 후 바로 삭제하도록 안내
+}
+async function cbDeleteMyStorage(uid) {
+  const list = await storage.ref('users/' + uid + '/cards').listAll();
+  const res = await Promise.allSettled(list.items.map(r => r.delete()));
+  const bad = res.filter(r => r.status === 'rejected' && r.reason?.code !== 'storage/object-not-found');
+  if(bad.length) throw new Error('명함 사진 ' + bad.length + '장을 지우지 못했어요');
+}
+async function cbDeleteMyCards(uid) {
+  const snap = await db.collection('users').doc(uid).collection('cards').get();
+  for(let i = 0; i < snap.docs.length; i += 450) { // batch 한 번에 500개 제한
+    const batch = db.batch();
+    snap.docs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+}
 window.executeDeleteAccount = async function() {
   document.getElementById('deleteConfirmModal')?.remove();
+  if(!currentUser) return;
+  const uid = currentUser.uid;
+  // ① 본인 재확인 — 여기서 실패하면 아무것도 지우지 않는다
+  try {
+    if(!(await cbReauthForDelete())) {
+      showToast('🔒 보안을 위해 다시 로그인한 뒤 바로 계정 삭제를 눌러 주세요');
+      await auth.signOut();
+      return;
+    }
+  } catch(e) {
+    if(e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') { showToast('계정 삭제를 취소했어요'); return; }
+    if(e.code === 'auth/user-mismatch') { showToast('❌ 지금 로그인한 계정으로 다시 확인해 주세요'); return; }
+    showToast('❌ 본인 확인 실패: ' + (e.code || e.message));
+    return;
+  }
   showToast('⏳ 계정 삭제 중...');
   try {
-    const uid = currentUser.uid;
-    // 1. 명함 데이터 삭제
-    const cardsSnap = await db.collection('users').doc(uid).collection('cards').get();
-    const batch = db.batch();
-    cardsSnap.docs.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-    // 1-1. 모임 명함첩 정리 (내가 만든 모임은 삭제, 참여한 모임에서는 내 명함 빼기)
-    try { await cbxLeaveAllGroups(); } catch(e) {}
-    // 2. 사용자 문서 삭제
+    // ② 데이터 삭제
+    await cbDeleteMyStorage(uid);                     // Storage users/{uid}/cards/*.jpg (Worker 토큰은 Storage 권한이 없어 여기서)
+    await cbDeleteMyCards(uid);                       // 명함첩 (450개씩 나눠서)
+    try { await cbxLeaveAllGroups(); } catch(e) {}    // 모임 명함첩: 내가 만든 모임은 삭제, 참여한 모임에서는 내 명함 빼기 (users 문서의 groupIds를 읽으므로 users 삭제 전에)
+    const res = await fetch(CB_WORKER_URL + '/account/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: await currentUser.getIdToken() }) });
+    const d = await res.json().catch(() => ({}));
+    if(!res.ok || !d.ok) throw new Error(d.error || '서버 기록 정리 실패');  // 통계·저장 기록·알림·선점 기록·배너 클릭
     await db.collection('users').doc(uid).delete();
-    // 3. 동의 기록 삭제
     await db.collection('consents').doc(uid).delete();
-    // 4. Firebase Auth 계정 삭제
+  } catch(e) {
+    showToast('❌ 일부 데이터를 지우지 못했어요. 계정은 그대로 있으니 다시 시도해 주세요 (' + e.message + ')');
+    return;
+  }
+  // ③ Auth 계정 삭제 — 재확인 직후라 보통 성공한다. 그래도 실패하면 데이터는 이미 지워졌으니 재로그인 후 한 번 더 누르면 된다
+  try {
     await currentUser.delete();
     showToast('✅ 계정이 삭제되었습니다.');
   } catch(e) {
     if(e.code === 'auth/requires-recent-login') {
-      showToast('❌ 보안을 위해 재로그인 후 삭제해주세요.');
+      showToast('❌ 데이터는 삭제됐어요. 다시 로그인한 뒤 계정 삭제를 한 번 더 눌러 주세요');
       await auth.signOut();
     } else {
-      showToast('❌ 삭제 실패: ' + e.message);
+      showToast('❌ 계정 삭제 실패: ' + (e.code || e.message));
     }
   }
 };
@@ -2842,8 +2888,13 @@ function safeUrl(u){
   return /^(https?:|tel:)/i.test(v) ? v : '#';
 }
 
+// 오토명함은 주소가 모두 …/autocard/c/?id=… 라서 쿼리를 지우면 전부 같은 키가 된다 → id만 남긴 고정 형태로 키를 만든다.
+// (예전 /cardbook/autocard/ 경로·&ref= 붙은 주소도 같은 키) firestore.rules card_updates가 같은 식으로 키를 다시 계산한다
+const CB_AC_KEY_RE = /^https?:\/\/jinjjabg-hub\.github\.io\/(?:cardbook\/)?autocard\/c\/?(?:index\.html)?\?(?:[^#]*&)?id=([A-Za-z0-9_-]{6,40})(?:[&#]|$)/i;
 function cbUrlKey(url){
   if(!url) return null;
+  const ac = CB_AC_KEY_RE.exec(String(url).trim());
+  if(ac) return encodeURIComponent('jinjjabg-hub.github.io/autocard/c?id=' + ac[1].toLowerCase());
   let u = String(url).trim().toLowerCase();
   u = u.replace(/^https?:\/\//,'').replace(/#.*$/,'').replace(/\?.*$/,'');
   u = u.replace(/index\.html$/,'').replace(/\/+$/,'');
@@ -2861,8 +2912,10 @@ async function loadCardUpdates(){
 
 function getCardUpdate(card){
   if(!card || !card.url) return null;
-  const upd = _cardUpdates[cbUrlKey(card.url)];
+  const key = cbUrlKey(card.url);
+  const upd = _cardUpdates[key];
   if(!upd || !upd.updatedAt) return null;
+  if(cbUrlKey(upd.url) !== key) return null; // 키와 주소가 다른 문서(규칙이 한글 주소의 키까지는 못 맞춰 봄)는 무시
   const seen = card.updateAckAt || card.savedAt || '';
   return upd.updatedAt > seen ? upd : null; // ISO 문자열은 사전순 비교 = 시간순 비교
 }
@@ -2904,16 +2957,24 @@ window.sendCardUpdate = async function(){
   if(!notice){ showToast('업데이트 내용을 입력해 주세요'); return; }
   try{
     const key = cbUrlKey(myDicaUrl);
-    await db.collection('card_updates').doc(key).set({
+    const data = {
       url: myDicaUrl,
-      notice: notice,
+      notice: notice.slice(0, 80),
       updatedAt: new Date().toISOString(),
       ownerUid: currentUser.uid,
-      ownerName: currentUser.displayName || ''
-    });
+      ownerName: (currentUser.displayName || '').slice(0, 60)
+    };
+    // 비즈홈은 "내 명함 등록" 때 Worker가 남긴 선점 기록(dicaClaims)으로 주인을 확인한다 — Worker(/credits/dica-bonus)와 같은 id 계산
+    if(!CB_AC_KEY_RE.test(myDicaUrl)) {
+      try { const u = new URL(myDicaUrl); data.claimId = encodeURIComponent((u.hostname + u.pathname).toLowerCase().replace(/\/$/, '')); } catch(e) {}
+    }
+    await db.collection('card_updates').doc(key).set(data);
     document.getElementById('notifyUpdModal').remove();
     showToast('📣 내 명함을 가진 모든 분에게 표시됩니다!');
-  }catch(e){ showToast('❌ ' + e.message); }
+  }catch(e){
+    if(e.code === 'permission-denied') showToast('❌ 내 명함으로 확인되지 않아 알림을 보낼 수 없어요. 문의해 주세요');
+    else showToast('❌ ' + e.message);
+  }
 };
 
 // ===== 스캔 모달 =====

@@ -53,11 +53,49 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 명함 업데이트 알림 — "내 명함이 바뀌었어요" 안내문. 뱃지 표시를 위해 로그인한 누구나 읽을 수 있고,
-    // 쓰기는 본인 소유(ownerUid가 본인 uid와 일치하는 경우)만 가능 — 남의 이름으로 알림을 보낼 수 없게 막는다.
+    // 명함 업데이트 알림 — "내 명함이 바뀌었어요" 안내문. 뱃지 표시를 위해 로그인한 누구나 읽을 수 있다.
+    // 문서 키 = 명함 주소 정규화값(index.html cbUrlKey). 그 명함을 저장한 모든 사람에게 문구가 뜨므로 쓰기는 "그 명함의 진짜 주인"만.
+    //  · 새로 만들기: ownerUid가 본인, url이 내 users 문서에 등록된 내 명함 링크, 그리고 그 명함이 정말 내 것
+    //      - 오토명함: autocards/{id}.ownerUid == 나
+    //      - 비즈홈: Worker가 남긴 선점 기록 dicaClaims/{claimId}의 uid가 나이고 url이 같음(남의 링크를 내 것으로 등록해도 통과 못함)
+    //  · 고치기·지우기: 지금 문서의 ownerUid가 본인일 때만(남이 만든 알림을 덮어쓸 수 없음), ownerUid는 바꿀 수 없음
+    //  · 키 ↔ url: 오토명함과 ASCII 주소는 규칙에서 키를 다시 계산해 맞춰 본다. 한글 주소는 규칙에서 인코딩을 못 하므로
+    //    읽는 쪽(getCardUpdate)이 cbUrlKey(upd.url) == 키 를 다시 확인한다.
     match /card_updates/{key} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      function cuSigned() { return request.auth != null; }
+      function cuMe() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+      function cuMine(u) { let me = cuMe(); return u == me.get('bizhomeUrl', '') || u == me.get('autocardUrl', '') || u == me.get('dicaUrl', ''); }
+      function cuAcRe() { return 'https://jinjjabg-hub[.]github[.]io/(cardbook/)?autocard/c/[?]id=[A-Za-z0-9_-]{6,40}'; }
+      function cuAcId(u) { return u.split('[?]id=')[1]; }
+      // 오토명함: 키 = encodeURIComponent('jinjjabg-hub.github.io/autocard/c?id=' + id 소문자)
+      function cuAcOk(u) {
+        return key == 'jinjjabg-hub.github.io%2Fautocard%2Fc%3Fid%3D' + cuAcId(u).lower()
+          && get(/databases/$(database)/documents/autocards/$(cuAcId(u))).data.ownerUid == request.auth.uid;
+      }
+      // 비즈홈: cbUrlKey와 같은 정규화(소문자·프로토콜/쿼리/해시/index.html/끝 슬래시 제거)
+      function cuBhNorm(u) { return u.lower().replace('^https?://', '').replace('#.*$', '').replace('[?].*$', '').replace('index[.]html$', '').replace('/+$', ''); }
+      function cuBhKeyOk(u) {
+        let s = cuBhNorm(u);
+        return !s.matches('[a-z0-9._~/%-]*') || key == s.replace('%', '%25').replace('/', '%2F');
+      }
+      function cuBhOk(d) {
+        let c = get(/databases/$(database)/documents/dicaClaims/$(d.claimId)).data;
+        return d.claimId is string && d.claimId.size() <= 400 && c.uid == request.auth.uid && c.url == d.url && cuBhKeyOk(d.url);
+      }
+      function cuDocOk(d) {
+        return d.keys().hasOnly(['url', 'notice', 'updatedAt', 'ownerUid', 'ownerName', 'claimId'])
+          && d.keys().hasAll(['url', 'notice', 'updatedAt', 'ownerUid'])
+          && d.ownerUid == request.auth.uid
+          && d.url is string && d.url.size() <= 300 && cuMine(d.url)
+          && d.notice is string && d.notice.size() >= 1 && d.notice.size() <= 80
+          && d.updatedAt is string && d.updatedAt.size() <= 40
+          && d.get('ownerName', '') is string && d.get('ownerName', '').size() <= 60
+          && (d.url.matches(cuAcRe()) ? cuAcOk(d.url) : cuBhOk(d));
+      }
+      allow read: if cuSigned();
+      allow create: if cuSigned() && cuDocOk(request.resource.data);
+      allow update: if cuSigned() && resource.data.ownerUid == request.auth.uid && cuDocOk(request.resource.data);
+      allow delete: if cuSigned() && resource.data.ownerUid == request.auth.uid;
     }
 
     // 자동 명함(AutoCard) — 공개(published)된 명함은 누구나 읽고, 그 전 단계는 본인·관리자만.
@@ -72,7 +110,11 @@ service cloud.firestore {
       function acPriceOk(d) { return d.langs is list && d.langs.size() >= 1 && d.langs.size() <= 4 && d.price == 5900 + (d.langs.size() - 1) * 5000; }
       // 언어 추가 요청: 지금 언어를 모두 포함하고 최대 4개
       function acUpgradeOk(d) { return !('upgrade' in d) || (d.upgrade.langs is list && d.upgrade.langs.size() <= 4 && d.upgrade.langs.hasAll(resource.data.langs)); }
-      function acLocked() { return ['ownerUid', 'ownerEmail', 'status', 'langs', 'price', 'publishedAt', 'approvedBy', 'createdAt', 'paid']; }
+      // plan도 가격이 걸린 항목 — 발행 후 무료판(plan 'free')을 유료로 바꾸거나 반대로 바꾸지 못하게 잠근다
+      function acLocked() { return ['ownerUid', 'ownerEmail', 'status', 'langs', 'price', 'publishedAt', 'approvedBy', 'createdAt', 'paid', 'plan']; }
+      // 발행된 무료판은 사진을 계속 비워 둬야 한다(사진이 필요하면 새 유료 명함). 유료판은 사진을 자유롭게 바꾼다
+      function acFreeKeep(d) { return resource.data.get('plan', '') != 'free'
+        || (d.get('images', {}).get('profile', '') == '' && d.get('images', {}).get('second', '') == ''); }
       // 완전 무료판(종이명함 수준): 언어 1개·가격 0·사진 없음일 때만 결제 없이 스스로 발행할 수 있다.
       // 다국어·사진이 필요하면 새 유료 명함을 만들어야 한다(무료판에서 결제로 전환하는 업그레이드는 아직 없음).
       function acFreeOk(d) { return d.plan == 'free' && d.price == 0 && d.langs is list && d.langs.size() == 1
@@ -96,6 +138,7 @@ service cloud.firestore {
         // 발행 후: 셀프 수정 OK, 가격이 걸린 항목은 잠금
         || (acOwner() && resource.data.status == 'published'
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(acLocked())
+            && acFreeKeep(request.resource.data)
             && acUpgradeOk(request.resource.data));
       allow delete: if acAdmin() || (acOwner() && resource.data.status != 'published');
     }

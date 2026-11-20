@@ -734,6 +734,36 @@ async function bniCheck(env, phone) {
   return json({ isBni: false });
 }
 
+// ===== 회원 탈퇴: 서버만 쓰는 기록 정리 (/account/delete) =====
+// 클라이언트 규칙으로는 지울 수 없는 문서(통계·저장 기록·선점 기록·알림·배너 클릭)를 서비스 계정으로 지운다. 여러 번 불러도 안전(없는 문서는 건너뜀).
+// 명함첩·users·consents·Storage 사진은 클라이언트가 지우고, 마지막에 Auth 계정을 지운다(index.html executeDeleteAccount).
+// 결제 기록(payments·autocardPayments)은 전자상거래법 보관 의무가 있어 지우지 않는다.
+// dicaClaims(비즈홈 선점 기록)는 지우면 탈퇴 → 재가입으로 같은 링크의 500장을 또 받을 수 있어, 문서는 남기고 uid만 비운다
+// (uid가 빈 기록은 cardOwner가 주인 없음으로 보고, card_updates 규칙도 통과하지 못한다).
+async function accountDelete(env, body) {
+  const uid = await verifyIdToken(body.idToken);
+  const token = await firebaseAccessToken(env);
+  const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+  // 경로가 정해진 문서(통계·배너 클릭) — 없는 문서를 지워도 오류가 나지 않는다
+  const fixed = [`${base}/cardStats/${uid}`, ...['dica', 'bizhome', 'mandu'].map(b => `${base}/bannerClicks/${b}/byUser/${uid}`)];
+  await commitWrites(token, fixed.map(n => ({ delete: n })));
+  const names = new Set();
+  const targets = [['cardSaves', 'owner'], ['cardSaves', 'saver'], ['rewardSaves', 'owner'], ['rewardSaves', 'saver'], ['dicaClaims', 'uid'], ['card_updates', 'ownerUid']];
+  for (const [col, field] of targets) {
+    for (let page = 0; page < 20; page++) {   // 한 번에 500개씩, 최대 1만 개
+      const res = await fetch(`https://firestore.googleapis.com/v1/${base}:runQuery`, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: uid } } }, select: { fields: [{ fieldPath: '__name__' }] }, limit: 500 } }) });
+      if (!res.ok) throw new Error(`${col} 조회 실패: ` + (await res.text()).slice(0, 200));
+      const found = (await res.json()).map(r => r.document?.name).filter(n => n && !names.has(n));
+      if (!found.length) break;
+      found.forEach(n => names.add(n));
+      const write = col === 'dicaClaims' ? n => ({ update: { name: n, fields: { uid: { stringValue: '' } } }, updateMask: { fieldPaths: ['uid'] } }) : n => ({ delete: n });
+      for (let i = 0; i < found.length; i += 450) await commitWrites(token, found.slice(i, i + 450).map(write));
+    }
+  }
+  return json({ ok: true, deleted: names.size });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -959,6 +989,8 @@ export default {
         const matched = (Array.isArray(result.matched) ? result.matched : []).map(Number).filter(Number.isInteger).slice(0, 20);
         return json({ matched, summary: String(result.summary || '').slice(0, 200) });
       }
+
+      if (url.pathname === '/account/delete') return await accountDelete(env, await request.json());
 
       // ── BNI 멤버 여부 확인 (읽기 전용, 다른 프로젝트인 주주도사 Worker가 호출) ──
       // 전화번호 뒷자리까지 정확히 같은 멤버가 명부에 있으면 이름·챕터를 돌려준다. 개인정보 최소화를 위해 다른 필드는 안 줌.
