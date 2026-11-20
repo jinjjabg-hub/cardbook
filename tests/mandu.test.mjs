@@ -2,7 +2,8 @@
 import { generateKeyPairSync } from 'crypto';
 import assert from 'assert';
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const env = { ANTHROPIC_API_KEY: 'k', FIREBASE_SA: JSON.stringify({ client_email: 'sa@x', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }) };
+const kv = new Map();
+const env = { OCR_CACHE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v) }, ANTHROPIC_API_KEY: 'k', FIREBASE_SA: JSON.stringify({ client_email: 'sa@x', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) }) };
 const cb = {   // 카드북 Firestore (users, autocards, dicaClaims)
   'users/owner1': { email: 'Kim@Example.com' },
   'users/owner2': { email: 'lee@example.com' },
@@ -22,9 +23,15 @@ globalThis.fetch = async (url, opt = {}) => {
   if (url.includes('accounts:signUp')) { manduCalls++; return J({ idToken: 'anon', expiresIn: '3600' }); }
   if (url.includes('accounts:lookup')) return J({ users: [{ localId: JSON.parse(opt.body).idToken }] });
   if (url.includes('projects/mandutok') && url.includes(':runQuery')) {
-    const vals = JSON.parse(opt.body).structuredQuery.where.fieldFilter.value.arrayValue.values.map(v => v.stringValue);
+    // 지금 쿼리: cardbookConsent == true AND emailLower IN [...] (만두 규칙상 동의 조건이 있어야 조회 허용)
+    const cf = JSON.parse(opt.body).structuredQuery.where.compositeFilter;
+    assert.equal(cf.op, 'AND');
+    const f = name => cf.filters.find(x => x.fieldFilter.field.fieldPath === name).fieldFilter;
+    assert.equal(f('cardbookConsent').op, 'EQUAL'); assert.equal(f('cardbookConsent').value.booleanValue, true);
+    assert.equal(f('emailLower').op, 'IN');
+    const vals = f('emailLower').value.arrayValue.values.map(v => v.stringValue);
     assert.ok(vals.length <= 30);
-    return J(mandu.filter(u => vals.includes(u.emailLower)).map(u => ({ document: { fields: enc(u) } })).concat([{ readTime: 'x' }]));
+    return J(mandu.filter(u => u.cardbookConsent === true && vals.includes(u.emailLower)).map(u => ({ document: { fields: enc(u) } })).concat([{ readTime: 'x' }]));
   }
   const m = url.match(/documents\/(.+)$/);
   if (m) { const d = cb[decodeURIComponent(m[1])]; return d ? J({ fields: enc(d) }) : new Response('{}', { status: 404 }); }
@@ -51,4 +58,14 @@ await call({ idToken: 'me', items }); assert.equal(manduCalls, 1);
 // 40개 이메일 → 30개씩 나눠 조회
 const many = Array.from({ length: 40 }, (_, i) => ({ k: 'm' + i, url: '', email: `u${i}@example.com` }));
 r = await call({ idToken: 'me', items: many }); assert.deepEqual(r.matches, {});
+// 하루 한도(항목 수 기준): 임의 이메일 대량 조회로 만두 가입 여부를 캐지 못하게
+const big = Array.from({ length: 300 }, (_, i) => ({ k: 'b' + i, url: '', email: `x${i}@example.com` }));
+let limited = null;
+for (let i = 0; i < 12 && !limited; i++) {
+  const res = await worker.fetch(new Request('https://w/mandu/match', { method: 'POST', body: JSON.stringify({ idToken: 'spammer', items: big }) }), env);
+  if (res.status === 429) limited = i;
+}
+assert.equal(limited, 10, '300개씩 10번(3,000개)까지만');
+// 다른 사람은 영향 없음
+r = await call({ idToken: 'me2', items }); assert.deepEqual(r.matches, { c1: 'kimmandu', c3: 'parkmandu' });
 console.log('MANDU TESTS PASSED');

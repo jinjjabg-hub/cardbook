@@ -19,6 +19,6 @@ answer = '{"upsideDown": false}';
 r = await post({ image: 'x', hash: h, idToken: 'ok' }); assert.equal((await r.json()).upsideDown, true, '같은 사진은 캐시'); assert.equal(calls.length, 1);
 r = await post({ image: 'y', hash: 'b'.repeat(64), idToken: 'ok' }); assert.equal((await r.json()).upsideDown, false);
 answer = 'no json here'; r = await post({ image: 'z', idToken: 'ok' }); assert.equal(r.status, 500, 'JSON 아니면 에러(앱은 그대로 진행)');
-r = await post({ image: 'x', idToken: 'bad' }); assert.equal(r.status, 500, '로그인 필요');
+r = await post({ image: 'x', idToken: 'bad' }); assert.equal(r.status, 401, '로그인 필요(401, 문구는 그대로 노출)');
 r = await post({ image: 'x'.repeat(400_001), idToken: 'ok' }); assert.equal(r.status, 400, '큰 사진 거절');
 console.log('ORIENT TESTS PASSED');

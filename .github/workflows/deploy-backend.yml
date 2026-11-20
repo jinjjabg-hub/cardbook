@@ -43,6 +43,8 @@ jobs:
           node --check worker.js
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - name: Worker 테스트 (하나라도 실패하면 배포 중단)
+        run: sh tests/run.sh
       - name: Cloudflare Worker 배포
         run: npx --yes wrangler@4 deploy  # placement.region(지역 고정)은 wrangler 4 필요
         env:
