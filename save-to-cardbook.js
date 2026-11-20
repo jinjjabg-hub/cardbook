@@ -27,6 +27,9 @@ function _cbStoreDel(k){
   try { sessionStorage.removeItem(k); } catch(e) {}
 }
 
+// innerHTML에 넣는 외부 값 이스케이프
+function _cbHtml(v){ return String(v || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
 // ===== 화면 안내 문구 =====
 // 카톡·네이버 같은 앱 안 브라우저는 alert()을 막는 경우가 있어서, 결과는 항상 화면 위 문구로 보여준다.
 // ms를 0으로 주면 누를 때까지 남아 있다(오류 안내용).
@@ -591,7 +594,7 @@ function _showSaveSuccess(cardData) {
     <style>@keyframes _cbSlideUp{from{transform:translate(-50%,20px);opacity:0}to{transform:translate(-50%,0);opacity:1}}</style>
     <div style="font-size:24px;">✅</div>
     <div style="flex:1;min-width:0;">
-      <div style="font-size:13px;font-weight:700;color:#fff;">${cardData.name || ''}님 명함이 저장됐어요</div>
+      <div style="font-size:13px;font-weight:700;color:#fff;">${_cbHtml(cardData.name)}님 명함이 저장됐어요</div>
       <div style="font-size:11px;color:rgba(240,250,244,0.55);margin-top:2px;">내 카드북에서 언제든 확인할 수 있어요</div>
     </div>
     <button onclick="window.location.href='https://cardbook.bizmy.net/?install=1'" style="flex-shrink:0;padding:9px 14px;border-radius:10px;border:none;background:#a07820;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">명함첩 보기</button>
@@ -641,7 +644,7 @@ function cbSaveContact(vcf, opts) {
 function _cbContactSteps(fileName) {
   const old = document.getElementById('_cb_contact_steps');
   if(old) old.remove();
-  const f = fileName.replace(/[<>&"]/g, '');
+  const f = _cbHtml(fileName);
   const m = document.createElement('div');
   m.id = '_cb_contact_steps';
   m.style.cssText = "position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center;font-family:'Noto Sans KR',sans-serif;";

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cardbook-v10';
+const CACHE_NAME = 'cardbook-v11';
 const URLS_TO_CACHE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './card-crop.js', './card-camera.js', './card-render.js', './card-adjust.js', './features.js'];
 
 self.addEventListener('install', event => {

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
 <title>카드북 · 명함·카드 보관함</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
@@ -16,7 +17,7 @@
 <script src="card-render.js"></script>
 <script src="card-adjust.js"></script>
 <!-- 추가 기능(소개하기·다시 연락·태그·모임·문장 검색·행사 모드·통계). 본문 스크립트보다 먼저 불러와야 로그인 직후 화면을 그릴 때 함수가 준비돼 있다 -->
-<script src="features.js?v=1"></script>
+<script src="features.js?v=2"></script>
 <style>
 :root{
   --dark:#f6f8fc;--dark2:#eaf0f9;--dark3:#dde7f5;
@@ -550,7 +551,7 @@ function renderLogin() {
   const cardBanner = pendingName ? `
     <div style="background:#16305e;border-radius:14px;padding:16px 18px;margin-bottom:20px;text-align:center;">
       <div style="font-size:22px;margin-bottom:6px;">💾</div>
-      <div style="font-size:15px;font-weight:700;color:#f6f8fc;margin-bottom:4px;">${pendingName}님의 명함을 저장할게요</div>
+      <div style="font-size:15px;font-weight:700;color:#f6f8fc;margin-bottom:4px;">${_cbEsc(pendingName)}님의 명함을 저장할게요</div>
       <div style="font-size:12px;color:rgba(255,255,255,0.6);">Google 로그인 후 바로 저장됩니다</div>
     </div>` : '';
   document.getElementById('appRoot').innerHTML = `
@@ -788,7 +789,7 @@ window.openAccountModal = function() {
     <div style="background:#f6f8fc;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:28px 24px 48px;">
       <div style="text-align:center;margin-bottom:24px;">
         <div style="font-size:13px;font-weight:700;color:#16305e;">계정 설정</div>
-        <div style="font-size:12px;color:#5b7bb0;margin-top:6px;">${currentUser?.email || ''}</div>
+        <div style="font-size:12px;color:#5b7bb0;margin-top:6px;">${_cbEsc(currentUser?.email || '')}</div>
       </div>
       <div id="creditBox" style="background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
         <div><div style="font-size:11px;color:#5b7bb0">남은 스캔 장수</div><div style="font-size:20px;font-weight:800;color:#16305e"><span id="creditNum">…</span>장</div></div>
@@ -1029,7 +1030,7 @@ async function loadMembers() {
     renderChapterUI();
     renderMembers(_cbMembers);
   } catch(e) {
-    document.getElementById('memberList').innerHTML = '<div style="text-align:center;padding:40px 0;color:#c8102e;font-size:13px;">명부를 불러오지 못했어요<br><span style="font-size:11px;color:#64748b;">' + e.message + '</span></div>';
+    document.getElementById('memberList').innerHTML = '<div style="text-align:center;padding:40px 0;color:#c8102e;font-size:13px;">명부를 불러오지 못했어요<br><span style="font-size:11px;color:#64748b;">' + _cbEsc(e.message) + '</span></div>';
   }
 }
 
@@ -1045,12 +1046,12 @@ function renderMembers(list) {
     const saved = savedIds.has('bni-' + m.docId) || allCards.some(c => c.name === m.name && (!m.phone || !c.phone || (c.phone||'').replace(/[^0-9]/g,'') === (m.phone||'').replace(/[^0-9]/g,'')));
     return `
       <div style="display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid rgba(37,99,235,0.08);">
-        <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#16305e,#2a4d8f);color:#3b76f0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0;">${(m.name||'?').charAt(0)}</div>
+        <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#16305e,#2a4d8f);color:#3b76f0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0;">${_cbEsc((m.name||'?').charAt(0))}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:14px;font-weight:700;color:#16305e;">${m.name||''} <span style="font-size:11px;color:#64748b;font-weight:500;">${m.title||''}</span></div>
-          <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${m.company||''} ${m.chapter?('· '+m.chapter):''}</div>
+          <div style="font-size:14px;font-weight:700;color:#16305e;">${_cbEsc(m.name)} <span style="font-size:11px;color:#64748b;font-weight:500;">${_cbEsc(m.title)}</span></div>
+          <div style="font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_cbEsc(m.company)} ${m.chapter?('· '+_cbEsc(m.chapter)):''}</div>
         </div>
-        <button onclick="saveMemberToMyCards('${m.docId}')" ${saved?'disabled':''}
+        <button onclick="saveMemberToMyCards(${_cbJs(m.docId)})" ${saved?'disabled':''}
           style="flex-shrink:0;padding:8px 13px;border-radius:9px;border:none;font-size:12px;font-weight:700;cursor:${saved?'default':'pointer'};font-family:'Noto Sans KR',sans-serif;background:${saved?'rgba(37,99,235,0.1)':'#2563eb'};color:${saved?'#64748b':'#fff'};">
           ${saved?'✓ 저장됨':'+ 담기'}
         </button>
@@ -1107,8 +1108,8 @@ window.openMemberPicker = function() {
   const cards = allCards.filter(c => c.name && !registered.has(c.name + '|' + (c.phone||'')));
   const items = cards.map(c => `
     <label style="display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(37,99,235,0.1);font-size:13px;cursor:pointer;">
-      <input type="checkbox" class="mpCheck" value="${c.docId}">
-      <span><b>${c.name}</b> <span style="color:#64748b">${[c.company,c.title].filter(Boolean).join(' · ')}</span></span>
+      <input type="checkbox" class="mpCheck" value="${_cbEsc(c.docId)}">
+      <span><b>${_cbEsc(c.name)}</b> <span style="color:#64748b">${_cbEsc([c.company,c.title].filter(Boolean).join(' · '))}</span></span>
     </label>`).join('');
   modal.innerHTML = `
     <div style="background:#fff;border-radius:20px;padding:24px;width:100%;max-width:380px;max-height:88vh;display:flex;flex-direction:column;">
@@ -1288,8 +1289,8 @@ function renderCards(cards) {
     const _upd = getCardUpdate(card);
     const byChapter = sortMode === 'chapter';
     const ch = cbIsTimeMode() ? cbMonthLabel(card) : byChapter ? (cbCardKey(card) || '챕터 없음') : cbGroupKey(cbCardKey(card));
-    const chText = byChapter ? _cbEsc(ch) : ch;
-    const idAttr = byChapter ? '' : `id="alpha-${ch}"`;
+    const chText = _cbEsc(ch);
+    const idAttr = byChapter ? '' : `id="alpha-${_cbEsc(ch)}"`;
     const gk = !cbIsTimeMode() && !byChapter && cbNameGroup(cbCardKey(card)) === 1 ? 1 : 0;
     const isFav = pinFav && !_upd && !!card.favorite;
     const isFirstOfCh = !isFav && !seenCh.has(ch);
@@ -1312,9 +1313,9 @@ function renderCards(cards) {
     }
 
     const avatarHtml = card.avatar
-      ? `<img src="${card.avatar}" alt="${card.name}" onerror="this.style.display='none'">`
-      : initial(card.name);
-    const bniHtml = card.bni ? `<div class="bni-badge"><div class="bni-dot"></div>${card.bni}</div>` : '';
+      ? (safeUrl(card.avatar) !== '#' ? `<img src="${_cbEsc(safeUrl(card.avatar))}" alt="${_cbEsc(card.name)}" onerror="this.style.display='none'">` : '')   // URL이 아닌 avatar(DiCA는 이름 첫 글자)는 예전처럼 비워 둠
+      : _cbEsc(initial(card.name));
+    const bniHtml = card.bni ? `<div class="bni-badge"><div class="bni-dot"></div>${_cbEsc(card.bni)}</div>` : '';
     const memoText = card.memo || '';
 
     html += `
@@ -1322,8 +1323,8 @@ function renderCards(cards) {
       <div class="card-main">
         <div class="card-avatar">${avatarHtml}</div>
         <div class="card-info">
-          <div class="card-name">${card.name||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}<button class="info-edit-btn" onclick="toggleInfoEdit(this)" aria-label="명함 정보 수정">✏️</button></div>
-          <div class="info-edit" data-doc="${card.docId}">
+          <div class="card-name">${_cbEsc(card.name)||'이름 없음'}${_upd?'<span class="upd-badge">NEW</span>':''}<button class="info-edit-btn" onclick="toggleInfoEdit(this)" aria-label="명함 정보 수정">✏️</button></div>
+          <div class="info-edit" data-doc="${_cbEsc(card.docId)}">
             <input class="ie-en" value="${_cbEsc(card.nameEn)}" placeholder="영문 이름" maxlength="60">
             <input class="ie-co" value="${_cbEsc(card.company)}" placeholder="소속·회사" maxlength="60">
             <input class="ie-ti" value="${_cbEsc(card.title)}" placeholder="직함" maxlength="60">
@@ -1331,33 +1332,33 @@ function renderCards(cards) {
             <input class="ie-ch" list="chapterList" value="${_cbEsc(card.chapter)}" placeholder="챕터·모임" maxlength="60" autocomplete="off">
             <input class="ie-mt" value="${_cbEsc(card.metPlace)}" placeholder="만난 곳·계기 (예: 11월 BNI 모임)" maxlength="80">
             <input class="ie-tg" value="${cbEsc((card.tags||[]).join(', '))}" placeholder="태그 — 쉼표로 구분 (예: 거래처, 동문회)" maxlength="200">
-            <div class="row"><button class="ok" onclick="saveInfoEdit('${card.docId}',this)">저장</button><button onclick="toggleInfoEdit(this)">취소</button></div>
+            <div class="row"><button class="ok" onclick="saveInfoEdit(${_cbJs(card.docId)},this)">저장</button><button onclick="toggleInfoEdit(this)">취소</button></div>
           </div>
-          ${card.nameEn?`<div class="card-name-en">${card.nameEn}</div>`:''}
-          ${card.company?`<div class="card-company">${card.company}</div>`:''}
-          ${card.industry?`<div class="card-company" style="opacity:.75">${card.industry}</div>`:''}
-          ${card.chapter?`<div class="card-chapter">📍 ${card.chapter}</div>`:''}
+          ${card.nameEn?`<div class="card-name-en">${_cbEsc(card.nameEn)}</div>`:''}
+          ${card.company?`<div class="card-company">${_cbEsc(card.company)}</div>`:''}
+          ${card.industry?`<div class="card-company" style="opacity:.75">${_cbEsc(card.industry)}</div>`:''}
+          ${card.chapter?`<div class="card-chapter">📍 ${_cbEsc(card.chapter)}</div>`:''}
           ${card.metPlace?`<div class="card-chapter">🤝 ${_cbEsc(card.metPlace)}</div>`:''}
           ${bniHtml}
           ${cbxCardChips(card)}
         </div>
-        <button class="fav-btn${card.favorite?' on':''}" onclick="toggleFavorite('${card.docId}')" aria-label="${card.favorite?'즐겨찾기 해제':'즐겨찾기 추가'}" aria-pressed="${card.favorite?'true':'false'}">${card.favorite?'★':'☆'}</button>
+        <button class="fav-btn${card.favorite?' on':''}" onclick="toggleFavorite(${_cbJs(card.docId)})" aria-label="${card.favorite?'즐겨찾기 해제':'즐겨찾기 추가'}" aria-pressed="${card.favorite?'true':'false'}">${card.favorite?'★':'☆'}</button>
       </div>
       ${(window._searchTerms||[]).length ? (() => { const sn = _matchSnippet(card, window._searchTerms); return sn ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;padding:6px 0 0;border-top:1px dashed var(--border);margin-top:8px">🔎 ${sn}</div>` : ''; })() : ''}
       ${_upd?`<div class="upd-banner">
-        <div class="upd-banner-txt">📣 ${_cbEsc(_upd.notice)||'명함이 업데이트됐어요!'}<span class="upd-date">${(_upd.updatedAt||'').slice(0,10)}</span></div>
-        <button class="upd-ok" onclick="ackCardUpdate('${card.docId}','${_upd.updatedAt}')">확인</button>
+        <div class="upd-banner-txt">📣 ${_cbEsc(_upd.notice)||'명함이 업데이트됐어요!'}<span class="upd-date">${_cbEsc((_upd.updatedAt||'').slice(0,10))}</span></div>
+        <button class="upd-ok" onclick="ackCardUpdate(${_cbJs(card.docId)},${_cbJs(_upd.updatedAt)})">확인</button>
       </div>`:''}
       <div class="card-actions">
         ${card._mandu?`<a href="${CB_MANDU_BASE}${encodeURIComponent(card._mandu)}" target="_blank" rel="noopener" class="act-btn act-mandu">🥟 만두로 연락하기</a>`:''}
-        ${card.phone?`<a href="tel:${card.phone}" class="act-btn act-call" onclick="updateLastContact('${card.docId}')">📞 전화하기</a>`:''}
-        ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts('${card.docId}')">📇 연락처 저장</button>`:''}
-        ${card.url?`<a href="${card.url}" target="_blank" class="act-btn act-view">🔗 비즈홈</a>`:''}
-        ${card.image?`<a href="${card.image}" target="_blank" class="act-btn act-view">🖼️ 명함</a>`:''}
-        <button class="act-btn act-intro" onclick="openIntro('${card.docId}')">🤝 소개하기</button>
-        <button class="act-btn act-follow" onclick="openFollow('${card.docId}')">⏰ 다시 연락</button>
-        <button class="act-btn act-share" onclick="shareCard('${card.url||''}','${card.name.replace(/'/g,"\\'")}','${card.docId}')">${ci('share')} 전달하기</button>
-        <button class="act-btn act-del" onclick="deleteCard('${card.docId}','${card.name.replace(/'/g,"\\'")}')">🗑️ 삭제하기</button>
+        ${card.phone?`<a href="${_cbEsc(safeUrl('tel:' + String(card.phone).replace(/[^0-9+#*,;-]/g,'')))}" class="act-btn act-call" onclick="updateLastContact(${_cbJs(card.docId)})">📞 전화하기</a>`:''}
+        ${card.phone?`<button class="act-btn act-vcf" onclick="saveToPhoneContacts(${_cbJs(card.docId)})">📇 연락처 저장</button>`:''}
+        ${card.url?`<a href="${_cbEsc(safeUrl(card.url))}" target="_blank" rel="noopener" class="act-btn act-view">🔗 비즈홈</a>`:''}
+        ${card.image?`<a href="${_cbEsc(safeUrl(card.image))}" target="_blank" rel="noopener" class="act-btn act-view">🖼️ 명함</a>`:''}
+        <button class="act-btn act-intro" onclick="openIntro(${_cbJs(card.docId)})">🤝 소개하기</button>
+        <button class="act-btn act-follow" onclick="openFollow(${_cbJs(card.docId)})">⏰ 다시 연락</button>
+        <button class="act-btn act-share" data-doc-id="${_cbEsc(card.docId)}" onclick="shareCardById(this.dataset.docId)">${ci('share')} 전달하기</button>
+        <button class="act-btn act-del" data-doc-id="${_cbEsc(card.docId)}" onclick="deleteCard(this.dataset.docId)">🗑️ 삭제하기</button>
       </div>
       ${cbxIntroHtml(card)}
       <button class="crm-toggle" onclick="toggleCRM(this)">
@@ -1365,8 +1366,8 @@ function renderCards(cards) {
         ${memoText?`<span style="color:var(--gold);margin-left:4px;">✓</span>`:''}
       </button>
       <div class="card-crm">
-        <textarea class="memo-input" data-doc="${card.docId}" placeholder="이 분에 대한 메모 (관심사, 특징, 소개 이력 등)" rows="3">${_cbEsc(memoText)}</textarea>
-        <button class="crm-save" style="width:100%;margin-top:6px;" onclick="saveMemo('${card.docId}')">저장</button>
+        <textarea class="memo-input" data-doc="${_cbEsc(card.docId)}" placeholder="이 분에 대한 메모 (관심사, 특징, 소개 이력 등)" rows="3">${_cbEsc(memoText)}</textarea>
+        <button class="crm-save" style="width:100%;margin-top:6px;" onclick="saveMemo(${_cbJs(card.docId)})">저장</button>
       </div>
       <div class="card-saved">저장일: ${fmtDate(card.savedAt)}</div>
     </div>`;
@@ -1468,7 +1469,7 @@ window.saveMemo = async function(docId) {
 function cbRefreshFavorite(card) {
   if((window._searchTerms||[]).length) {
     document.querySelectorAll('.fav-btn').forEach(b => {
-      if(b.getAttribute('onclick') === `toggleFavorite('${card.docId}')`) {
+      if(b.getAttribute('onclick') === `toggleFavorite(${_cbJs(card.docId)})`) {
         b.textContent = card.favorite ? '★' : '☆';
         b.classList.toggle('on', !!card.favorite);
         b.setAttribute('aria-pressed', card.favorite ? 'true' : 'false');
@@ -1765,7 +1766,7 @@ function renderHome() {
   const recentUsed = ids.map(id => allCards.find(c => c.docId === id)).filter(Boolean).slice(0, 5);
   const recentAdded = allCards.slice().sort((a, b) => cbSavedTime(b) - cbSavedTime(a)).slice(0, 5);
   const itemHtml = (c, sub) => `
-    <div class="home-item" onclick="openCardFromHome('${c.docId}')">
+    <div class="home-item" onclick="openCardFromHome(${_cbJs(c.docId)})">
       <div class="home-item-body">
         <div class="home-item-name">${_cbEsc(c.name) || '이름 없음'}</div>
         <div class="home-item-sub">${_cbEsc(sub)}</div>
@@ -1877,7 +1878,7 @@ function renderRefineChips(cards, terms) {
     .filter(([t],i,arr) => !arr.slice(0,i).some(([u]) => t.startsWith(u) || u.startsWith(t)))  // 해운대/해운대구 같은 중복 제거
     .slice(0, 8);
   box.innerHTML = chips.length ? `<span style="font-size:10px;color:var(--muted);margin-right:2px">좁히기</span>` +
-    chips.map(([t,n]) => `<button class="tab" style="padding:4px 10px" onclick="refineSearch('${_cbEsc(t)}')">${_cbEsc(t)} <span style="opacity:.6">${n}</span></button>`).join('') : '';
+    chips.map(([t,n]) => `<button class="tab" style="padding:4px 10px" data-t="${_cbEsc(t)}" onclick="refineSearch(this.dataset.t)">${_cbEsc(t)} <span style="opacity:.6">${n}</span></button>`).join('') : '';
 }
 window.refineSearch = function(word) {
   const inp = document.getElementById('searchInput');
@@ -1888,6 +1889,7 @@ window.refineSearch = function(word) {
 
 // ===== 카드 삭제 =====
 window.deleteCard = async function(docId, name) {
+  if(name == null) { const c0 = allCards.find(x => x.docId === docId); name = c0 ? (c0.name || '') : ''; }
   if(!confirm(`"${name}" 명함을 삭제할까요?`)) return;
   try {
     const c = allCards.find(x => x.docId === docId);
@@ -2094,7 +2096,7 @@ function _showDuplicateConfirm(name) {
       <div style="background:#f6f8fc;border-radius:20px;padding:28px 24px;width:100%;max-width:360px;text-align:center;">
         <div style="margin-bottom:12px;line-height:0">${ci('cards',1,'ci-lg')}</div>
         <div style="font-size:16px;font-weight:800;color:#16305e;margin-bottom:8px;">이미 저장된 명함이에요</div>
-        <div style="font-size:13px;color:#5b7bb0;margin-bottom:24px;line-height:1.7;">${name}님 명함이 카드북에 있어요.<br>최신 정보로 업데이트할까요?</div>
+        <div style="font-size:13px;color:#5b7bb0;margin-bottom:24px;line-height:1.7;">${_cbEsc(name)}님 명함이 카드북에 있어요.<br>최신 정보로 업데이트할까요?</div>
         <div style="display:flex;gap:10px;">
           <button data-dup="0" 
             style="flex:1;padding:13px;border-radius:12px;border:1.5px solid rgba(37,99,235,0.25);background:transparent;color:#5b7bb0;font-size:14px;font-weight:600;cursor:pointer;font-family:'Noto Sans KR',sans-serif;">취소</button>
@@ -2131,7 +2133,7 @@ window.confirmDicaSave = async function() {
       email:   d.email,
       chapter: d.chapter,
       bni:     d.bni,
-      url:     d.url,
+      url:     safeUrl(d.url) === '#' ? '' : d.url,
       avatar:  d.name.charAt(0),
       referrer: 'DiCA 명함',
       savedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -2284,6 +2286,12 @@ function showInstallGuide() {
 }
 
 
+// 목록 버튼은 docId만 넘기고(인라인 인자로 이름·URL을 넣지 않음) 여기서 allCards로 조회
+window.shareCardById = function(docId) {
+  const c = allCards.find(x => x.docId === docId);
+  if(!c) return;
+  return shareCard(c.url || '', c.name || '', c.docId);
+};
 window.shareCard = async function(url, name, docId) {
   cbTouch(docId);
   const c = docId ? allCards.find(x => x.docId === docId) : null;
@@ -2422,7 +2430,7 @@ window.openBulkPhoneSave = function() {
     const ch = m.querySelector('#bpChapter').value;
     list.innerHTML = withPhone.filter(c => !ch || c.chapter === ch).map(c => `
       <label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(37,99,235,0.08);font-size:13px;cursor:pointer;">
-        <input type="checkbox" class="bpCheck" value="${c.docId}" checked>
+        <input type="checkbox" class="bpCheck" value="${_cbEsc(c.docId)}" checked>
         <span><b>${_cbEsc(c.name)}</b> <span style="color:#64748b">${_cbEsc([c.company,c.title].filter(Boolean).join(' · '))}</span></span>
       </label>`).join('');
     m.querySelector('#bpAll').checked = true;
@@ -2824,7 +2832,15 @@ window.cbOpenSaveButton = function(fromRegister) {
 };
 
 // ===== 명함 업데이트 알림 (1단계: 앱 내 뱃지) =====
-function _cbEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _cbEsc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// 인라인 onclick="f(...)" 인자용: JS 문자열 리터럴로 만든 뒤 HTML 속성용으로 이스케이프 (&#39;는 속성에서 '로 풀리므로 _cbEsc만으로는 부족)
+function _cbJs(s){ return _cbEsc(JSON.stringify(String(s == null ? '' : s))); }
+// href/src에 넣을 외부 값: http(s)·tel만 허용, 나머지(javascript: 등)는 '#'
+function safeUrl(u){
+  const v = String(u || '').trim();
+  if(!v) return '#';
+  return /^(https?:|tel:)/i.test(v) ? v : '#';
+}
 
 function cbUrlKey(url){
   if(!url) return null;

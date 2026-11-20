@@ -152,7 +152,7 @@ window.cbxIntroSearch = function(q) {
   if(terms.length) list = list.filter(c => { const t = _searchText(c); return terms.every(w => t.includes(w)); });
   else list = list.filter(c => c.favorite).concat(list.filter(c => !c.favorite).sort((x, y) => cbSavedTime(y) - cbSavedTime(x)));
   const rows = list.slice(0, 8).map(c => `
-    <div class="cbx-row" onclick="cbxIntroPick('${c.docId}')" style="cursor:pointer">
+    <div class="cbx-row" onclick="cbxIntroPick(${_cbJs(c.docId)})" style="cursor:pointer">
       <div class="cbx-row-body"><div class="cbx-row-name">${cbEsc(c.name) || '이름 없음'} <span style="font-size:11px;color:#64748b;font-weight:500">${cbEsc(c.title)}</span></div>
       <div class="cbx-row-sub">${cbEsc([c.company, c.industry].filter(Boolean).join(' · '))}</div></div>
       <span style="color:#94a3b8;font-size:18px">›</span>
@@ -250,16 +250,16 @@ window.openFollow = function(docId) {
   const opts = [[1, '내일'], [3, '3일 뒤'], [7, '1주 뒤'], [14, '2주 뒤'], [30, '1달 뒤'], [90, '3달 뒤']];
   cbxSheet('followSheet', `
     <div class="cbx-h">⏰ ${cbEsc(c.name)}님께 다시 연락</div>
-    <div class="cbx-sub">${c.followUp ? '지금 알림: <b>' + c.followUp + '</b>' + (c.followNote ? ' · ' + cbEsc(c.followNote) : '') : '날짜를 고르면 그날 홈 화면 맨 위에 알려 드려요.'}</div>
+    <div class="cbx-sub">${c.followUp ? '지금 알림: <b>' + cbEsc(c.followUp) + '</b>' + (c.followNote ? ' · ' + cbEsc(c.followNote) : '') : '날짜를 고르면 그날 홈 화면 맨 위에 알려 드려요.'}</div>
     <div class="cbx-lab">할 일 한 줄 (선택)</div>
     <input class="cbx-in" id="followNote" maxlength="60" value="${cbEsc(c.followNote)}" placeholder="예: 견적서 보내기, 식사 약속 잡기">
     <div class="cbx-lab">언제</div>
-    <div class="cbx-quick">${opts.map(([n, l]) => `<button onclick="cbxFollowSave('${docId}', cbxDay(${n}))">${l}</button>`).join('')}</div>
+    <div class="cbx-quick">${opts.map(([n, l]) => `<button onclick="cbxFollowSave(${_cbJs(docId)}, cbxDay(${n}))">${l}</button>`).join('')}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <input class="cbx-in" type="date" id="followDate" min="${cbxDay(0)}" value="${c.followUp || ''}" style="flex:1">
-      <button class="cbx-mini" onclick="cbxFollowSave('${docId}', document.getElementById('followDate').value)">이 날짜로</button>
+      <input class="cbx-in" type="date" id="followDate" min="${cbxDay(0)}" value="${cbEsc(c.followUp)}" style="flex:1">
+      <button class="cbx-mini" onclick="cbxFollowSave(${_cbJs(docId)}, document.getElementById('followDate').value)">이 날짜로</button>
     </div>
-    ${c.followUp ? `<button class="cbx-btn danger" onclick="cbxFollowSave('${docId}', '')">알림 지우기</button>` : ''}
+    ${c.followUp ? `<button class="cbx-btn danger" onclick="cbxFollowSave(${_cbJs(docId)}, '')">알림 지우기</button>` : ''}
     <button class="cbx-btn plain" onclick="cbxClose('followSheet')">닫기</button>`);
 };
 window.cbxFollowSave = async function(docId, day) {
@@ -299,13 +299,13 @@ function cbxHomeFollow() {
   const rows = due.slice(0, 8).map(c => {
     const late = cbxDaysFrom(c.followUp);
     return `<div class="cbx-due-item">
-      <div class="home-item-body" onclick="openCardFromHome('${c.docId}')" style="cursor:pointer">
+      <div class="home-item-body" onclick="openCardFromHome(${_cbJs(c.docId)})" style="cursor:pointer">
         <div class="home-item-name">${cbEsc(c.name) || '이름 없음'} <span style="font-size:10.5px;font-weight:700;color:${late ? '#dc2626' : '#2563eb'}">${late ? late + '일 지남' : '오늘'}</span></div>
         <div class="home-item-sub">${cbEsc(c.followNote || [c.company, c.title].filter(Boolean).join(' · '))}</div>
       </div>
-      ${c.phone ? `<a class="cbx-mini" href="tel:${cbEsc(c.phone)}" onclick="cbTouch('${c.docId}')">📞</a>` : ''}
-      <button class="cbx-mini ghost" onclick="cbxFollowDone('${c.docId}')">완료</button>
-      <button class="cbx-mini ghost" onclick="cbxFollowLater('${c.docId}')">+1주</button>
+      ${c.phone ? `<a class="cbx-mini" href="tel:${cbEsc(c.phone)}" onclick="cbTouch(${_cbJs(c.docId)})">📞</a>` : ''}
+      <button class="cbx-mini ghost" onclick="cbxFollowDone(${_cbJs(c.docId)})">완료</button>
+      <button class="cbx-mini ghost" onclick="cbxFollowLater(${_cbJs(c.docId)})">+1주</button>
     </div>`;
   }).join('');
   return `<div class="home-section">
@@ -335,7 +335,7 @@ function cbxTagMatch(c) { return !cbxTagFilter || (c.tags || []).includes(cbxTag
 function cbxCardChips(card) {
   const tags = (card.tags || []).map(t => `<span class="cbx-tag" data-t="${cbEsc(t)}" onclick="cbxSetTag(this.dataset.t)">#${cbEsc(t)}</span>`).join('');
   const due = card.followUp && card.followUp <= cbxDay(0);
-  const fol = card.followUp ? `<span class="cbx-follow${due ? ' due' : ''}" onclick="openFollow('${card.docId}')">⏰ ${cbxShortDay(card.followUp)}${card.followNote ? ' ' + cbEsc(card.followNote) : ''}</span>` : '';
+  const fol = card.followUp ? `<span class="cbx-follow${due ? ' due' : ''}" onclick="openFollow(${_cbJs(card.docId)})">⏰ ${cbEsc(cbxShortDay(card.followUp))}${card.followNote ? ' ' + cbEsc(card.followNote) : ''}</span>` : '';
   return tags || fol ? `<div class="cbx-chips">${fol}${tags}</div>` : '';
 }
 function cbxRenderTagBar() {
@@ -391,7 +391,7 @@ window.cbxBulkRender = function() {
   const list = cbxBulkList();
   box.innerHTML = list.slice(0, 300).map(c => `
     <label class="cbx-row" style="cursor:pointer">
-      <input type="checkbox" ${cbxBulk.sel.has(c.docId) ? 'checked' : ''} onchange="cbxBulkToggle('${c.docId}', this.checked)" style="width:18px;height:18px;flex-shrink:0">
+      <input type="checkbox" ${cbxBulk.sel.has(c.docId) ? 'checked' : ''} onchange="cbxBulkToggle(${_cbJs(c.docId)}, this.checked)" style="width:18px;height:18px;flex-shrink:0">
       <div class="cbx-row-body"><div class="cbx-row-name">${cbEsc(c.name) || '이름 없음'}</div>
       <div class="cbx-row-sub">${cbEsc([c.company, c.metPlace, (c.tags || []).map(t => '#' + t).join(' ')].filter(Boolean).join(' · '))}</div></div>
     </label>`).join('') + (list.length > 300 ? `<div style="font-size:12px;color:#94a3b8;padding:12px 4px">외 ${list.length - 300}장 — 검색으로 줄여 주세요</div>` : '');
@@ -489,7 +489,7 @@ window.openGroups = async function() {
   catch(e) { document.getElementById('groupsModalBody').innerHTML = '<div style="text-align:center;padding:40px 0;color:#c8102e;font-size:13px">모임을 불러오지 못했어요<br><span style="font-size:11px;color:#64748b">' + cbEsc(e.message) + '</span></div>'; return; }
   const body = document.getElementById('groupsModalBody'); if(!body) return;
   const rows = groups.map(g => `
-    <div class="cbx-row" onclick="openGroup('${g.id}')" style="cursor:pointer">
+    <div class="cbx-row" onclick="openGroup(${_cbJs(g.id)})" style="cursor:pointer">
       <div class="cbx-row-body"><div class="cbx-row-name">${cbEsc(g.name)}</div>
       <div class="cbx-row-sub">${g.ownerUid === currentUser.uid ? '내가 만든 모임' : '모임장 ' + cbEsc(g.ownerName || '')}</div></div>
       <span style="color:#94a3b8;font-size:18px">›</span>
@@ -553,8 +553,8 @@ function cbxRenderGroup() {
       <div class="cbx-row-body"><div class="cbx-row-name">${cbEsc(m.name)} <span style="font-size:11px;color:#64748b;font-weight:500">${cbEsc(m.title)}</span>${me ? ' <span style="font-size:10.5px;color:#2563eb">나</span>' : ''}</div>
       <div class="cbx-row-sub">${cbEsc([m.company, m.industry].filter(Boolean).join(' · '))}</div></div>
       ${me ? `<button class="cbx-mini ghost" onclick="cbxEditMyMember()">고치기</button>`
-           : `<button class="cbx-mini" ${saved ? 'disabled' : ''} onclick="cbxGroupSave('${m.uid}')">${saved ? '✓ 저장됨' : '+ 담기'}</button>`}
-      ${mine && !me ? `<button class="cbx-mini ghost" onclick="cbxKick('${m.uid}')" aria-label="내보내기">✕</button>` : ''}
+           : `<button class="cbx-mini" ${saved ? 'disabled' : ''} onclick="cbxGroupSave(${_cbJs(m.uid)})">${saved ? '✓ 저장됨' : '+ 담기'}</button>`}
+      ${mine && !me ? `<button class="cbx-mini ghost" onclick="cbxKick(${_cbJs(m.uid)})" aria-label="내보내기">✕</button>` : ''}
     </div>`;
   }).join('');
   body.innerHTML = `
@@ -593,7 +593,7 @@ window.cbxInvite = async function() {
 window.cbxEditMyMember = function() {
   const m = cbxGroup.members.find(x => x.uid === currentUser.uid) || cbxMyMember();
   cbxSheet('groupMe', `<div class="cbx-h">✏️ 이 모임에 올린 내 명함</div><div class="cbx-sub">고치면 멤버들이 보는 명부에 바로 반영돼요.</div>
-    ${cbxMemberForm(m)}<button class="cbx-btn" onclick="cbxJoinGo('${cbxGroup.id}', true)">저장</button><button class="cbx-btn plain" onclick="cbxClose('groupMe')">취소</button>`);
+    ${cbxMemberForm(m)}<button class="cbx-btn" onclick="cbxJoinGo(${_cbJs(cbxGroup.id)}, true)">저장</button><button class="cbx-btn plain" onclick="cbxClose('groupMe')">취소</button>`);
 };
 // 참여(또는 내 명함 고치기): 내 명함을 모임에 올린다
 window.cbxJoinGo = async function(gid, edit) {
@@ -650,7 +650,7 @@ async function cbxShowJoin(gid) {
       <div class="cbx-h">👥 ${cbEsc(g.data().name)}</div>
       <div class="cbx-sub">모임장 ${cbEsc(g.data().ownerName || '')}님이 초대했어요.<br>내 명함을 올리면 이 모임 멤버들의 명함을 한 번에 받을 수 있어요. 올린 정보는 <b>이 모임 멤버에게만</b> 보여요.</div>
       ${cbxMemberForm(cbxMyMember())}
-      <button class="cbx-btn" onclick="cbxJoinGo('${gid}')">내 명함 올리고 참여하기</button>
+      <button class="cbx-btn" onclick="cbxJoinGo(${_cbJs(gid)})">내 명함 올리고 참여하기</button>
       <button class="cbx-btn plain" onclick="cbxClose('groupJoin')">다음에</button>`);
   } catch(e) { showToast('❌ 모임을 열지 못했어요: ' + e.message, 4000); }
 }
