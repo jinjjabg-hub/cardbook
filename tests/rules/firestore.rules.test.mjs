@@ -59,5 +59,18 @@ await no(updateDoc(doc(as('u1'), 'autocards/free1'), { plan: 'basic' }), '무료
 await ok(updateDoc(doc(as('u1'), 'autocards/free1'), { slogan: 'y' }), '무료판 문구 수정');
 await ok(updateDoc(doc(as('u1'), 'autocards/paid1'), { 'images.profile': 'https://x/p.jpg' }), '유료판 사진 변경');
 await no(updateDoc(doc(as('u1'), 'autocards/paid1'), { plan: 'free' }), '유료판 plan 변경');
+// BNI 명부: 원본은 관리자만, 회원은 공개용 사본만
+const admin = env.authenticatedContext('adm', { email: 'jinjjabg@gmail.com' }).firestore();
+await ok(setDoc(doc(admin, 'bni_members/m1'), { name: '홍길동', phone: '010', email: 'a@b.c', chapter: 'P' }), '관리자 원본 쓰기');
+await ok(getDoc(doc(admin, 'bni_members/m1')), '관리자 원본 읽기');
+await no(getDoc(doc(as('u1'), 'bni_members/m1')), '회원이 원본(전화·이메일) 읽기');
+await no(setDoc(doc(as('u1'), 'bni_members/m2'), { name: 'x' }), '회원이 원본 쓰기');
+await ok(setDoc(doc(admin, 'bni_public/m1'), { name: '홍길동', title: '', company: '', chapter: 'P', industry: '' }), '관리자 공개본 쓰기');
+await no(setDoc(doc(admin, 'bni_public/m2'), { name: '홍길동', phone: '010' }), '공개본에 전화번호');
+await ok(getDoc(doc(as('u1'), 'bni_public/m1')), '회원 공개본 읽기');
+await no(getDoc(doc(env.unauthenticatedContext().firestore(), 'bni_public/m1')), '비로그인 공개본 읽기');
+await no(setDoc(doc(as('u1'), 'bni_public/m3'), { name: 'x' }), '회원 공개본 쓰기');
+await no(deleteDoc(doc(as('u1'), 'bni_public/m1')), '회원 공개본 삭제');
+await ok(deleteDoc(doc(admin, 'bni_public/m1')), '관리자 공개본 삭제');
 console.log(`ALL ${n} RULE CASES PASSED`);
 await env.cleanup();

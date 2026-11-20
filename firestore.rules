@@ -41,11 +41,18 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // BNI 멤버 명부 — 로그인한 사람은 누구나 읽지만(챕터 명부 조회), 등록/수정/삭제는 관리자만.
+    // BNI 멤버 명부(원본: 이름·전화·이메일·링크 포함) — 읽기·쓰기 모두 관리자만.
+    // 예전엔 로그인한 누구나 전체를 읽을 수 있어 전화·이메일이 통째로 노출됐다.
+    // 회원은 아래 bni_public(공개용 필드만)으로 명부를 보고, "+ 담기"할 때만 Worker(/bni/member)가 한 명씩 연락처를 준다(하루 한도).
     // 앱의 isAdmin()은 클라이언트 체크라 우회 가능하므로 여기서 이메일로 다시 확인한다.
     match /bni_members/{memberId} {
+      allow read, write: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com';
+    }
+    // BNI 명부 공개용 사본 — 문서 id는 bni_members와 같다. 로그인한 사람은 읽고, 관리자만 쓴다(명부 화면을 열면 원본과 자동으로 맞춤).
+    match /bni_public/{memberId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com';
+      allow write: if request.auth != null && request.auth.token.email == 'jinjjabg@gmail.com'
+        && (request.resource == null || request.resource.data.keys().hasOnly(['name', 'title', 'company', 'chapter', 'industry']));
     }
 
     // 결제 기록 — Worker(Admin SDK)만 쓴다. 클라이언트는 읽기도 쓰기도 못한다(본인 결제 내역 확인 UI가 생기면 그때 read만 열어준다).

@@ -1069,10 +1069,47 @@ window.openMembersModal = async function() {
 };
 
 let _cbMembers = [];
+// BNI 명부: 원본 bni_members(전화·이메일 포함)는 관리자만 읽는다. 회원은 공개용 사본 bni_public(아래 필드만)을 읽고,
+// "+ 담기"할 때만 Worker(/bni/member)에서 그 멤버 한 명의 연락처를 받는다 (firestore.rules 참고)
+const CB_BNI_PUBLIC_FIELDS = ['name', 'title', 'company', 'chapter', 'industry'];
+function cbBniPublic(m) { const o = {}; CB_BNI_PUBLIC_FIELDS.forEach(k => { o[k] = String(m[k] || ''); }); return o; }
+// 관리자가 명부를 열 때마다 공개용 사본을 원본과 맞춘다(새로 생긴·바뀐 멤버는 쓰고, 원본에서 빠진 멤버는 지움).
+// 처음 한 번 열면 기존 명부가 그대로 옮겨진다 — 별도 이전 스크립트가 필요 없다.
+async function cbSyncBniPublic(members) {
+  const pub = {};
+  (await db.collection('bni_public').get()).docs.forEach(d => { pub[d.id] = d.data(); });
+  const ops = [];
+  members.forEach(m => {
+    const want = cbBniPublic(m), have = pub[m.docId];
+    if(!have || CB_BNI_PUBLIC_FIELDS.some(k => have[k] !== want[k]) || Object.keys(have).length !== CB_BNI_PUBLIC_FIELDS.length) ops.push(b => b.set(db.collection('bni_public').doc(m.docId), want));
+    delete pub[m.docId];
+  });
+  Object.keys(pub).forEach(id => ops.push(b => b.delete(db.collection('bni_public').doc(id))));
+  for(let i = 0; i < ops.length; i += 450) { const b = db.batch(); ops.slice(i, i + 450).forEach(f => f(b)); await b.commit(); }
+  return ops.length;
+}
+// 회원이 "+ 담기"를 누른 멤버 한 명의 전체 정보(연락처 포함)
+async function cbFetchBniMember(id) {
+  const res = await fetch(CB_WORKER_URL + '/bni/member', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken: await currentUser.getIdToken(), id }) });
+  const d = await res.json().catch(() => ({}));
+  if(!res.ok || d.error) throw new Error(d.error || '멤버 정보를 불러오지 못했어요');
+  return { ...d, docId: id };
+}
+// 관리자 등록: 원본과 공개용 사본을 같은 id로 한 번에 쓴다
+async function cbAddBniMember(data) {
+  const ref = db.collection('bni_members').doc();
+  const b = db.batch();
+  b.set(ref, data);
+  b.set(db.collection('bni_public').doc(ref.id), cbBniPublic(data));
+  await b.commit();
+}
 async function loadMembers() {
   try {
-    const snap = await db.collection('bni_members').orderBy('name').get();
+    const admin = isAdmin();
+    const snap = await db.collection(admin ? 'bni_members' : 'bni_public').orderBy('name').get();
     _cbMembers = snap.docs.map(d => ({ ...d.data(), docId: d.id }));
+    if(admin) cbSyncBniPublic(_cbMembers).then(n => { if(n) showToast('🔄 공개 명부 ' + n + '건을 맞췄어요'); }).catch(e => showToast('❌ 공개 명부 맞추기 실패: ' + e.message));
     renderChapterUI();
     renderMembers(_cbMembers);
   } catch(e) {
@@ -1115,9 +1152,10 @@ window.filterMembers = function(q) {
 };
 
 window.saveMemberToMyCards = async function(memberId) {
-  const m = _cbMembers.find(x => x.docId === memberId);
-  if(!m || !currentUser) return;
+  const pm = _cbMembers.find(x => x.docId === memberId);
+  if(!pm || !currentUser) return;
   try {
+    const m = isAdmin() ? pm : await cbFetchBniMember(memberId); // 회원은 공개 명부에 연락처가 없어 이때 한 명만 받아 온다
     // 같은 사람이 이미 카드북에 있으면 새로 만들지 않고 챕터만 넣어줌
     const norm = v => (v||'').replace(/[^0-9]/g,'');
     const dup = allCards.find(c => c.name === m.name && (!m.phone || !c.phone || norm(c.phone) === norm(m.phone)));
@@ -1179,7 +1217,7 @@ window.saveCardsToRoster = async function() {
     for(const id of ids) {
       const c = allCards.find(x => x.docId === id);
       if(!c) continue;
-      await db.collection('bni_members').add({
+      await cbAddBniMember({
         name: c.name||'', title: c.title||'', company: c.company||'', industry: c.industry||'',
         phone: c.phone||'', email: c.email||'', url: c.url||'', chapter,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1236,7 +1274,7 @@ window.saveMemberToRoster = async function() {
     createdAt: firebase.firestore.FieldValue.serverTimestamp()
   };
   try {
-    await db.collection('bni_members').add(data);
+    await cbAddBniMember(data);
     showToast('✅ ' + name + '님 명부 등록 완료');
     document.getElementById('memberAdminModal').remove();
     await loadMembers();

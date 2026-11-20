@@ -734,6 +734,32 @@ async function bniCheck(env, phone) {
   return json({ isBni: false });
 }
 
+// ===== BNI 명부 "+ 담기": 멤버 한 명의 연락처 (/bni/member) =====
+// 명부 화면은 공개용 bni_public(이름·직함·회사·챕터·업종)만 읽는다. 전화·이메일·링크는 원본 bni_members에 있고 관리자만 읽을 수 있어서,
+// 회원이 "+ 담기"를 누를 때만 여기서 한 명씩 돌려준다. 명부 전체를 긁어 가지 못하게 한 사람이 하루에 받을 수 있는 멤버 수를 묶는다.
+const BNI_MEMBER_DAILY = 50;
+async function bniMember(env, body) {
+  const uid = await verifyIdToken(body.idToken);
+  const id = String(body.id || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return json({ error: '잘못된 멤버' }, 400);
+  let seen = null, rk = '';
+  if (env.OCR_CACHE) {   // 같은 멤버를 다시 담는 건 세지 않는다
+    rk = `bnim:${uid}:${new Date().toISOString().slice(0, 10)}`;
+    seen = (await env.OCR_CACHE.get(rk, 'json')) || [];
+    if (!seen.includes(id) && seen.length >= BNI_MEMBER_DAILY) return json({ error: `오늘은 명부에서 ${BNI_MEMBER_DAILY}명까지 담을 수 있어요. 내일 다시 시도해 주세요.`, limited: true }, 429);
+  }
+  const token = await firebaseAccessToken(env);
+  const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
+  const res = await fetch(`https://firestore.googleapis.com/v1/${base}/bni_members/${id}`, { headers: { Authorization: 'Bearer ' + token } });
+  if (res.status === 404) return json({ error: '명부에 없는 멤버예요' }, 404);
+  if (!res.ok) throw new Error('명부 조회 실패');
+  const f = (await res.json()).fields || {};
+  const out = {};
+  for (const k of ['name', 'title', 'company', 'industry', 'chapter', 'phone', 'email', 'url']) out[k] = String(f[k]?.stringValue || '').slice(0, 300);
+  if (seen && !seen.includes(id)) await env.OCR_CACHE.put(rk, JSON.stringify([...seen, id]), { expirationTtl: 60 * 60 * 26 });
+  return json(out);
+}
+
 // ===== 회원 탈퇴: 서버만 쓰는 기록 정리 (/account/delete) =====
 // 클라이언트 규칙으로는 지울 수 없는 문서(통계·저장 기록·선점 기록·알림·배너 클릭)를 서비스 계정으로 지운다. 여러 번 불러도 안전(없는 문서는 건너뜀).
 // 명함첩·users·consents·Storage 사진은 클라이언트가 지우고, 마지막에 Auth 계정을 지운다(index.html executeDeleteAccount).
@@ -990,6 +1016,7 @@ export default {
         return json({ matched, summary: String(result.summary || '').slice(0, 200) });
       }
 
+      if (url.pathname === '/bni/member') return await bniMember(env, await request.json());
       if (url.pathname === '/account/delete') return await accountDelete(env, await request.json());
 
       // ── BNI 멤버 여부 확인 (읽기 전용, 다른 프로젝트인 주주도사 Worker가 호출) ──
