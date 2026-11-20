@@ -22,7 +22,7 @@ globalThis.fetch = async (url, opt = {}) => {
     writes.push(...body.writes); return J({});
   }
   const m = url.match(/documents\/(autocards|users)\/([^/?]+)$/);
-  if (m) { const d = db[m[1] + '/' + m[2]]; return d ? J({ fields: d }) : new Response('{}', { status: 404 }); }
+  if (m) { const d = db[m[1] + '/' + m[2]]; return d ? J({ fields: d, updateTime: 'x' }) : new Response('{}', { status: 404 }); }
   throw new Error('unexpected fetch ' + url);
 };
 const worker = (await import('./worker.mjs')).default;
