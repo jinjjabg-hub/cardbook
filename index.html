@@ -1313,7 +1313,7 @@ function renderCards(cards) {
     }
 
     const avatarHtml = card.avatar
-      ? (safeUrl(card.avatar) !== '#' ? `<img src="${_cbEsc(safeUrl(card.avatar))}" alt="${_cbEsc(card.name)}" onerror="this.style.display='none'">` : _cbEsc(initial(card.avatar)))
+      ? (safeUrl(card.avatar) !== '#' ? `<img src="${_cbEsc(safeUrl(card.avatar))}" alt="${_cbEsc(card.name)}" onerror="this.style.display='none'">` : '')   // URL이 아닌 avatar(DiCA는 이름 첫 글자)는 예전처럼 비워 둠
       : _cbEsc(initial(card.name));
     const bniHtml = card.bni ? `<div class="bni-badge"><div class="bni-dot"></div>${_cbEsc(card.bni)}</div>` : '';
     const memoText = card.memo || '';
