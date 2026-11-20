@@ -22,9 +22,16 @@ globalThis.fetch = async (url, opt = {}) => {
   if (url.includes('accounts:signUp')) { manduCalls++; return J({ idToken: 'anon', expiresIn: '3600' }); }
   if (url.includes('accounts:lookup')) return J({ users: [{ localId: JSON.parse(opt.body).idToken }] });
   if (url.includes('projects/mandutok') && url.includes(':runQuery')) {
-    const vals = JSON.parse(opt.body).structuredQuery.where.fieldFilter.value.arrayValue.values.map(v => v.stringValue);
+    // 만두 보안 규칙상 cardbookConsent==true 조건과 emailLower IN 조건을 함께(AND) 걸어야 조회가 허용된다
+    const where = JSON.parse(opt.body).structuredQuery.where;
+    assert.equal(where.compositeFilter?.op, 'AND');
+    const ff = where.compositeFilter.filters.map(f => f.fieldFilter);
+    const consent = ff.find(f => f.field.fieldPath === 'cardbookConsent');
+    assert.ok(consent && consent.op === 'EQUAL' && consent.value.booleanValue === true, '동의 조건이 빠지면 만두 규칙에 막힘');
+    const inF = ff.find(f => f.field.fieldPath === 'emailLower' && f.op === 'IN');
+    const vals = inF.value.arrayValue.values.map(v => v.stringValue);
     assert.ok(vals.length <= 30);
-    return J(mandu.filter(u => vals.includes(u.emailLower)).map(u => ({ document: { fields: enc(u) } })).concat([{ readTime: 'x' }]));
+    return J(mandu.filter(u => u.cardbookConsent === true && vals.includes(u.emailLower)).map(u => ({ document: { fields: enc(u) } })).concat([{ readTime: 'x' }]));
   }
   const m = url.match(/documents\/(.+)$/);
   if (m) { const d = cb[decodeURIComponent(m[1])]; return d ? J({ fields: enc(d) }) : new Response('{}', { status: 404 }); }
