@@ -9,7 +9,7 @@ const cb = {   // 카드북 Firestore (users, autocards, dicaClaims)
   'autocards/abc123xyz': { status: 'published', ownerUid: 'owner1' },
   ['dicaClaims/' + encodeURIComponent('jinjjabg-hub.github.io/bni-giants/lee')]: { uid: 'owner2' },
 };
-const mandu = [   // 만두 users (emailLower, manduid, cardbookConsent)
+const mandu = [   // 만두 회원 (동의한 회원만 cardbook_index 문서가 있음)
   { emailLower: 'kim@example.com', manduid: 'kimmandu', cardbookConsent: true },
   { emailLower: 'lee@example.com', manduid: 'leemandu', cardbookConsent: false },   // 동의 안 함
   { emailLower: 'park@example.com', manduid: 'parkmandu', cardbookConsent: true },
@@ -21,17 +21,17 @@ globalThis.fetch = async (url, opt = {}) => {
   if (url.includes('oauth2')) return J({ access_token: 't', expires_in: 3600 });
   if (url.includes('accounts:signUp')) { manduCalls++; return J({ idToken: 'anon', expiresIn: '3600' }); }
   if (url.includes('accounts:lookup')) return J({ users: [{ localId: JSON.parse(opt.body).idToken }] });
-  if (url.includes('projects/mandutok') && url.includes(':runQuery')) {
-    // 만두 보안 규칙상 cardbookConsent==true 조건과 emailLower IN 조건을 함께(AND) 걸어야 조회가 허용된다
-    const where = JSON.parse(opt.body).structuredQuery.where;
-    assert.equal(where.compositeFilter?.op, 'AND');
-    const ff = where.compositeFilter.filters.map(f => f.fieldFilter);
-    const consent = ff.find(f => f.field.fieldPath === 'cardbookConsent');
-    assert.ok(consent && consent.op === 'EQUAL' && consent.value.booleanValue === true, '동의 조건이 빠지면 만두 규칙에 막힘');
-    const inF = ff.find(f => f.field.fieldPath === 'emailLower' && f.op === 'IN');
-    const vals = inF.value.arrayValue.values.map(v => v.stringValue);
-    assert.ok(vals.length <= 30);
-    return J(mandu.filter(u => u.cardbookConsent === true && vals.includes(u.emailLower)).map(u => ({ document: { fields: enc(u) } })).concat([{ readTime: 'x' }]));
+  if (url.includes('projects/mandutok')) {
+    // 만두 보안 규칙상 cardbook_index 문서를 이메일로 한 건씩 읽는 것만 허용된다(users 조회·목록 조회는 막힘)
+    assert.ok(url.endsWith(':batchGet'), '만두는 cardbook_index batchGet만 허용: ' + url);
+    const names = JSON.parse(opt.body).documents;
+    assert.ok(names.length <= 100);
+    return J(names.map(n => {
+      assert.ok(n.startsWith('projects/mandutok/databases/(default)/documents/cardbook_index/'), '만두 users 문서를 읽으면 안 됨');
+      const e = n.split('/').pop();
+      const u = mandu.find(x => x.cardbookConsent === true && x.emailLower === e);   // 동의한 회원만 문서가 있음
+      return u ? { found: { name: n, fields: enc({ uid: 'x', manduid: u.manduid }) } } : { missing: n };
+    }));
   }
   const m = url.match(/documents\/(.+)$/);
   if (m) { const d = cb[decodeURIComponent(m[1])]; return d ? J({ fields: enc(d) }) : new Response('{}', { status: 404 }); }
@@ -55,7 +55,7 @@ const bad = await worker.fetch(new Request('https://w/mandu/match', { method: 'P
 assert.notEqual(bad.status, 200);
 // 익명 로그인 토큰은 재사용(1회만 발급)
 await call({ idToken: 'me', items }); assert.equal(manduCalls, 1);
-// 40개 이메일 → 30개씩 나눠 조회
-const many = Array.from({ length: 40 }, (_, i) => ({ k: 'm' + i, url: '', email: `u${i}@example.com` }));
+// 140개 이메일 → 100개씩 나눠 조회
+const many = Array.from({ length: 140 }, (_, i) => ({ k: 'm' + i, url: '', email: `u${i}@example.com` }));
 r = await call({ idToken: 'me', items: many }); assert.deepEqual(r.matches, {});
 console.log('MANDU TESTS PASSED');

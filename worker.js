@@ -249,8 +249,9 @@ async function recordSave(fbToken, owner, saver) {
 const AI_SEARCH_DAILY = 30;   // 문장 검색: 한 사람 하루 30번
 
 // ===== 만두 연결: 만두에서 "카드북에서 나를 찾아도 좋다"고 동의한 회원만 =====
-// 만두는 카드북과 다른 Firebase 프로젝트(mandutok)라서, 읽기 전용으로 익명 로그인해 users 문서를 조회한다.
-// 돌려주는 건 만두 ID뿐 — 이메일·이름 등은 절대 내보내지 않는다. cardbookConsent가 true인 회원만 대상이다.
+// 만두는 카드북과 다른 Firebase 프로젝트(mandutok)라서, 읽기 전용으로 익명 로그인해 조회한다.
+// 만두에서 동의한 회원만 cardbook_index/{소문자 이메일} = {uid, manduid} 문서가 있고, 만두 규칙상 이메일을 아는 문서를
+// 한 건씩(get)만 읽을 수 있다(목록 조회 금지). 만두 users 문서(이메일·알림 토큰 등)는 읽지 않는다. 돌려주는 건 만두 ID뿐.
 const MANDU_PROJECT = 'mandutok';
 const MANDU_API_KEY = 'AIzaSyAmebb0FQ4MxywQlMGgm8zrL2Ta97eskbo';
 let _manduTok = { token: '', exp: 0 };
@@ -267,20 +268,23 @@ async function manduToken() {
 // 이메일(소문자) 목록 → { 이메일: 만두ID } (동의한 회원만)
 async function manduLookup(emails) {
   const out = {};
+  emails = emails.filter(e => e && !e.includes('/'));   // 문서 id로 쓸 수 없는 글자 제외
   if (!emails.length) return out;
   const token = await manduToken();
-  for (let i = 0; i < emails.length; i += 30) {   // Firestore in 조건은 한 번에 30개까지
-    const res = await fetch(`https://firestore.googleapis.com/v1/projects/${MANDU_PROJECT}/databases/(default)/documents:runQuery`, {
+  const base = `projects/${MANDU_PROJECT}/databases/(default)/documents`;
+  for (let i = 0; i < emails.length; i += 100) {   // 한 번에 100개씩 묶어 읽기
+    const res = await fetch(`https://firestore.googleapis.com/v1/${base}:batchGet`, {
       method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'users' }], where: { compositeFilter: { op: 'AND', filters: [   // 만두 규칙상 cardbookConsent==true 조건이 있어야 조회가 허용된다
-        { fieldFilter: { field: { fieldPath: 'cardbookConsent' }, op: 'EQUAL', value: { booleanValue: true } } },
-        { fieldFilter: { field: { fieldPath: 'emailLower' }, op: 'IN', value: { arrayValue: { values: emails.slice(i, i + 30).map(e => ({ stringValue: e })) } } } },
-      ] } }, limit: 100 } }),
+      body: JSON.stringify({ documents: emails.slice(i, i + 100).map(e => `${base}/cardbook_index/${e}`) }),
     });
     if (!res.ok) throw new Error('만두 조회 실패');
     for (const row of await res.json()) {
-      const f = row.document?.fields;
-      if (f && f.cardbookConsent?.booleanValue === true && f.emailLower?.stringValue && f.manduid?.stringValue) out[f.emailLower.stringValue] = f.manduid.stringValue;
+      const d = row.found;
+      if (!d) continue;   // 동의 안 했거나 만두 회원 아님
+      let email = d.name.slice(d.name.lastIndexOf('/') + 1);
+      try { email = decodeURIComponent(email); } catch (e) {}
+      const mid = d.fields?.manduid?.stringValue;
+      if (mid && emails.includes(email)) out[email] = mid;
     }
   }
   return out;
