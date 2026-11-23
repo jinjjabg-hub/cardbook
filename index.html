@@ -139,8 +139,8 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .login-icon .ci{width:96px;height:96px;}
 .login-title{font-family:'Nanum Gothic',sans-serif;font-size:22px;font-weight:800;color:#16305e;margin-bottom:10px;}
 .login-desc{font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:24px;}
-.auth-tabs{display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
-.auth-tab{flex:1;background:none;border:none;padding:10px 16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;}
+.auth-tabs{display:flex;gap:0;margin-bottom:20px;width:100%;max-width:300px;border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.auth-tab{flex:1;background:none;border:none;padding:10px 16px;white-space:nowrap;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;}
 .auth-tab.active{background:var(--gold);color:#ffffff;}
 .auth-form{width:100%;max-width:300px;display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
 .auth-input{background:rgba(255,255,255,0.08);border:1px solid var(--border);border-radius:12px;padding:12px 14px;color:var(--cream);font-size:14px;font-family:'Noto Sans KR',sans-serif;outline:none;width:100%;}
@@ -150,10 +150,15 @@ mark{background:rgba(212,175,55,.35);color:inherit;border-radius:3px;padding:0 1
 .social-divider{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--muted);font-size:11px;width:100%;max-width:300px;}
 .social-divider div{flex:1;height:1px;background:var(--border);}
 .social-buttons{display:flex;gap:10px;width:100%;max-width:300px;}
-.google-btn,.kakao-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:40px;padding:11px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;}
+.google-btn,.kakao-btn,.naver-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:40px;padding:11px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;}
 .google-btn{background:#fff;color:#1a1a1a;box-shadow:0 2px 8px rgba(0,0,0,0.2);padding:14px 16px;font-size:15px;border:1px solid rgba(0,0,0,0.08);}
-.kakao-btn{background:#FEE500;color:#3c1e1e;}
-.google-btn:hover,.kakao-btn:hover{transform:translateY(-2px);}
+.kakao-btn{background:#FEE500;color:#191919;padding:13px 16px;font-size:14px;}
+.naver-btn{background:#03C75A;color:#fff;padding:13px 16px;font-size:14px;}
+.google-btn:hover,.kakao-btn:hover,.naver-btn:hover{transform:translateY(-2px);}
+.login-guide{width:100%;max-width:300px;font-size:12px;color:#3b4a63;line-height:1.7;margin:10px 0 8px;}
+.login-guide b{color:#16305e;}
+.auth-help{font-size:12px;color:var(--muted);line-height:1.7;}
+.auth-help a{color:#2563eb;text-decoration:underline;cursor:pointer;}
 
 /* MISC */
 .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:14px;}
@@ -552,7 +557,7 @@ function renderLogin() {
     <div style="background:#16305e;border-radius:14px;padding:16px 18px;margin-bottom:20px;text-align:center;">
       <div style="font-size:22px;margin-bottom:6px;">💾</div>
       <div style="font-size:15px;font-weight:700;color:#f6f8fc;margin-bottom:4px;">${_cbEsc(pendingName)}님의 명함을 저장할게요</div>
-      <div style="font-size:12px;color:rgba(255,255,255,0.6);">Google 로그인 후 바로 저장됩니다</div>
+      <div style="font-size:12px;color:rgba(255,255,255,0.6);">로그인 후 바로 저장됩니다</div>
     </div>` : '';
   document.getElementById('appRoot').innerHTML = `
     <div class="login-screen">
@@ -572,12 +577,14 @@ function renderLogin() {
         </label>
         <div id="privacyError" style="font-size:11px;color:#C8102E;margin-top:6px;padding-left:4px;min-height:16px;"></div>
       </div>
-      <div class="social-buttons" style="margin-top:6px">
+      <div class="login-guide">처음이세요? <b>아래 버튼으로 로그인하면 바로 가입돼요.</b><br>따로 가입 절차가 없어요.</div>
+      <div class="social-buttons">
         <button class="google-btn" onclick="doGoogleLogin()">
           <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
           Google
         </button>
       </div>
+      <div class="social-buttons" id="oauthBtns" style="margin-top:10px;display:none"></div>
       <div class="social-divider"><div></div><span>또는 이메일로</span><div></div></div>
       <div class="auth-tabs">
         <button class="auth-tab ${authMode==='login'?'active':''}" onclick="setAuthMode('login')">로그인</button>
@@ -588,6 +595,9 @@ function renderLogin() {
         <input type="password" id="authPassword" class="auth-input" placeholder="비밀번호 (6자 이상)" autocomplete="current-password">
         <button class="auth-submit" onclick="handleEmailAuth()">${authMode==='login'?'로그인':'회원가입'}</button>
         <div id="authError" class="error-msg"></div>
+        <div class="auth-help">${authMode==='login'
+          ? '<a onclick="sendPasswordReset()">비밀번호를 잊으셨나요?</a> · 처음이면 <a onclick="setAuthMode(\'signup\')">회원가입</a>'
+          : '쓰는 이메일과 새 비밀번호(6자 이상)를 적고 <b>회원가입</b>을 누르세요.<br>다음부터는 <b>로그인</b> 탭에서 같은 이메일·비밀번호로 들어와요.'}</div>
       </div>
     </div>
     <div class="bottom-nav">
@@ -596,6 +606,7 @@ function renderLogin() {
       <button class="nav-btn nav-add" onclick="openScanModal()">${ci('plus')}<span>명함 추가</span></button>
     </div>
   `;
+  renderOAuthButtons();
   // 엔터키 지원
   setTimeout(() => {
     const pw = document.getElementById('authPassword');
@@ -630,6 +641,8 @@ window.handleEmailAuth = async function() {
       'auth/user-not-found': '등록되지 않은 이메일입니다.',
       'auth/weak-password': '비밀번호는 6자 이상이어야 합니다.',
       'auth/invalid-email': '이메일 형식이 올바르지 않습니다.',
+      'auth/invalid-credential': '이메일 또는 비밀번호가 틀렸어요. 비밀번호가 기억나지 않으면 아래 "비밀번호를 잊으셨나요?"를 눌러 주세요.',
+      'auth/too-many-requests': '시도가 너무 많아요. 잠시 뒤 다시 해 주세요.',
     };
     errEl.innerText = msgs[e.code] || e.message;
   }
@@ -736,41 +749,91 @@ auth.getRedirectResult().then(async result => {
   }
 });
 
-// ===== 카카오 로그인 (안정화 버전) =====
-// 핵심: kakaoId 기반 고정 비밀번호 사용 (getTime 제거)
-window.doKakaoLogin = function() {
-  initKakao();
-  if(typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
-    showToast('카카오 SDK 로드 실패. 새로고침 후 시도해주세요.'); return;
+// ===== 비밀번호 찾기 (이메일 가입자) =====
+window.sendPasswordReset = async function() {
+  const email = document.getElementById('authEmail')?.value.trim();
+  const errEl = document.getElementById('authError');
+  if(!email) { errEl.innerText = '비밀번호를 찾을 이메일을 위 칸에 먼저 적어 주세요.'; document.getElementById('authEmail')?.focus(); return; }
+  try {
+    auth.languageCode = 'ko';
+    await auth.sendPasswordResetEmail(email);
+  } catch(e) {
+    if(e.code === 'auth/invalid-email') { errEl.innerText = '이메일 형식이 올바르지 않습니다.'; return; }
+    if(e.code === 'auth/too-many-requests') { errEl.innerText = '시도가 너무 많아요. 잠시 뒤 다시 해 주세요.'; return; }
+    if(e.code !== 'auth/user-not-found') { errEl.innerText = '메일을 보내지 못했어요: ' + (e.code || e.message); return; }
   }
-  Kakao.Auth.login({
-    success: function(authObj) {
-      Kakao.API.request({
-        url: '/v2/user/me',
-        success: async function(profile) {
-          const kakaoId = String(profile.id);
-          const email = profile.kakao_account?.email || `kakao_${kakaoId}@cardbook.bni`;
-          const name = profile.properties?.nickname || '카카오사용자';
-          const photo = profile.properties?.profile_image || null;
-          const fixedPw = `kb_${kakaoId}_fixed`;
-          try {
-            await auth.signInWithEmailAndPassword(email, fixedPw);
-            showToast('✅ 카카오 로그인 성공');
-          } catch(e) {
-            if(e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
-              await auth.createUserWithEmailAndPassword(email, fixedPw);
-              await auth.currentUser.updateProfile({ displayName: name, photoURL: photo });
-              showToast('✅ 카카오 가입 완료!');
-            }
-          }
-        },
-        fail: function(err) { showToast('카카오 정보 오류: ' + JSON.stringify(err)); }
-      });
-    },
-    fail: function(err) { showToast('카카오 로그인 실패: ' + JSON.stringify(err)); }
-  });
+  // 가입 여부는 알려 주지 않는다(남의 이메일로 가입 여부를 떠보지 못하게)
+  showToast('📧 가입된 이메일이면 재설정 메일을 보냈어요', 6000);
+  errEl.innerText = '메일이 안 보이면 스팸함도 확인해 주세요.';
+};
+
+// ===== 카카오·네이버 로그인 =====
+// Worker가 인가 코드를 카카오·네이버에 직접 확인하고 Firebase 로그인 토큰을 준다(키는 Worker에만).
+// Worker에 키가 설정된 회사만 버튼을 보여 준다. 돌아올 주소는 카카오·네이버 콘솔에 등록된 이 주소 하나.
+const CB_OAUTH_REDIRECT = 'https://cardbook.bizmy.net/';
+const CB_OAUTH_LABEL = { kakao: '카카오', naver: '네이버' };
+const CB_OAUTH_ICON = {
+  kakao: '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#191919" d="M12 3C6.48 3 2 6.5 2 10.82c0 2.78 1.86 5.22 4.66 6.6l-.95 3.48c-.08.3.26.54.52.37l4.15-2.74c.53.06 1.07.1 1.62.1 5.52 0 10-3.5 10-7.81S17.52 3 12 3z"/></svg>',
+  naver: '<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M16.27 12.85 7.38 0H0v24h7.73V11.15L16.62 24H24V0h-7.73z"/></svg>',
+};
+let _cbOAuthProviders = null;   // null = 아직 모름
+function renderOAuthButtons() {
+  const box = document.getElementById('oauthBtns');
+  if(!box) return;
+  if(location.origin + location.pathname !== CB_OAUTH_REDIRECT) return;   // 등록된 주소에서만(미리보기 주소 등에선 숨김)
+  if(_cbOAuthProviders === null) {
+    _cbOAuthProviders = [];
+    fetch(CB_WORKER_URL + '/auth/providers', { method: 'POST', body: '{}' }).then(r => r.json())
+      .then(d => { _cbOAuthProviders = (d.providers || []).filter(p => CB_OAUTH_LABEL[p]); renderOAuthButtons(); })
+      .catch(() => {});
+    return;
+  }
+  box.innerHTML = _cbOAuthProviders.map(p =>
+    `<button class="${p}-btn" data-p="${p}" onclick="doOAuthLogin(this.dataset.p)">${CB_OAUTH_ICON[p]}${CB_OAUTH_LABEL[p]}</button>`).join('');
+  box.style.display = _cbOAuthProviders.length ? 'flex' : 'none';
 }
-  
+function _cbRandomState() {
+  const a = new Uint8Array(24); crypto.getRandomValues(a);
+  return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+window.doOAuthLogin = async function(provider) {
+  if(!checkPrivacyAgree()) return;
+  const state = _cbRandomState();
+  // 다녀오는 동안 지금 주소의 파라미터(?name=… 명함 저장 등)를 보관했다가 돌아와서 되살린다
+  _cbSet('oauthPending', JSON.stringify({ p: provider, s: state, q: location.search, t: Date.now() }));
+  try {
+    const r = await fetch(CB_WORKER_URL + '/auth/start', { method: 'POST', body: JSON.stringify({ provider, redirectUri: CB_OAUTH_REDIRECT, state }) });
+    const d = await r.json();
+    if(!d.url) throw new Error(d.error || '로그인 주소를 받지 못했어요');
+    location.href = d.url;
+  } catch(e) { _cbDel('oauthPending'); showToast('❌ ' + CB_OAUTH_LABEL[provider] + ' 로그인 실패: ' + e.message, 4000); }
+};
+// 카카오·네이버에서 돌아왔을 때 (?code=…&state=… 또는 ?error=…&state=…)
+(async function handleOAuthReturn() {
+  const q = new URLSearchParams(location.search);
+  const code = q.get('code'), state = q.get('state'), err = q.get('error');
+  if(!state || (!code && !err)) return;
+  let pend = null; try { pend = JSON.parse(_cbGet('oauthPending') || 'null'); } catch(e) {}
+  _cbDel('oauthPending');
+  // 주소에서 코드를 지우고 떠나기 전 파라미터로 되돌린다(로그인 후 명함 저장 등이 이어지도록)
+  history.replaceState({}, '', location.pathname + (pend && pend.q || ''));
+  if(!pend || pend.s !== state || Date.now() - pend.t > 10 * 60 * 1000) { showToast('❌ 로그인 요청이 만료됐어요. 다시 눌러 주세요.', 4000); return; }
+  const label = CB_OAUTH_LABEL[pend.p] || '';
+  if(err || !code) { showToast(err === 'access_denied' ? label + ' 로그인을 취소했어요' : '❌ ' + label + ' 로그인 실패', 4000); return; }
+  showToast('🔐 ' + label + '로 로그인하는 중…', 8000);
+  try {
+    const r = await fetch(CB_WORKER_URL + '/auth/oauth', { method: 'POST', body: JSON.stringify({ provider: pend.p, code, state, redirectUri: CB_OAUTH_REDIRECT }) });
+    const d = await r.json();
+    if(!d.token) throw new Error(d.error || '로그인 토큰을 받지 못했어요');
+    window._cbOAuthName = d.name || '';   // 첫 가입 때 프로필 이름으로 쓴다(loadUserProfile)
+    await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    const res = await auth.signInWithCustomToken(d.token);
+    if(d.name && !res.user.displayName) res.user.updateProfile({ displayName: d.name }).catch(() => {});
+    await saveConsentRecord(res.user.uid);
+    showToast('✅ ' + label + '로 로그인했어요');
+  } catch(e) { showToast('❌ ' + label + ' 로그인 실패: ' + e.message, 5000); }
+})();
+
 // ===== 로그아웃 =====
 window.doLogout = async function() {
   if(typeof Kakao !== 'undefined' && Kakao.isInitialized() && Kakao.Auth.getAccessToken()) {
@@ -2528,7 +2591,7 @@ auth.onAuthStateChanged(async user => {
 async function loadUserProfile(uid) {
   try {
     const doc = await db.collection('users').doc(uid).get();
-    let name = currentUser.displayName || currentUser.email || '사용자';
+    let name = currentUser.displayName || window._cbOAuthName || currentUser.email || '사용자';
     let title = '', company = '';
     let isNew = false;
     if(doc.exists) {

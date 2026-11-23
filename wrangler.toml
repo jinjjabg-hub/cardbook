@@ -1,5 +1,5 @@
 # Cloudflare Worker cardbook-ai 배포 설정 (GitHub Actions가 main에 worker.js가 바뀌면 자동 배포)
-# 비밀값(ANTHROPIC_API_KEY, TOSS_SECRET_KEY, FIREBASE_SA)은 여기 없음 — Cloudflare에 저장된 것을 그대로 유지한다.
+# 비밀값(ANTHROPIC_API_KEY, PORTONE_API_SECRET, FIREBASE_SA, 카카오·네이버 로그인용 KAKAO_REST_API_KEY·KAKAO_CLIENT_SECRET·NAVER_CLIENT_ID·NAVER_CLIENT_SECRET)은 여기 없음 — Cloudflare에 저장된 것을 그대로 유지한다.
 name = "cardbook-ai"
 main = "worker.js"
 account_id = "184cfa4f47e805123284c4dbf2278a38"

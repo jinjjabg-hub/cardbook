@@ -145,6 +145,62 @@ async function firebaseAccessToken(env) {
   _tokenCache = { token: data.access_token, exp: Date.now() + (data.expires_in || 3600) * 1000 };
   return data.access_token;
 }
+// ===== 카카오·네이버 로그인 =====
+// Firebase는 카카오·네이버를 직접 지원하지 않는다. 그래서 Worker가 인가 코드를 각 회사 서버에서 직접 확인하고,
+// 서비스 계정으로 Firebase "커스텀 토큰"을 만들어 준다(브라우저는 이 토큰으로 signInWithCustomToken).
+// 키는 전부 Worker 비밀값에만 둔다: KAKAO_REST_API_KEY(+선택 KAKAO_CLIENT_SECRET), NAVER_CLIENT_ID, NAVER_CLIENT_SECRET.
+// 키가 없는 회사는 /auth/providers 목록에서 빠지므로, 키를 넣기 전에는 로그인 화면에 버튼이 보이지 않는다.
+// 돌아올 주소는 아래 목록만 허용(카카오·네이버 개발자 콘솔에 같은 주소를 등록해야 함).
+const OAUTH_REDIRECTS = ['https://cardbook.bizmy.net/'];
+function oauthProviders(env) {
+  const out = [];
+  if (env.KAKAO_REST_API_KEY) out.push('kakao');
+  if (env.NAVER_CLIENT_ID && env.NAVER_CLIENT_SECRET) out.push('naver');
+  return out;
+}
+function oauthAuthorizeUrl(env, provider, redirectUri, state) {
+  const q = (o) => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+  if (provider === 'kakao') return 'https://kauth.kakao.com/oauth/authorize?' + q({ response_type: 'code', client_id: env.KAKAO_REST_API_KEY, redirect_uri: redirectUri, state });
+  if (provider === 'naver') return 'https://nid.naver.com/oauth2.0/authorize?' + q({ response_type: 'code', client_id: env.NAVER_CLIENT_ID, redirect_uri: redirectUri, state });
+  return '';
+}
+// 인가 코드 → 그 회사의 회원 번호·이름. 실패하면 예외
+async function oauthProfile(env, provider, code, state, redirectUri) {
+  const form = (o) => Object.entries(o).filter(([, v]) => v).map(([k, v]) => k + '=' + encodeURIComponent(v)).join('&');
+  if (provider === 'kakao') {
+    const t = await fetch('https://kauth.kakao.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+      body: form({ grant_type: 'authorization_code', client_id: env.KAKAO_REST_API_KEY, client_secret: env.KAKAO_CLIENT_SECRET, redirect_uri: redirectUri, code }) });
+    const td = await t.json().catch(() => ({}));
+    if (!t.ok || !td.access_token) throw new Error('카카오 인증 실패: ' + (td.error_description || td.error || t.status));
+    const me = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: 'Bearer ' + td.access_token } });
+    const md = await me.json().catch(() => ({}));
+    if (!me.ok || !md.id) throw new Error('카카오 회원 정보를 받지 못했어요');
+    return { id: String(md.id), name: md.kakao_account?.profile?.nickname || md.properties?.nickname || '' };
+  }
+  if (provider === 'naver') {
+    const t = await fetch('https://nid.naver.com/oauth2.0/token?' + form({ grant_type: 'authorization_code', client_id: env.NAVER_CLIENT_ID, client_secret: env.NAVER_CLIENT_SECRET, code, state }));
+    const td = await t.json().catch(() => ({}));
+    if (!t.ok || !td.access_token) throw new Error('네이버 인증 실패: ' + (td.error_description || td.error || t.status));
+    const me = await fetch('https://openapi.naver.com/v1/nid/me', { headers: { Authorization: 'Bearer ' + td.access_token } });
+    const md = await me.json().catch(() => ({}));
+    const r = md.response || {};
+    if (!me.ok || md.resultcode !== '00' || !r.id) throw new Error('네이버 회원 정보를 받지 못했어요');
+    return { id: String(r.id), name: r.name || r.nickname || '' };
+  }
+  throw new Error('지원하지 않는 로그인');
+}
+// Firebase 커스텀 토큰(서비스 계정 비공개 키로 서명, 1시간 유효)
+async function firebaseCustomToken(env, uid, claims) {
+  const sa = JSON.parse(env.FIREBASE_SA);
+  const now = Math.floor(Date.now() / 1000);
+  const enc = o => b64url(new TextEncoder().encode(JSON.stringify(o)));
+  const header = enc({ alg: 'RS256', typ: 'JWT' });
+  const body = enc({ iss: sa.client_email, sub: sa.client_email, aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit', iat: now, exp: now + 3600, uid, claims });
+  const pem = sa.private_key.replace(/-----[A-Z ]+-----/g, '').replace(/\s/g, '');
+  const key = await crypto.subtle.importKey('pkcs8', Uint8Array.from(atob(pem), c => c.charCodeAt(0)), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(header + '.' + body));
+  return header + '.' + body + '.' + b64url(sig);
+}
 // 결제 1건을 payments/{orderId}에 기록(중복이면 실패) + users/{uid}.credits 증가 — 하나의 트랜잭션
 async function getUserDoc(token, uid) {
   const base = `projects/${FIREBASE_PROJECT}/databases/(default)/documents`;
@@ -810,6 +866,24 @@ export default {
         const matches = {};
         for (const [k, emails] of Object.entries(cand)) { const hit = emails.find(e => found[e]); if (hit) matches[k] = found[hit]; }
         return json({ matches });
+      }
+
+      // ── 카카오·네이버 로그인: 쓸 수 있는 회사 목록 → 인가 주소 → 인가 코드를 Firebase 로그인 토큰으로 ──
+      if (url.pathname === '/auth/providers') return json({ providers: oauthProviders(env) });
+      if (url.pathname === '/auth/start' || url.pathname === '/auth/oauth') {
+        const b = await request.json();
+        const provider = String(b.provider || ''), redirectUri = String(b.redirectUri || ''), state = String(b.state || '');
+        if (!oauthProviders(env).includes(provider)) return json({ error: '지원하지 않는 로그인이에요' }, 400);
+        if (!OAUTH_REDIRECTS.includes(redirectUri)) return json({ error: '허용되지 않은 주소예요' }, 400);
+        if (!/^[A-Za-z0-9_-]{16,64}$/.test(state)) return json({ error: '잘못된 요청이에요' }, 400);
+        if (url.pathname === '/auth/start') return json({ url: oauthAuthorizeUrl(env, provider, redirectUri, state) });
+        const code = String(b.code || '');
+        if (!code || code.length > 512) return json({ error: '잘못된 요청이에요' }, 400);
+        let p;
+        try { p = await oauthProfile(env, provider, code, state, redirectUri); }
+        catch (e) { return json({ error: e.message }, 401); }
+        const token = await firebaseCustomToken(env, provider + '_' + p.id, { provider });
+        return json({ token, name: p.name.slice(0, 40) });
       }
 
       // ── 로그인 시 잔여 장수 조회 (가입/월간 무료분 반영) ──
