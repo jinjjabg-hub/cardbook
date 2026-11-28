@@ -148,6 +148,22 @@ service cloud.firestore {
     // 누가 누구 명함을 저장했는지(통계용 중복 방지 기록) — Worker만 쓴다.
     match /cardSaves/{key} { allow read, write: if false; }
 
+    // ── 점심 모듈(/lunch/) ──
+    // 고른 메뉴(picks)·오늘의 연결로 보여준 명함(connectShown) — 본인 것만 읽고 쓴다.
+    match /lunch_logs/{uid}/{sub}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid && sub in ['picks', 'connectShown'];
+    }
+    // 사용 기록(측정용) — 로그인한 본인 이름으로 "생성"만. 읽기·수정·삭제는 막음(분석은 콘솔·관리 도구에서).
+    match /lunch_events/{eventId} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'type', 'ts', 'meta'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.type in ['open', 'recommend', 'pick', 'place_open', 'mycard_match', 'call', 'sms_reserve', 'connect_view', 'connect_sms']
+        && request.resource.data.ts == request.time
+        && (!('meta' in request.resource.data) || request.resource.data.meta is map);
+      allow read, update, delete: if false;
+    }
+
     // 예전 코드가 쓰다 만 최상위 컬렉션 — 지금은 아무도 안 쓰지만 혹시 남아있는 호출을 막아둔다.
     match /cards/{cardId} { allow read, write: if false; }
 

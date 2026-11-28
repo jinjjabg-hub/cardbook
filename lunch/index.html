@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
+<title>오늘 점심 · 카드북</title>
+<meta name="theme-color" content="#f6f8fc">
+<link rel="icon" href="../icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Nanum+Gothic:wght@700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore-compat.js"></script>
+<style>
+/* 카드북 디자인 변수 그대로 */
+:root{
+  --dark:#f6f8fc;--dark2:#eaf0f9;--dark3:#dde7f5;
+  --gold:#2563eb;--gold-dim:rgba(37,99,235,0.13);
+  --cream:#16305e;--ink:#0b1c3d;--sub:#64748b;
+  --red:#C8102E;--red-dim:rgba(200,16,46,0.10);
+  --muted:rgba(51,65,85,0.6);
+  --border:rgba(37,99,235,0.15);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--dark);color:var(--cream);font-family:'Noto Sans KR',sans-serif;max-width:430px;margin:0 auto;min-height:100vh;padding-bottom:28px}
+button{font-family:inherit;cursor:pointer}
+.top{position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between}
+.top h1{font-family:'Nanum Gothic',sans-serif;font-size:17px;font-weight:800;color:var(--cream)}
+.top h1 span{color:var(--gold)}
+.top a{font-size:12px;color:var(--muted);text-decoration:none;border:1px solid rgba(37,99,235,0.2);border-radius:6px;padding:4px 9px}
+.box{background:#fff;border:1px solid var(--border);border-radius:16px;margin:10px 12px 0;padding:12px 14px}
+.lbl{font-size:11px;font-weight:700;color:var(--sub);letter-spacing:.04em;margin-bottom:8px}
+
+/* 위치 */
+.loc{display:flex;align-items:center;gap:6px}
+.loc-name{flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loc-name.empty{color:var(--muted);font-weight:500}
+.sbtn{flex-shrink:0;padding:7px 10px;border-radius:10px;border:1px solid #dbe4f3;background:#fff;color:var(--cream);font-size:12px;font-weight:700}
+.sbtn.on{background:var(--cream);color:#fff;border-color:var(--cream)}
+.loc-input{display:none;gap:6px;margin-top:8px}
+.loc-input input,.txt{flex:1;width:100%;padding:9px 12px;border-radius:10px;border:1px solid var(--border);font-size:14px;color:var(--cream);font-family:inherit;outline:none;background:rgba(255,255,255,0.7)}
+.loc-input input:focus,.txt:focus{border-color:var(--gold)}
+
+/* 맛 칩 */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:8px 13px;border-radius:20px;border:1px solid #dbe4f3;background:#fff;color:var(--cream);font-size:13px;font-weight:700}
+.chip.on{background:var(--cream);color:#fff;border-color:var(--cream)}
+.chip.ex{border-color:rgba(200,16,46,.3);color:var(--red);background:#fff}
+.chip.ex.on{background:var(--red);color:#fff;border-color:var(--red)}
+.more{display:none;margin-top:4px}
+.grp{font-size:11px;font-weight:700;color:var(--sub);margin:10px 0 6px}
+.morebtn{margin-top:8px;background:none;border:none;color:var(--gold);font-size:12px;font-weight:700;padding:2px 0}
+.txt{margin-top:10px}
+.go{display:block;width:calc(100% - 24px);margin:10px 12px 0;padding:14px;border-radius:14px;border:none;background:var(--gold);color:#fff;font-size:16px;font-weight:800}
+.go:disabled{opacity:.6}
+.picked-sum{display:none;align-items:center;gap:8px;font-size:13px;color:var(--cream)}
+.picked-sum b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 결과 */
+#results{display:none}
+.menu{background:#fff;border:1px solid var(--border);border-radius:16px;margin:10px 12px 0;overflow:hidden}
+.menu-head{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer}
+.menu-no{flex-shrink:0;width:28px;height:28px;border-radius:9px;background:var(--gold-dim);color:var(--gold);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+.menu-body{flex:1;min-width:0}
+.menu-name{font-family:'Nanum Gothic',sans-serif;font-size:16px;font-weight:800;color:var(--ink)}
+.menu-reason{font-size:12px;color:var(--sub);margin-top:2px}
+.menu-go{color:#94a3b8;font-size:18px;transition:transform .2s}
+.menu.open .menu-go{transform:rotate(90deg)}
+.menu-list{display:none;border-top:1px solid var(--border);padding:10px 12px 12px;background:#fbfcff}
+.menu.open .menu-list{display:block}
+.pick{width:100%;padding:10px;border-radius:10px;border:1px solid var(--gold);background:#fff;color:var(--gold);font-size:14px;font-weight:800;margin-bottom:10px}
+.pick.done{background:var(--gold);color:#fff}
+.place{background:#fff;border:1px solid #e3eaf6;border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.place.mine{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset;background:#f5f8ff}
+.badge{display:inline-block;font-size:10px;font-weight:800;color:#fff;background:var(--gold);border-radius:6px;padding:2px 6px;margin-right:4px;vertical-align:2px}
+.p-name{font-size:14px;font-weight:800;color:var(--ink)}
+.p-sub{font-size:11.5px;color:var(--sub);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pb{padding:7px 11px;border-radius:9px;border:1px solid #dbe4f3;background:#fff;color:var(--cream);font-size:12px;font-weight:700}
+.pb.main{background:var(--cream);color:#fff;border-color:var(--cream)}
+.ppl{display:none;align-items:center;gap:5px;margin-top:8px;font-size:12px;color:var(--sub)}
+.ppl button{width:34px;height:34px;border-radius:9px;border:1px solid var(--gold);background:#fff;color:var(--gold);font-weight:800;font-size:14px}
+.empty-msg{font-size:12px;color:var(--sub);padding:6px 2px}
+
+/* 오늘의 연결 */
+.connect{background:linear-gradient(135deg,#16305e,#24498a);color:#fff;border-radius:16px;margin:14px 12px 0;padding:14px}
+.connect .lbl{color:rgba(255,255,255,.7)}
+.c-row{display:flex;align-items:center;gap:12px;cursor:pointer}
+.c-av{width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;flex-shrink:0;overflow:hidden}
+.c-av img{width:100%;height:100%;object-fit:cover}
+.c-name{font-size:16px;font-weight:800}
+.c-sub{font-size:12px;color:rgba(255,255,255,.75);margin-top:2px}
+.c-btns{display:flex;gap:6px;margin-top:12px}
+.c-btns button{flex:1;padding:10px;border-radius:10px;border:none;font-size:13px;font-weight:800}
+.c-btns .a{background:#fff;color:var(--cream)}
+.c-btns .b{background:rgba(255,255,255,.15);color:#fff}
+.foot{text-align:center;font-size:11px;color:var(--muted);margin-top:14px}
+.foot button{background:none;border:none;color:var(--gold);font-size:11px;text-decoration:underline}
+
+/* 아래에서 올라오는 창 */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:700;display:none;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;border-radius:20px 20px 0 0;padding:18px 16px 22px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;color:var(--cream)}
+.sheet h3{font-size:16px;font-weight:800;margin-bottom:10px}
+.sheet img{width:100%;border-radius:12px;border:1px solid var(--border);margin-bottom:10px}
+.kv{display:flex;gap:10px;font-size:13px;padding:6px 0;border-top:1px solid #eef2f9}
+.kv span{flex-shrink:0;width:44px;color:var(--sub);font-size:12px}
+.kv b{font-weight:500;color:var(--ink);word-break:break-all;white-space:pre-wrap}
+.sheet-close{width:100%;margin-top:12px;padding:12px;border-radius:12px;border:none;background:var(--cream);color:#fff;font-size:14px;font-weight:700}
+.opt{display:block;width:100%;padding:13px;margin-bottom:8px;border-radius:12px;border:1px solid #dbe4f3;background:#fff;color:var(--cream);font-size:15px;font-weight:700}
+
+.login{text-align:center;padding:40px 20px}
+.login p{font-size:14px;color:var(--sub);margin:10px 0 18px;line-height:1.6}
+.login a{display:inline-block;padding:13px 22px;border-radius:12px;background:var(--gold);color:#fff;font-weight:800;text-decoration:none}
+.spin{text-align:center;font-size:13px;color:var(--sub);padding:18px}
+.toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);background:rgba(20,18,9,0.97);border-radius:10px;padding:10px 18px;font-size:12px;color:#fdfaf3;z-index:900;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90%;text-align:center}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="top"><h1>🍱 오늘 <span>점심</span></h1><a href="../">카드북</a></div>
+
+<div id="boot" class="spin">불러오는 중…</div>
+
+<div id="login" class="login" style="display:none">
+  <div style="font-size:40px">🍱</div>
+  <p>카드북에 로그인하면<br>점심 메뉴 추천과 <b>명함첩 속 사장님 가게</b>를 바로 볼 수 있어요.</p>
+  <a href="../">카드북에서 로그인</a>
+</div>
+
+<div id="app" style="display:none">
+  <!-- 1. 위치 -->
+  <div class="box">
+    <div class="loc">
+      <span>📍</span><span id="locName" class="loc-name empty">위치를 골라주세요</span>
+      <button class="sbtn" id="btnGps">현재 위치</button>
+      <button class="sbtn" id="btnArea">지역 입력</button>
+    </div>
+    <div class="loc-input" id="locInput">
+      <input id="areaQ" placeholder="예: 사상구 냉정역" enterkeyhint="search">
+      <button class="sbtn on" id="btnAreaGo">확인</button>
+    </div>
+  </div>
+
+  <!-- 2. 맛 칩 -->
+  <div class="box" id="chipBox">
+    <div class="lbl">오늘 당기는 맛 (여러 개 가능)</div>
+    <div class="chips" id="topChips"></div>
+    <div class="more" id="moreChips"></div>
+    <button class="morebtn" id="btnMore">더보기 ▾</button>
+    <input class="txt" id="freeText" maxlength="60" placeholder="한 줄로 더 (선택) 예: 어제 술 마셨어요">
+  </div>
+  <div class="box picked-sum" id="pickedSum"><b id="pickedSumText"></b><button class="sbtn" id="btnRepick">다시 고르기</button></div>
+  <button class="go" id="btnGo">추천받기</button>
+
+  <!-- 3. 결과 -->
+  <div id="results">
+    <div id="menus"></div>
+    <div class="connect" id="connect" style="display:none">
+      <div class="lbl">🤝 오늘의 연결</div>
+      <div class="c-row" id="cRow"><div class="c-av" id="cAv"></div><div><div class="c-name" id="cName"></div><div class="c-sub" id="cSub"></div></div></div>
+      <div class="c-btns"><button class="a" id="btnHello">💬 안부 문자</button><button class="b" id="btnOther">다른 사람</button></div>
+    </div>
+    <div class="foot">지도: <span id="mapNow">처음 누를 때 고르기</span> · <button id="btnMapReset">바꾸기</button></div>
+  </div>
+</div>
+
+<div class="sheet-bg" id="sheetBg"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ===== 설정 (카드북과 같은 Firebase) =====
+const firebaseConfig = {
+  apiKey: "AIzaSyAZoWSGSA81daZydNgzegct2aaeFbDajr0",
+  authDomain: "mandu-e7c3c.firebaseapp.com",
+  projectId: "mandu-e7c3c",
+  storageBucket: "mandu-e7c3c.firebasestorage.app",
+  messagingSenderId: "196338490174",
+  appId: "1:196338490174:web:78dc77e684945aca362a6f"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+// 카드북과 같은 오프라인 저장소를 같이 쓴다 → 명함을 서버에서 다시 읽지 않아도 됨(읽기 비용↓)
+db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+// 점심 Worker (비밀 키는 Worker에만 있다. 이 화면에는 키가 없다)
+const LUNCH_API = 'https://cardbook-lunch.jinjjabg.workers.dev';
+
+// ===== 맛 칩 =====
+const CHIP_GROUPS = [
+  ['맛', ['칼칼', '얼큰', '시원', '담백', '고소', '새콤', '달달', '짭짤']],
+  ['식감·온도', ['뜨끈한 국물', '시원한 면', '바삭', '부드러운']],
+  ['종류', ['한식', '중식', '일식', '양식', '분식', '고기', '해산물', '면', '밥']],
+  ['상황', ['혼밥', '손님접대', '해장', '빨리', '든든하게', '가볍게']],
+  ['가격', ['1만 원 이하', '1~2만 원', '상관없음']],
+  ['빼기', ['느끼한 거 ✕', '매운 거 ✕', '날것 ✕', '밀가루 ✕']],
+];
+const DEFAULT_TOP = ['칼칼', '담백', '뜨끈한 국물', '한식', '고기', '면', '해장', '가볍게'];
+const PRICE = CHIP_GROUPS[4][1], EXCLUDE = CHIP_GROUPS[5][1];
+const ALL_CHIPS = CHIP_GROUPS.flatMap(g => g[1]);
+
+// ===== 작은 도구 =====
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const kstDate = (offsetDays = 0) => new Date(Date.now() + 9 * 3600e3 + offsetDays * 86400e3).toISOString().slice(0, 10);
+const digits = s => String(s || '').replace(/\D/g, '');
+const noSpace = s => String(s || '').replace(/\s+/g, '');
+const IS_IOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+let toastT;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+
+// ===== 상태 =====
+let user = null, cards = [], cardsReady = null, recentMenus = [], lastMenus = [], lastChips = [];
+let loc = lsGet('lunchLoc', null);              // { x, y, label, gu }
+const selected = new Set();
+const pickedThisVisit = new Set();
+
+// ===== 기록(측정용) =====
+function logEvent(type, meta = {}) {
+  if (!user) return;
+  db.collection('lunch_events').add({ uid: user.uid, type, ts: firebase.firestore.FieldValue.serverTimestamp(), meta }).catch(() => {});
+}
+
+// ===== Worker 호출 =====
+async function api(path, body) {
+  const idToken = await user.getIdToken();
+  const res = await fetch(LUNCH_API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken, ...body }) });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || '잠시 후 다시 해주세요');
+  return d;
+}
+
+// ===== 로그인 =====
+auth.onAuthStateChanged(u => {
+  $('boot').style.display = 'none';
+  user = u;
+  if (!u) { $('login').style.display = 'block'; $('app').style.display = 'none'; return; }
+  $('login').style.display = 'none'; $('app').style.display = 'block';
+  logEvent('open');
+  cardsReady = loadCards();
+  loadRecent();
+  renderLoc(); renderChips(); renderMapNow();
+});
+
+// 명함첩: 카드북이 폰에 저장해 둔 것을 먼저 쓰고, 없으면 서버에서
+async function loadCards() {
+  const ref = db.collection('users').doc(user.uid).collection('cards');
+  let snap = null;
+  try { snap = await ref.get({ source: 'cache' }); } catch (e) {}
+  if (!snap || snap.empty) { try { snap = await ref.get(); } catch (e) { snap = null; } }
+  cards = snap ? snap.docs.map(d => ({ docId: d.id, ...d.data() })) : [];
+  return cards;
+}
+// 최근 3일(오늘 포함) 고른 메뉴 → 다음 추천에서 빼기
+async function loadRecent() {
+  try {
+    const s = await db.collection('lunch_logs').doc(user.uid).collection('picks').orderBy('ts', 'desc').limit(20).get();
+    const from = kstDate(-2);
+    recentMenus = [...new Set(s.docs.map(d => d.data()).filter(p => p.date >= from).map(p => p.menu))];
+  } catch (e) { recentMenus = []; }
+}
+
+// ===== 1. 위치 =====
+function renderLoc() {
+  const el = $('locName');
+  el.textContent = loc ? loc.label : '위치를 골라주세요';
+  el.classList.toggle('empty', !loc);
+}
+function setLoc(d) { loc = { x: d.x, y: d.y, label: d.label, gu: d.gu }; lsSet('lunchLoc', loc); renderLoc(); placeCache.clear(); }
+$('btnGps').onclick = () => {
+  if (!navigator.geolocation) { toast('이 기기는 위치를 못 가져와요. 지역 입력을 써주세요'); return; }
+  $('locName').textContent = '위치 찾는 중…';
+  navigator.geolocation.getCurrentPosition(async p => {
+    try { setLoc(await api('/lunch/locate', { x: p.coords.longitude, y: p.coords.latitude })); toast('📍 ' + loc.label); }
+    catch (e) { renderLoc(); toast(e.message); }
+  }, () => { renderLoc(); toast('위치 권한이 꺼져 있어요. 지역 입력을 써주세요'); $('btnArea').onclick(); },
+  { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+};
+$('btnArea').onclick = () => { const b = $('locInput'); b.style.display = b.style.display === 'flex' ? 'none' : 'flex'; if (b.style.display === 'flex') $('areaQ').focus(); };
+async function areaGo() {
+  const q = $('areaQ').value.trim(); if (!q) return;
+  try { setLoc(await api('/lunch/locate', { query: q })); $('locInput').style.display = 'none'; $('areaQ').value = ''; toast('📍 ' + loc.label); }
+  catch (e) { toast(e.message); }
+}
+$('btnAreaGo').onclick = areaGo;
+$('areaQ').onkeydown = e => { if (e.key === 'Enter') areaGo(); };
+
+// ===== 2. 맛 칩 =====
+// 많이 누른 칩이 앞 8자리로 올라온다(처음엔 기본 8개). 순서는 화면을 열 때만 정해서 누르는 중에 자리가 바뀌지 않게
+function topChips() {
+  const cnt = lsGet('lunchChipCount', {});
+  const order = ALL_CHIPS.slice().sort((a, b) => {
+    const d = (cnt[b] || 0) - (cnt[a] || 0); if (d) return d;
+    const ia = DEFAULT_TOP.indexOf(a), ib = DEFAULT_TOP.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || ALL_CHIPS.indexOf(a) - ALL_CHIPS.indexOf(b);
+  });
+  return order.slice(0, 8);
+}
+const chipHtml = c => `<button class="chip${EXCLUDE.includes(c) ? ' ex' : ''}${selected.has(c) ? ' on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`;
+function renderChips() {
+  const top = topChips();
+  $('topChips').innerHTML = top.map(chipHtml).join('');
+  $('moreChips').innerHTML = CHIP_GROUPS.map(([g, list]) => {
+    const rest = list.filter(c => !top.includes(c));
+    return rest.length ? `<div class="grp">${esc(g)}</div><div class="chips">${rest.map(chipHtml).join('')}</div>` : '';
+  }).join('');
+}
+function syncChips() { document.querySelectorAll('.chip').forEach(b => b.classList.toggle('on', selected.has(b.dataset.c))); }
+document.addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  const c = b.dataset.c;
+  if (selected.has(c)) selected.delete(c);
+  else {
+    if (PRICE.includes(c)) PRICE.forEach(p => selected.delete(p));   // 가격은 하나만
+    selected.add(c);
+    const cnt = lsGet('lunchChipCount', {}); cnt[c] = (cnt[c] || 0) + 1; lsSet('lunchChipCount', cnt);
+  }
+  syncChips();
+});
+$('btnMore').onclick = () => { const m = $('moreChips'), open = m.style.display !== 'block'; m.style.display = open ? 'block' : 'none'; $('btnMore').textContent = open ? '접기 ▴' : '더보기 ▾'; };
+$('btnRepick').onclick = () => { $('chipBox').style.display = 'block'; $('pickedSum').style.display = 'none'; $('btnGo').style.display = 'block'; window.scrollTo(0, 0); };
+
+// ===== 추천받기 =====
+$('btnGo').onclick = async () => {
+  const btn = $('btnGo');
+  btn.disabled = true; btn.textContent = '고르는 중…';
+  lastChips = [...selected];
+  const text = $('freeText').value.trim();
+  try {
+    const d = await api('/lunch/recommend', { chips: lastChips, text, month: Number(kstDate().slice(5, 7)), recentMenus });
+    lastMenus = d.menus || [];
+    logEvent('recommend', { chips: lastChips, menus: lastMenus.map(m => m.name) });
+    // 칩 칸은 접어서 결과가 한 화면에 보이게
+    $('chipBox').style.display = 'none'; btn.style.display = 'none';
+    $('pickedSum').style.display = 'flex';
+    $('pickedSumText').textContent = (lastChips.length ? lastChips.join(' · ') : '아무거나') + (text ? ' · ' + text : '');
+    renderMenus();
+    $('results').style.display = 'block';
+    showConnect();
+  } catch (e) { toast(e.message || '잠시 후 다시 해주세요'); }
+  btn.disabled = false; btn.textContent = '추천받기';
+};
+
+// ===== 3. 결과 =====
+function renderMenus() {
+  $('menus').innerHTML = lastMenus.map((m, i) => `
+    <div class="menu" id="menu${i}">
+      <div class="menu-head" data-open="${i}">
+        <div class="menu-no">${i + 1}</div>
+        <div class="menu-body"><div class="menu-name">${esc(m.name)}</div><div class="menu-reason">${esc(m.reason)}</div></div>
+        <div class="menu-go">›</div>
+      </div>
+      <div class="menu-list" id="list${i}"></div>
+    </div>`).join('');
+}
+document.addEventListener('click', e => {
+  const h = e.target.closest('[data-open]'); if (!h) return;
+  const i = Number(h.dataset.open), el = $('menu' + i);
+  const open = !el.classList.contains('open');
+  document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open'));
+  if (open) { el.classList.add('open'); openMenu(i); }
+});
+
+// 식당 목록: 메뉴 이름으로 찾고, 적으면 다음 검색어로 한 번 더 (같은 위치·검색어는 Worker가 6시간 캐시)
+const placeCache = new Map();
+async function fetchPlaces(m) {
+  const key = m.name;
+  if (placeCache.has(key)) return placeCache.get(key);
+  const words = [m.name, ...m.keywords.filter(k => k !== m.name)].slice(0, 2);
+  const byId = new Map();
+  for (const w of words) {
+    const d = await api('/lunch/places', { x: loc.x, y: loc.y, keyword: w });
+    d.places.forEach(p => { if (!byId.has(p.id)) byId.set(p.id, p); });
+    if (byId.size >= 5) break;
+  }
+  const list = [...byId.values()].sort((a, b) => a.distance - b.distance);
+  placeCache.set(key, list);
+  return list;
+}
+
+// 명함에서 전화번호처럼 생긴 숫자 모두(전화 칸 + 명함 전체 글자)
+function cardPhones(c) {
+  const out = new Set();
+  const add = s => { const d = digits(s); if (d.length >= 9 && d.length <= 11) out.add(d); };
+  add(c.phone);
+  (String(c.fullText || '').match(/0\d{1,2}[-.\s)]?\d{3,4}[-.\s]?\d{4}/g) || []).forEach(add);
+  return out;
+}
+// 명함 매칭: 메뉴 검색어가 명함 글자에 있고 + 주소에 지금 지역 구 이름이 있는 명함
+function matchCards(m) {
+  if (!loc || !loc.gu) return [];
+  const terms = [m.name, ...m.keywords].map(noSpace).filter(t => t.length >= 2);
+  const gu = loc.gu;
+  return cards.filter(c => {
+    const hay = noSpace([c.company, c.industry, c.services, c.fullText].join(' '));
+    if (!terms.some(t => hay.includes(t))) return false;
+    const where = c.address || c.fullText || '';
+    return where.includes(gu);
+  });
+}
+
+async function openMenu(i) {
+  const m = lastMenus[i], box = $('list' + i);
+  logEvent('place_open', { menu: m.name });
+  const pickBtn = `<button class="pick${pickedThisVisit.has(m.name) ? ' done' : ''}" data-pick="${i}">${pickedThisVisit.has(m.name) ? '✓ 오늘 점심으로 기록했어요' : '🍽 이걸로!'}</button>`;
+  if (!loc) { box.innerHTML = pickBtn + '<div class="empty-msg">📍 위에서 위치를 먼저 골라주세요. 근처 식당을 보여드려요.</div>'; return; }
+  box.innerHTML = pickBtn + '<div class="spin">근처 식당 찾는 중…</div>';
+  let places = [];
+  try { places = await fetchPlaces(m); } catch (e) { box.innerHTML = pickBtn + `<div class="empty-msg">${esc(e.message)}</div>`; return; }
+  if (cardsReady) await cardsReady;
+
+  // 1) 카카오 결과 중 전화번호가 내 명함과 같은 가게 → "내 명함"으로 합침
+  const phoneIdx = new Map();
+  cards.forEach(c => cardPhones(c).forEach(p => { if (!phoneIdx.has(p)) phoneIdx.set(p, c); }));
+  const rows = places.map(p => ({ place: p, card: phoneIdx.get(digits(p.phone)) || null }));
+  // 2) 메뉴·지역이 맞는 명함 중 카카오에 없던 것 추가 (중복은 하나로)
+  const used = new Set(rows.filter(r => r.card).map(r => r.card.docId));
+  matchCards(m).forEach(c => { if (!used.has(c.docId)) { used.add(c.docId); rows.push({ place: null, card: c }); } });
+  // 3) 내 명함 가게를 맨 위로
+  rows.sort((a, b) => (!!b.card - !!a.card) || ((a.place ? a.place.distance : 1e9) - (b.place ? b.place.distance : 1e9)));
+  const mineCount = rows.filter(r => r.card).length;
+  if (mineCount) logEvent('mycard_match', { menu: m.name, count: mineCount });
+
+  window._rows = window._rows || {};
+  window._rows[i] = rows;
+  box.innerHTML = pickBtn + (rows.length ? rows.slice(0, 12).map((r, j) => placeHtml(r, i, j)).join('') : '<div class="empty-msg">1km 안에 이 메뉴 식당이 없어요. 다른 메뉴를 눌러보세요.</div>');
+}
+
+function placeHtml(r, i, j) {
+  const p = r.place, c = r.card, id = `${i}-${j}`;
+  const dist = p ? (p.distance < 1000 ? p.distance + 'm' : (p.distance / 1000).toFixed(1) + 'km') : '';
+  if (c) {
+    const title = p ? p.name : (c.company || c.name);
+    const who = [c.name, c.title].filter(Boolean).join(' ');
+    const addr = p ? p.address : (c.address || '');
+    return `<div class="place mine">
+      <div class="p-name"><span class="badge">내 명함</span>${esc(title)}</div>
+      <div class="p-sub">${esc([who, dist, addr].filter(Boolean).join(' · '))}</div>
+      <div class="p-btns">
+        ${c.phone ? `<button class="pb main" data-act="sms" data-id="${id}">💬 문자로 예약</button>` : ''}
+        ${(c.phone || (p && p.phone)) ? `<button class="pb" data-act="call" data-id="${id}">📞 전화</button>` : ''}
+        <button class="pb" data-act="card" data-id="${id}">🪪 명함 보기</button>
+        ${(p || addr) ? `<button class="pb" data-act="map" data-id="${id}">🗺 지도</button>` : ''}
+      </div>
+      <div class="ppl" id="ppl${id}">몇 명? ${[1, 2, 3, 4, 5, 6].map(n => `<button data-act="smsn" data-id="${id}" data-n="${n}">${n}</button>`).join('')}</div>
+    </div>`;
+  }
+  return `<div class="place">
+    <div class="p-name">${esc(p.name)}</div>
+    <div class="p-sub">${esc([dist, p.category, p.address].filter(Boolean).join(' · '))}</div>
+    <div class="p-btns">
+      ${p.phone ? `<button class="pb" data-act="call" data-id="${id}">📞 전화</button>` : ''}
+      <button class="pb" data-act="map" data-id="${id}">🗺 지도</button>
+    </div>
+  </div>`;
+}
+
+// ===== 식당 카드 버튼 =====
+function smsLink(phone, body) { return 'sms:' + digits(phone) + (IS_IOS ? '&' : '?') + 'body=' + encodeURIComponent(body); }
+function rowOf(id) { const [i, j] = id.split('-').map(Number); return { i, r: window._rows[i][j] }; }
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const { i, r } = rowOf(b.dataset.id), m = lastMenus[i];
+  const shop = r.place ? r.place.name : (r.card.company || r.card.name);
+  const act = b.dataset.act;
+  if (act === 'sms') { const el = $('ppl' + b.dataset.id); el.style.display = el.style.display === 'flex' ? 'none' : 'flex'; return; }
+  if (act === 'smsn') {
+    const n = b.dataset.n;
+    logEvent('sms_reserve', { menu: m.name, place: shop, people: Number(n) });
+    autoPick(i);
+    location.href = smsLink(r.card.phone, `사장님, 오늘 12시 ${n}명 가능할까요? (카드북에서 보고 연락드려요)`);
+    return;
+  }
+  if (act === 'call') {
+    const phone = r.card ? (r.card.phone || r.place.phone) : r.place.phone;
+    logEvent('call', { menu: m.name, place: shop, mycard: !!r.card });
+    autoPick(i);
+    location.href = 'tel:' + digits(phone);
+    return;
+  }
+  if (act === 'card') { showCard(r.card); return; }
+  if (act === 'map') { openMap(r.place, r.card); return; }
+});
+
+// ===== "이걸로!" =====
+async function savePick(i) {
+  const m = lastMenus[i];
+  if (pickedThisVisit.has(m.name)) return;
+  pickedThisVisit.add(m.name);
+  if (!recentMenus.includes(m.name)) recentMenus.push(m.name);
+  document.querySelectorAll(`[data-pick="${i}"]`).forEach(b => { b.classList.add('done'); b.textContent = '✓ 오늘 점심으로 기록했어요'; });
+  logEvent('pick', { menu: m.name });
+  try {
+    await db.collection('lunch_logs').doc(user.uid).collection('picks').add({
+      date: kstDate(), menu: m.name, chips: lastChips, region: loc ? (loc.gu || loc.label) : '',
+      ts: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) { toast('기록을 못 했어요: ' + e.message); }
+}
+// 가게에 전화·문자를 하면 그 메뉴로 정한 것 → 버튼을 안 눌러도 기록(다음 추천에서 빠지게)
+function autoPick(i) { if (!lastMenus.some(m => pickedThisVisit.has(m.name))) savePick(i); }
+document.addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) savePick(Number(b.dataset.pick)); });
+
+// ===== 지도 (처음 한 번 고르고 기억) =====
+function renderMapNow() { const v = lsGet('lunchMap', ''); $('mapNow').textContent = v === 'kakao' ? '카카오맵' : v === 'naver' ? '네이버지도' : '처음 누를 때 고르기'; }
+$('btnMapReset').onclick = () => { lsSet('lunchMap', ''); renderMapNow(); toast('다음에 지도를 누를 때 다시 골라요'); };
+function openMap(p, c) {
+  const pref = lsGet('lunchMap', '');
+  if (!pref) {
+    openSheet(`<h3>어떤 지도로 볼까요?</h3>
+      <button class="opt" data-map="kakao">카카오맵</button><button class="opt" data-map="naver">네이버지도</button>
+      <div style="font-size:11px;color:var(--sub);text-align:center">한 번 고르면 기억해요 (아래 '바꾸기'로 변경)</div>`);
+    $('sheet').onclick = e => { const b = e.target.closest('[data-map]'); if (!b) return; lsSet('lunchMap', b.dataset.map); renderMapNow(); closeSheet(); openMap(p, c); };
+    return;
+  }
+  const name = p ? p.name : (c.company || c.name), addr = p ? p.address : (c.address || '');
+  const url = pref === 'kakao'
+    ? (p && p.url ? p.url : 'https://map.kakao.com/link/search/' + encodeURIComponent(name + ' ' + addr))
+    : 'https://map.naver.com/p/search/' + encodeURIComponent(name + ' ' + addr);
+  window.open(url, '_blank');
+}
+
+// ===== 명함 보기 (점심 화면 안에서) =====
+function showCard(c) {
+  const row = (k, v) => v ? `<div class="kv"><span>${k}</span><b>${esc(v)}</b></div>` : '';
+  openSheet(`<h3>${esc(c.name || '')} ${c.title ? `<small style="font-size:13px;color:var(--sub)">${esc(c.title)}</small>` : ''}</h3>
+    ${c.image ? `<img src="${esc(c.image)}" alt="명함">` : ''}
+    ${row('회사', c.company)}${row('전화', c.phone)}${row('이메일', c.email)}${row('주소', c.address)}${row('업종', c.industry)}${row('메모', c.memo)}
+    <div class="p-btns" style="margin-top:12px">
+      ${c.phone ? `<button class="pb main" onclick="location.href='tel:${digits(c.phone)}'">📞 전화</button>` : ''}
+    </div>
+    <button class="sheet-close" onclick="closeSheet()">닫기</button>`);
+}
+function openSheet(html) { $('sheet').innerHTML = html; $('sheet').onclick = null; $('sheetBg').style.display = 'flex'; }
+function closeSheet() { $('sheetBg').style.display = 'none'; }
+$('sheetBg').onclick = e => { if (e.target === $('sheetBg')) closeSheet(); };
+
+// ===== 오늘의 연결 =====
+// 하루 한 사람(같은 날 다시 열면 같은 사람). 최근 30일에 보여준 사람은 뺀다. [다른 사람]은 하루 3번까지
+let shownMap = null, connectCard = null;
+const connectKey = () => 'lunchConnect_' + user.uid;
+async function loadShown() {
+  if (shownMap) return shownMap;
+  shownMap = {};
+  try { (await db.collection('lunch_logs').doc(user.uid).collection('connectShown').get()).docs.forEach(d => shownMap[d.id] = d.data().date); } catch (e) {}
+  return shownMap;
+}
+function eligible(excludeId) {
+  const from = kstDate(-30);
+  return cards.filter(c => c.name && digits(c.phone).length >= 9 && c.docId !== excludeId && !(shownMap[c.docId] && shownMap[c.docId] >= from));
+}
+function markShown(c) {
+  shownMap[c.docId] = kstDate();
+  db.collection('lunch_logs').doc(user.uid).collection('connectShown').doc(c.docId).set({ date: kstDate(), ts: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+  logEvent('connect_view', { cardId: c.docId });
+}
+async function showConnect() {
+  if (cardsReady) await cardsReady;
+  await loadShown();
+  const st = lsGet(connectKey(), {});
+  let c = st.date === kstDate() ? cards.find(x => x.docId === st.cardId) : null;
+  if (!c) {
+    const pool = eligible();
+    if (!pool.length) { $('connect').style.display = 'none'; return; }
+    c = pool[Math.floor(Math.random() * pool.length)];
+    markShown(c);
+    lsSet(connectKey(), { date: kstDate(), cardId: c.docId, swaps: st.date === kstDate() ? (st.swaps || 0) : 0 });
+  }
+  renderConnect(c);
+}
+function renderConnect(c) {
+  connectCard = c;
+  $('cAv').innerHTML = c.image ? `<img src="${esc(c.image)}" alt="">` : esc((c.name || '?').slice(0, 1));
+  $('cName').textContent = c.name + (c.title ? ' ' + c.title : '');
+  $('cSub').textContent = c.company || c.industry || '';
+  $('connect').style.display = 'block';
+}
+// "○○ 대표님" — 직함이 짧게 있으면 그 직함, 없으면 대표
+function honorific(c) { const t = String(c.title || '').trim(); return (t && t.length <= 6 && !/\s/.test(t)) ? t : '대표'; }
+$('btnHello').onclick = () => {
+  const c = connectCard; if (!c) return;
+  logEvent('connect_sms', { cardId: c.docId });
+  location.href = smsLink(c.phone, `${c.name} ${honorific(c)}님, 점심 맛있게 드세요! 요즘 어떻게 지내세요?`);
+};
+$('btnOther').onclick = () => {
+  const st = lsGet(connectKey(), {});
+  if ((st.swaps || 0) >= 3) { toast('다른 사람은 하루 3번까지 볼 수 있어요'); return; }
+  const pool = eligible(connectCard && connectCard.docId);
+  if (!pool.length) { toast('지금 보여드릴 다른 분이 없어요'); return; }
+  const c = pool[Math.floor(Math.random() * pool.length)];
+  markShown(c);
+  lsSet(connectKey(), { date: kstDate(), cardId: c.docId, swaps: (st.swaps || 0) + 1 });
+  renderConnect(c);
+};
+$('cRow').onclick = () => connectCard && showCard(connectCard);
+</script>
+</body>
+</html>
